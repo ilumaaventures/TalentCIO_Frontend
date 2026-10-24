@@ -512,42 +512,33 @@ export const ImportDataDetailPage = ({
   const upcomingFollowUp = followUps.find((f) => f.status === 'scheduled') || null;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {/* Top Navigation & Action Header */}
-      <div className="bg-white p-5 rounded-2xl border border-slate-200/90 shadow-2xs">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-          <div className="flex items-center gap-3 min-w-0">
+      <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/90 shadow-2xs space-y-3">
+        <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-3">
+          {/* Left: Back Arrow, Company Name & Primary Identifiers */}
+          <div className="flex items-start gap-2.5 min-w-0 flex-1">
             <button
               type="button"
               onClick={onBack}
-              className="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-500 cursor-pointer shrink-0 transition"
+              className="mt-0.5 w-7.5 h-7.5 rounded-lg border border-slate-200 hover:bg-slate-100 flex items-center justify-center text-slate-500 hover:text-slate-800 cursor-pointer shrink-0 transition shadow-2xs"
               title="Back to Database table"
             >
               <ArrowLeft className="w-4 h-4" />
             </button>
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1 space-y-1">
               <div className="flex items-center gap-2 flex-wrap">
-                <Building2 className="w-5 h-5 text-indigo-600 shrink-0" />
-                <h1 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight leading-snug">
+                <Building2 className="w-4 h-4 text-indigo-600 shrink-0" />
+                <h1 className="text-sm sm:text-base font-bold text-slate-900 tracking-tight leading-snug">
                   {record?.companyName || 'Company Prospect'}
                 </h1>
-                {record?.industry && (
-                  <Badge variant="neutral" size="sm">
-                    {record.industry}
-                  </Badge>
-                )}
-                {(record?.source || record?.leadSource) && (
-                  <Badge variant="blue" size="sm">
-                    Source: {record?.source || record?.leadSource}
-                  </Badge>
-                )}
 
                 {/* Status Selector Dropdown Badge */}
-                <div className="relative inline-flex items-center gap-1">
+                <div className="relative inline-flex items-center">
                   <select
                     value={record?.status || record?.leadStatus || 'New'}
                     onChange={(e) => handleOpenStatusModal(e.target.value)}
-                    className={`appearance-none inline-flex items-center pl-2.5 pr-6 py-0.5 rounded-full text-xs font-bold border cursor-pointer transition focus:outline-none focus:ring-2 focus:ring-offset-1 shadow-2xs ${getStatusBadgeStyle(
+                    className={`appearance-none inline-flex items-center pl-2.5 pr-6 py-0.5 rounded-full text-[10.5px] font-bold border cursor-pointer transition focus:outline-none focus:ring-2 focus:ring-offset-1 shadow-2xs ${getStatusBadgeStyle(
                       record?.status || record?.leadStatus || 'New'
                     )}`}
                     title="Click to change company status / interest"
@@ -560,66 +551,94 @@ export const ImportDataDetailPage = ({
                   </select>
                   <ChevronDown className="w-3 h-3 absolute right-1.5 pointer-events-none opacity-60" />
                 </div>
-                {record?.rating && (
-                  <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200 flex items-center gap-1 shrink-0">
-                    <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
-                    <span>{record.rating}</span>
-                  </span>
-                )}
+
                 {record?.isConvertedToLead ? (
-                  <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200 shrink-0">
+                  <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 shrink-0">
                     <CheckCircle2 className="w-3 h-3 text-emerald-600" />
                     Converted to CRM Lead
                   </span>
                 ) : record?.isDuplicate ? (
-                  <span className="inline-flex items-center gap-1 text-xs font-semibold text-rose-700 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-200 shrink-0">
+                  <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-rose-700 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-200 shrink-0">
                     <AlertCircle className="w-3 h-3 text-rose-500" />
                     Duplicate Record
                   </span>
                 ) : null}
+
+                {record?.rating && (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 flex items-center gap-1 shrink-0">
+                    <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
+                    <span>{record.rating}</span>
+                  </span>
+                )}
+              </div>
+
+              {/* Sub-row: Industry, Source, GSTIN, Reg Date Tags */}
+              <div className="flex items-center gap-1.5 flex-wrap text-[10.5px]">
+                {record?.industry && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 font-medium border border-slate-200/80">
+                    <Tag className="w-3 h-3 text-slate-400" />
+                    <span>{record.industry}</span>
+                  </span>
+                )}
+                {(record?.source || record?.leadSource) && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 font-medium border border-blue-200/70">
+                    <span>Source: {record?.source || record?.leadSource}</span>
+                  </span>
+                )}
+                {record?.gstin && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-50 text-slate-700 font-mono border border-slate-200/70" title="GSTIN">
+                    <span className="text-slate-400 font-sans font-medium text-[9.5px]">GSTIN:</span>
+                    <span className="font-semibold">{record.gstin}</span>
+                  </span>
+                )}
+                {record?.dateOfRegistration && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-50 text-slate-700 font-mono border border-slate-200/70" title="Date of Registration">
+                    <span className="text-slate-400 font-sans font-medium text-[9.5px]">Reg. Date:</span>
+                    <span className="font-semibold">{record.dateOfRegistration}</span>
+                  </span>
+                )}
               </div>
             </div>
           </div>
 
-          {/* Quick Actions Toolbar - Strictly Single Row */}
-          <div className="flex items-center gap-1.5 sm:gap-2 flex-nowrap shrink-0 overflow-x-auto pb-0.5">
+          {/* Right: Quick Actions Toolbar - Strictly Unified Height (h-8) and Seamless Alignment */}
+          <div className="flex items-center gap-1.5 flex-wrap shrink-0 pt-1 lg:pt-0">
             {!record?.isConvertedToLead && (
-              <Button
-                size="sm"
-                icon={CheckCircle2}
-                className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold shadow-xs whitespace-nowrap shrink-0"
+              <button
+                type="button"
                 onClick={onConvert}
+                className="h-8 px-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs inline-flex items-center gap-1.5 shadow-xs transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                title="Convert this prospect to an active CRM Lead"
               >
-                Convert Lead
-              </Button>
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                <span>Convert Lead</span>
+              </button>
             )}
 
             {/* Communication Group */}
-            <div className="inline-flex items-center rounded-lg border border-slate-200/90 bg-white p-0.5 shadow-2xs shrink-0">
+            <div className="inline-flex items-center h-8 rounded-xl border border-slate-200/90 bg-white p-0.5 shadow-2xs shrink-0 divide-x divide-slate-100">
               <button
                 type="button"
                 onClick={() => handleOpenOutreach('call')}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-slate-700 hover:text-emerald-700 hover:bg-emerald-50 rounded-md transition-colors whitespace-nowrap cursor-pointer"
+                className="h-full inline-flex items-center gap-1.5 px-2.5 text-xs font-semibold text-slate-700 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg transition-colors whitespace-nowrap cursor-pointer"
                 title="Log / Dial Call"
               >
                 <Phone className="w-3.5 h-3.5 text-emerald-600" />
                 <span>Call</span>
               </button>
-              <div className="h-3.5 w-px bg-slate-200" />
               <button
                 type="button"
                 onClick={() => handleOpenOutreach('whatsapp')}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-slate-700 hover:text-teal-700 hover:bg-teal-50 rounded-md transition-colors whitespace-nowrap cursor-pointer"
+                className="h-full inline-flex items-center gap-1.5 px-2.5 text-xs font-semibold text-slate-700 hover:text-teal-700 hover:bg-teal-50 rounded-lg transition-colors whitespace-nowrap cursor-pointer"
                 title="Open WhatsApp Web & Log"
               >
                 <MessageSquare className="w-3.5 h-3.5 text-teal-600" />
                 <span>WhatsApp</span>
               </button>
-              <div className="h-3.5 w-px bg-slate-200" />
               <button
                 type="button"
                 onClick={() => handleOpenOutreach('email')}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-slate-700 hover:text-sky-700 hover:bg-sky-50 rounded-md transition-colors whitespace-nowrap cursor-pointer"
+                className="h-full inline-flex items-center gap-1.5 px-2.5 text-xs font-semibold text-slate-700 hover:text-sky-700 hover:bg-sky-50 rounded-lg transition-colors whitespace-nowrap cursor-pointer"
                 title="Send Email & Log"
               >
                 <Mail className="w-3.5 h-3.5 text-sky-600" />
@@ -628,21 +647,20 @@ export const ImportDataDetailPage = ({
             </div>
 
             {/* Activity Group */}
-            <div className="inline-flex items-center rounded-lg border border-slate-200/90 bg-white p-0.5 shadow-2xs shrink-0">
+            <div className="inline-flex items-center h-8 rounded-xl border border-slate-200/90 bg-white p-0.5 shadow-2xs shrink-0 divide-x divide-slate-100">
               <button
                 type="button"
                 onClick={() => handleOpenOutreach('followup')}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-slate-700 hover:text-violet-700 hover:bg-violet-50 rounded-md transition-colors whitespace-nowrap cursor-pointer"
+                className="h-full inline-flex items-center gap-1.5 px-2.5 text-xs font-semibold text-slate-700 hover:text-violet-700 hover:bg-violet-50 rounded-lg transition-colors whitespace-nowrap cursor-pointer"
                 title="Schedule Follow-up"
               >
                 <Clock className="w-3.5 h-3.5 text-violet-600" />
                 <span>Follow-up</span>
               </button>
-              <div className="h-3.5 w-px bg-slate-200" />
               <button
                 type="button"
                 onClick={() => setIsTaskModalOpen(true)}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-slate-700 hover:text-indigo-700 hover:bg-indigo-50 rounded-md transition-colors whitespace-nowrap cursor-pointer"
+                className="h-full inline-flex items-center gap-1.5 px-2.5 text-xs font-semibold text-slate-700 hover:text-indigo-700 hover:bg-indigo-50 rounded-lg transition-colors whitespace-nowrap cursor-pointer"
                 title="Add Task"
               >
                 <CheckSquare className="w-3.5 h-3.5 text-indigo-500" />
@@ -651,98 +669,38 @@ export const ImportDataDetailPage = ({
             </div>
 
             {/* Manage Group */}
-            {onEdit && !record.isConvertedToLead && (
-              <button
-                type="button"
-                onClick={onEdit}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-slate-700 hover:text-slate-900 bg-white hover:bg-slate-50 border border-slate-200/90 rounded-lg shadow-2xs transition-colors whitespace-nowrap shrink-0 cursor-pointer"
-                title="Edit Company Details"
-              >
-                <Edit3 className="w-3.5 h-3.5 text-slate-500" />
-                <span>Edit</span>
-              </button>
-            )}
-
-            {onDelete && !record.isConvertedToLead && (
-              <button
-                type="button"
-                onClick={onDelete}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-rose-600 hover:text-rose-700 bg-white hover:bg-rose-50 border border-rose-200 rounded-lg shadow-2xs transition-colors whitespace-nowrap shrink-0 cursor-pointer"
-                title="Move to Recycle Bin"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-                <span>Delete</span>
-              </button>
+            {((onEdit && !record.isConvertedToLead) || (onDelete && !record.isConvertedToLead)) && (
+              <div className="inline-flex items-center h-8 rounded-xl border border-slate-200/90 bg-white p-0.5 shadow-2xs shrink-0 divide-x divide-slate-100">
+                {onEdit && !record.isConvertedToLead && (
+                  <button
+                    type="button"
+                    onClick={onEdit}
+                    className="h-full inline-flex items-center gap-1 px-2.5 text-xs font-semibold text-slate-700 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors whitespace-nowrap cursor-pointer"
+                    title="Edit Company Details"
+                  >
+                    <Edit3 className="w-3.5 h-3.5 text-slate-500" />
+                    <span>Edit</span>
+                  </button>
+                )}
+                {onDelete && !record.isConvertedToLead && (
+                  <button
+                    type="button"
+                    onClick={onDelete}
+                    className="h-full inline-flex items-center gap-1 px-2.5 text-xs font-semibold text-rose-600 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition-colors whitespace-nowrap cursor-pointer"
+                    title="Move to Recycle Bin"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Delete</span>
+                  </button>
+                )}
+              </div>
             )}
           </div>
         </div>
 
-        {/* Highlights Strip */}
-        <div className="mt-4 pt-3.5 border-t border-slate-100 flex flex-wrap items-center justify-between gap-4 text-xs">
-          <div className="flex items-center gap-4 flex-wrap">
-            {record?.contactPerson && (
-              <div className="flex items-center gap-1.5 text-slate-700 font-medium">
-                <User className="w-3.5 h-3.5 text-slate-400" />
-                <span>{record.contactPerson}</span>
-                {record?.designation && <span className="text-slate-400 font-normal">({record.designation})</span>}
-              </div>
-            )}
-
-            {(record?.mobileNo || record?.phone) && (
-              <div className="flex items-center gap-1 bg-slate-50 px-2 py-1 rounded-md border border-slate-200/70">
-                <Phone className="w-3 h-3 text-emerald-600" />
-                <a
-                  href={`tel:${cleanPhone}`}
-                  className="font-semibold text-slate-800 hover:text-emerald-700 transition"
-                  title="Click to dial"
-                >
-                  {record.mobileNo || record.phone}
-                </a>
-                <button
-                  type="button"
-                  onClick={handleCopyPhone}
-                  className="text-slate-400 hover:text-slate-600 ml-1 cursor-pointer"
-                  title="Copy Phone Number"
-                >
-                  <Copy className="w-2.5 h-2.5" />
-                </button>
-              </div>
-            )}
-
-            {cleanPhone && (
-              <a
-                href={`https://wa.me/91${cleanPhone}`}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-teal-50 text-teal-700 hover:bg-teal-100 border border-teal-200/80 font-medium transition"
-                title="Open WhatsApp Web"
-              >
-                <MessageSquare className="w-3.5 h-3.5 text-teal-600" />
-                <span>WhatsApp</span>
-                <ExternalLink className="w-2.5 h-2.5 opacity-60" />
-              </a>
-            )}
-
-            {(record?.emailId || record?.email) && (
-              <a
-                href={`mailto:${record.emailId || record.email}`}
-                className="inline-flex items-center gap-1 text-slate-600 hover:text-sky-700 font-medium transition"
-                title="Send email"
-              >
-                <Mail className="w-3.5 h-3.5 text-sky-500" />
-                <span>{record.emailId || record.email}</span>
-              </a>
-            )}
-
-            {record?.address && (
-              <div className="flex items-center gap-1 text-slate-500 max-w-xs truncate" title={record.address}>
-                <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                <span className="truncate">{record.address}</span>
-              </div>
-            )}
-          </div>
-
-          <div className="flex items-center gap-3 shrink-0 text-slate-500">
+        {/* Engagement & Audit Metadata Strip */}
+        <div className="pt-2.5 border-t border-slate-100 flex items-center justify-between gap-2.5 text-[10.5px] text-slate-500">
+          <div className="flex items-center gap-2.5 flex-wrap">
             <span className="inline-flex items-center gap-1 font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200/80 px-2 py-0.5 rounded-full">
               <Activity className="w-3 h-3 text-indigo-600" />
               {totalTouches} {totalTouches === 1 ? 'Touch' : 'Touches'}
@@ -753,8 +711,8 @@ export const ImportDataDetailPage = ({
               </span>
             )}
             {record?.importedBy && (
-              <span className="text-[11px] text-slate-400">
-                Imported by <strong className="text-slate-600">{record.importedBy}</strong>
+              <span className="text-slate-400">
+                Imported by <strong className="text-slate-600 font-semibold">{record.importedBy}</strong>
               </span>
             )}
           </div>
@@ -762,7 +720,7 @@ export const ImportDataDetailPage = ({
       </div>
 
       {/* Navigation Tabs */}
-      <div className="flex items-center gap-2 border-b border-slate-200">
+      <div className="flex items-center gap-1 sm:gap-2 border-b border-slate-200">
         {[
           { id: 'overview', label: 'Company Overview' },
           { id: 'timeline', label: `Outreach & Timeline (${activities.length})` },
@@ -773,9 +731,9 @@ export const ImportDataDetailPage = ({
             key={tab.id}
             type="button"
             onClick={() => setActiveTab(tab.id)}
-            className={`pb-3 px-3 text-xs sm:text-sm font-semibold border-b-2 transition cursor-pointer ${
+            className={`pb-2.5 px-3 text-xs font-semibold border-b-2 transition cursor-pointer ${
               activeTab === tab.id
-                ? 'border-indigo-600 text-indigo-600'
+                ? 'border-indigo-600 text-indigo-600 font-bold'
                 : 'border-transparent text-slate-500 hover:text-slate-800'
             }`}
           >
@@ -786,21 +744,21 @@ export const ImportDataDetailPage = ({
 
       {/* TAB 1: OVERVIEW */}
       {activeTab === 'overview' && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 space-y-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+          <div className="lg:col-span-2 space-y-5">
             {/* Company Profile Information Card */}
-            <Card padding="lg" className="space-y-4">
-              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+            <Card padding="md" className="space-y-3.5">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
                 <div className="flex items-center gap-2">
                   <Building2 className="w-4 h-4 text-indigo-600" />
-                  <h3 className="text-sm font-bold text-slate-900">Company Information</h3>
+                  <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">Company Information</h3>
                 </div>
                 {record.googleSearchUrl && (
                   <a
                     href={record.googleSearchUrl}
                     target="_blank"
                     rel="noreferrer"
-                    className="inline-flex items-center gap-1 text-xs font-semibold text-indigo-600 hover:text-indigo-800"
+                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-indigo-600 hover:text-indigo-800"
                   >
                     <span>Google Maps / Search</span>
                     <ExternalLink className="w-3 h-3" />
@@ -808,84 +766,84 @@ export const ImportDataDetailPage = ({
                 )}
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
                 <div>
-                  <span className="text-slate-400 block font-medium mb-0.5">Company Name</span>
-                  <p className="font-semibold text-slate-800 text-sm">{record.companyName || '—'}</p>
+                  <span className="text-slate-400 block font-semibold text-[10px] uppercase tracking-wider mb-0.5">Company Name</span>
+                  <p className="font-bold text-slate-800 text-xs leading-snug">{record.companyName || '—'}</p>
                 </div>
                 <div>
-                  <span className="text-slate-400 block font-medium mb-0.5">GSTIN</span>
-                  <p className="font-semibold text-slate-800 font-mono">{record.gstin || '—'}</p>
+                  <span className="text-slate-400 block font-semibold text-[10px] uppercase tracking-wider mb-0.5">GSTIN</span>
+                  <p className="font-semibold text-slate-800 font-mono text-xs">{record.gstin || '—'}</p>
                 </div>
                 <div>
-                  <span className="text-slate-400 block font-medium mb-0.5">Date of Registration</span>
-                  <p className="font-semibold text-slate-800">{record.dateOfRegistration || '—'}</p>
+                  <span className="text-slate-400 block font-semibold text-[10px] uppercase tracking-wider mb-0.5">Date of Registration</span>
+                  <p className="font-semibold text-slate-800 text-xs">{record.dateOfRegistration || '—'}</p>
                 </div>
                 <div>
-                  <span className="text-slate-400 block font-medium mb-0.5">Industry / Domain</span>
-                  <p className="font-semibold text-slate-800">{record.industry || '—'}</p>
+                  <span className="text-slate-400 block font-semibold text-[10px] uppercase tracking-wider mb-0.5">Industry / Domain</span>
+                  <p className="font-semibold text-slate-800 text-xs">{record.industry || '—'}</p>
                 </div>
                 <div className="md:col-span-2">
-                  <span className="text-slate-400 block font-medium mb-0.5">Full Address</span>
-                  <p className="text-slate-700 leading-relaxed">{record.address || '—'}</p>
+                  <span className="text-slate-400 block font-semibold text-[10px] uppercase tracking-wider mb-0.5">Full Address</span>
+                  <p className="text-slate-700 leading-relaxed text-xs">{record.address || '—'}</p>
                 </div>
                 <div>
-                  <span className="text-slate-400 block font-medium mb-0.5">City / Region</span>
-                  <p className="text-slate-700 font-medium">{record.city || '—'}</p>
+                  <span className="text-slate-400 block font-semibold text-[10px] uppercase tracking-wider mb-0.5">City / Region</span>
+                  <p className="text-slate-700 font-medium text-xs">{record.city || '—'}</p>
                 </div>
                 <div>
-                  <span className="text-slate-400 block font-medium mb-0.5">State / Pincode</span>
-                  <p className="text-slate-700 font-medium">
+                  <span className="text-slate-400 block font-semibold text-[10px] uppercase tracking-wider mb-0.5">State / Pincode</span>
+                  <p className="text-slate-700 font-medium text-xs">
                     {record.state || '—'} {record.pincode ? `(${record.pincode})` : ''}
                   </p>
                 </div>
                 <div>
-                  <span className="text-slate-400 block font-medium mb-0.5">Website</span>
+                  <span className="text-slate-400 block font-semibold text-[10px] uppercase tracking-wider mb-0.5">Website</span>
                   {record.website ? (
                     <a
                       href={record.website.startsWith('http') ? record.website : `https://${record.website}`}
                       target="_blank"
                       rel="noreferrer"
-                      className="text-indigo-600 hover:underline font-semibold flex items-center gap-1"
+                      className="text-indigo-600 hover:underline font-semibold flex items-center gap-1 text-xs"
                     >
                       <Globe className="w-3 h-3" />
                       <span className="truncate max-w-[200px]">{record.website}</span>
                     </a>
                   ) : (
-                    <span className="text-slate-400">—</span>
+                    <span className="text-slate-400 text-xs">—</span>
                   )}
                 </div>
                 <div>
-                  <span className="text-slate-400 block font-medium mb-0.5">Rating & Reviews</span>
-                  <div className="flex items-center gap-2">
+                  <span className="text-slate-400 block font-semibold text-[10px] uppercase tracking-wider mb-0.5">Rating & Reviews</span>
+                  <div className="flex items-center gap-2 text-xs">
                     <span className="font-bold text-amber-700">★ {record.rating || '0.0'}</span>
-                    <span className="text-slate-400">({record.reviewsCount || 0} reviews)</span>
+                    <span className="text-slate-400 text-[11px]">({record.reviewsCount || 0} reviews)</span>
                   </div>
                 </div>
               </div>
             </Card>
 
             {/* Remarks & Notes Card */}
-            <Card padding="lg" className="space-y-3">
-              <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
+            <Card padding="md" className="space-y-2.5">
+              <div className="flex items-center gap-2 border-b border-slate-100 pb-2.5">
                 <FileText className="w-4 h-4 text-indigo-600" />
-                <h3 className="text-sm font-bold text-slate-900">Import Remarks & Notes</h3>
+                <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">Import Remarks & Notes</h3>
               </div>
-              <div className="p-3.5 bg-slate-50/80 rounded-xl border border-slate-200/80 text-xs text-slate-700 whitespace-pre-wrap leading-relaxed">
+              <div className="p-3 bg-slate-50/80 rounded-xl border border-slate-200/80 text-xs text-slate-700 whitespace-pre-wrap leading-relaxed">
                 {record.remarks || 'No remarks provided during data import.'}
               </div>
             </Card>
 
             {/* Outreach Activity & Client Feedback Remarks Card */}
-            <Card padding="lg" className="space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+            <Card padding="md" className="space-y-3.5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-2.5">
                 <div className="flex items-center gap-2">
                   <PhoneCall className="w-4 h-4 text-emerald-600" />
                   <div>
-                    <h3 className="text-sm font-bold text-slate-900">
+                    <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
                       Outreach History & Client Feedback
                     </h3>
-                    <p className="text-[11px] text-slate-500">
+                    <p className="text-[10.5px] text-slate-500">
                       Calls, WhatsApps, follow-up feedback and remarks logged for this company
                     </p>
                   </div>
@@ -1364,13 +1322,13 @@ export const ImportDataDetailPage = ({
             </Card>
           </div>
 
-          <div className="space-y-6">
+          <div className="space-y-5">
             {/* Primary Contact Person Card */}
-            <Card padding="lg" className="space-y-4">
-              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+            <Card padding="md" className="space-y-3.5">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
                 <div className="flex items-center gap-2">
                   <User className="w-4 h-4 text-indigo-600" />
-                  <h3 className="text-sm font-bold text-slate-900">
+                  <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
                     Key Contact Details {record?.contacts && record.contacts.length > 1 ? `(${record.contacts.length})` : ''}
                   </h3>
                 </div>
@@ -1383,16 +1341,16 @@ export const ImportDataDetailPage = ({
               </div>
 
               {record?.contacts && record.contacts.length > 0 ? (
-                <div className="space-y-4 divide-y divide-slate-100">
+                <div className="space-y-3.5 divide-y divide-slate-100">
                   {record.contacts.map((c, cIdx) => (
-                    <div key={cIdx} className={`space-y-2.5 text-xs ${cIdx > 0 ? 'pt-3.5' : ''}`}>
-                      <div className="flex items-center justify-between">
+                    <div key={cIdx} className={`space-y-2 text-xs ${cIdx > 0 ? 'pt-3' : ''}`}>
+                      <div className="flex items-start justify-between gap-2">
                         <div>
-                          <span className="text-slate-400 block font-medium">Contact Person</span>
-                          <p className="font-bold text-slate-900 text-sm flex items-center gap-1.5">
+                          <span className="text-slate-400 block font-semibold text-[10px] uppercase tracking-wider">Contact Person</span>
+                          <p className="font-bold text-slate-900 text-xs flex items-center gap-1.5 mt-0.5">
                             <span>{c.contactPerson || 'Not specified'}</span>
                             {c.isPrimary && (
-                              <span className="px-1.5 py-0.2 rounded text-[10px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                              <span className="px-1.5 py-0.2 rounded text-[9.5px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
                                 Primary
                               </span>
                             )}
@@ -1400,33 +1358,33 @@ export const ImportDataDetailPage = ({
                         </div>
                         {c.designation && (
                           <div className="text-right">
-                            <span className="text-slate-400 block font-medium">Designation / Role</span>
-                            <p className="font-semibold text-slate-700">{c.designation}</p>
+                            <span className="text-slate-400 block font-semibold text-[10px] uppercase tracking-wider">Designation / Role</span>
+                            <p className="font-semibold text-slate-700 text-xs mt-0.5">{c.designation}</p>
                           </div>
                         )}
                       </div>
 
                       {c.mobileNo && (
                         <div>
-                          <span className="text-slate-400 block font-medium">Mobile Number</span>
+                          <span className="text-slate-400 block font-semibold text-[10px] uppercase tracking-wider">Mobile Number</span>
                           <div className="flex items-center justify-between mt-0.5">
-                            <span className="font-mono font-bold text-slate-800">{c.mobileNo}</span>
+                            <span className="font-mono font-bold text-slate-800 text-xs">{c.mobileNo}</span>
                             <div className="flex items-center gap-1">
                               <a
                                 href={`tel:${c.mobileNo.replace(/[^0-9+]/g, '')}`}
-                                className="p-1 rounded bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition"
+                                className="p-1 rounded-md bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition"
                                 title="Call"
                               >
-                                <Phone className="w-3.5 h-3.5" />
+                                <Phone className="w-3 h-3" />
                               </a>
                               <a
                                 href={`https://wa.me/${c.mobileNo.replace(/[^0-9]/g, '')}`}
                                 target="_blank"
                                 rel="noreferrer"
-                                className="p-1 rounded bg-teal-50 text-teal-700 hover:bg-teal-100 transition"
+                                className="p-1 rounded-md bg-teal-50 text-teal-700 hover:bg-teal-100 transition"
                                 title="WhatsApp"
                               >
-                                <MessageSquare className="w-3.5 h-3.5" />
+                                <MessageSquare className="w-3 h-3" />
                               </a>
                             </div>
                           </div>
@@ -1435,15 +1393,15 @@ export const ImportDataDetailPage = ({
 
                       {c.emailId && (
                         <div>
-                          <span className="text-slate-400 block font-medium">Email Address</span>
+                          <span className="text-slate-400 block font-semibold text-[10px] uppercase tracking-wider">Email Address</span>
                           <div className="flex items-center justify-between mt-0.5">
-                            <span className="text-slate-700 font-medium truncate max-w-[180px]">{c.emailId}</span>
+                            <span className="text-slate-700 font-medium truncate max-w-[200px] text-xs uppercase text-[11px]">{c.emailId}</span>
                             <a
                               href={`mailto:${c.emailId}`}
-                              className="p-1 rounded bg-sky-50 text-sky-700 hover:bg-sky-100 transition"
+                              className="p-1 rounded-md bg-sky-50 text-sky-700 hover:bg-sky-100 transition"
                               title="Email"
                             >
-                              <Mail className="w-3.5 h-3.5" />
+                              <Mail className="w-3 h-3" />
                             </a>
                           </div>
                         </div>
@@ -1452,44 +1410,53 @@ export const ImportDataDetailPage = ({
                   ))}
                 </div>
               ) : (
-                <div className="space-y-3 text-xs">
+                <div className="space-y-2.5 text-xs">
                   <div>
-                    <span className="text-slate-400 block font-medium">Contact Person</span>
-                    <p className="font-bold text-slate-900 text-sm">{record?.contactPerson || 'Not specified'}</p>
+                    <span className="text-slate-400 block font-semibold text-[10px] uppercase tracking-wider">Contact Person</span>
+                    <p className="font-bold text-slate-900 text-xs mt-0.5">{record?.contactPerson || 'Not specified'}</p>
                   </div>
                   <div>
-                    <span className="text-slate-400 block font-medium">Designation / Role</span>
-                    <p className="font-semibold text-slate-700">{record?.designation || 'Decision Maker'}</p>
+                    <span className="text-slate-400 block font-semibold text-[10px] uppercase tracking-wider">Designation / Role</span>
+                    <p className="font-semibold text-slate-700 text-xs mt-0.5">{record?.designation || 'Decision Maker'}</p>
                   </div>
                   <div>
-                    <span className="text-slate-400 block font-medium">Mobile Number</span>
+                    <span className="text-slate-400 block font-semibold text-[10px] uppercase tracking-wider">Mobile Number</span>
                     <div className="flex items-center justify-between mt-0.5">
-                      <span className="font-mono font-bold text-slate-800">{record?.mobileNo || '—'}</span>
-                      {record?.mobileNo && (
-                        <button
-                          type="button"
-                          onClick={() => handleOpenOutreach('call')}
-                          className="p-1 rounded bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition cursor-pointer"
-                          title="Call"
-                        >
-                          <Phone className="w-3.5 h-3.5" />
-                        </button>
+                      <span className="font-mono font-bold text-slate-800 text-xs">{record?.mobileNo || record?.phone || '—'}</span>
+                      {cleanPhone && (
+                        <div className="flex items-center gap-1">
+                          <a
+                            href={`tel:${cleanPhone}`}
+                            className="p-1 rounded-md bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition"
+                            title="Call"
+                          >
+                            <Phone className="w-3 h-3" />
+                          </a>
+                          <a
+                            href={`https://wa.me/91${cleanPhone}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="p-1 rounded-md bg-teal-50 text-teal-700 hover:bg-teal-100 transition"
+                            title="WhatsApp"
+                          >
+                            <MessageSquare className="w-3 h-3" />
+                          </a>
+                        </div>
                       )}
                     </div>
                   </div>
                   <div>
-                    <span className="text-slate-400 block font-medium">Email Address</span>
+                    <span className="text-slate-400 block font-semibold text-[10px] uppercase tracking-wider">Email Address</span>
                     <div className="flex items-center justify-between mt-0.5">
-                      <span className="text-slate-700 font-medium truncate max-w-[180px]">{record?.emailId || record?.email || '—'}</span>
+                      <span className="text-slate-700 font-medium truncate max-w-[200px] text-[11px] uppercase">{record?.emailId || record?.email || '—'}</span>
                       {(record?.emailId || record?.email) && (
-                        <button
-                          type="button"
-                          onClick={() => handleOpenOutreach('email')}
-                          className="p-1 rounded bg-sky-50 text-sky-700 hover:bg-sky-100 transition cursor-pointer"
+                        <a
+                          href={`mailto:${record.emailId || record.email}`}
+                          className="p-1 rounded-md bg-sky-50 text-sky-700 hover:bg-sky-100 transition"
                           title="Email"
                         >
-                          <Mail className="w-3.5 h-3.5" />
-                        </button>
+                          <Mail className="w-3 h-3" />
+                        </a>
                       )}
                     </div>
                   </div>
