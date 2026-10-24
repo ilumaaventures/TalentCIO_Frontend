@@ -24,6 +24,7 @@ import {
   Database,
   RefreshCw,
   User,
+  Plus,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -2649,9 +2650,64 @@ export const ImportDataPage = ({ onNavigate }) => {
         dateInput = '';
       }
     }
+
+    const contacts = Array.isArray(targetRow.contacts) && targetRow.contacts.length > 0
+      ? targetRow.contacts.map((c, i) => ({
+          contactPerson: c.contactPerson || '',
+          designation: c.designation || '',
+          mobileNo: c.mobileNo || '',
+          emailId: c.emailId || '',
+          isPrimary: c.isPrimary !== undefined ? Boolean(c.isPrimary) : i === 0,
+        }))
+      : [{
+          contactPerson: targetRow.contactPerson || '',
+          designation: targetRow.designation || '',
+          mobileNo: targetRow.mobileNo || targetRow.phone || '',
+          emailId: targetRow.emailId || targetRow.email || '',
+          isPrimary: true,
+        }];
+
     setEditingRow({
       ...targetRow,
+      contacts,
       dateInput,
+    });
+  };
+
+  const handleAddEditRowContact = () => {
+    setEditingRow((prev) => ({
+      ...prev,
+      contacts: [
+        ...(prev?.contacts || []),
+        { contactPerson: '', designation: '', mobileNo: '', emailId: '', isPrimary: false },
+      ],
+    }));
+  };
+
+  const handleUpdateEditRowContact = (index, field, value) => {
+    setEditingRow((prev) => {
+      const next = [...(prev?.contacts || [])];
+      next[index] = { ...next[index], [field]: value };
+      return { ...prev, contacts: next };
+    });
+  };
+
+  const handleSetPrimaryEditRowContact = (index) => {
+    setEditingRow((prev) => ({
+      ...prev,
+      contacts: (prev?.contacts || []).map((c, i) => ({ ...c, isPrimary: i === index })),
+    }));
+  };
+
+  const handleRemoveEditRowContact = (index) => {
+    setEditingRow((prev) => {
+      const current = prev?.contacts || [];
+      if (current.length <= 1) return prev;
+      const next = current.filter((_, i) => i !== index);
+      if (next.length > 0 && !next.some((c) => c.isPrimary)) {
+        next[0].isPrimary = true;
+      }
+      return { ...prev, contacts: next };
     });
   };
 
@@ -2682,7 +2738,23 @@ export const ImportDataPage = ({ onNavigate }) => {
 
     setIsSavingEdit(true);
     try {
-      const contactName = (editingRow.contactPerson || '').trim();
+      const cleanedContacts = (editingRow.contacts || [])
+        .map((c) => ({
+          contactPerson: (c.contactPerson || '').trim(),
+          designation: (c.designation || '').trim(),
+          mobileNo: (c.mobileNo || '').trim(),
+          emailId: (c.emailId || '').trim(),
+          isPrimary: Boolean(c.isPrimary),
+        }))
+        .filter((c) => c.contactPerson || c.mobileNo || c.emailId || c.designation);
+
+      const primaryContact = cleanedContacts.find((c) => c.isPrimary) || cleanedContacts[0] || {};
+      const resolvedContactPerson = (primaryContact.contactPerson || editingRow.contactPerson || '').trim();
+      const resolvedDesignation = (primaryContact.designation || editingRow.designation || '').trim();
+      const resolvedMobile = (primaryContact.mobileNo || editingRow.mobileNo || '').trim();
+      const resolvedEmail = (primaryContact.emailId || editingRow.emailId || '').trim();
+
+      const contactName = resolvedContactPerson;
       const nameParts = contactName ? contactName.split(/\s+/) : [];
       const firstName = nameParts[0] || compName || 'Lead';
       const lastName = nameParts.slice(1).join(' ') || '';
@@ -2699,9 +2771,9 @@ export const ImportDataPage = ({ onNavigate }) => {
         firstName,
         lastName,
         companyName: compName,
-        jobTitle: (editingRow.designation || '').trim(),
-        phone: (editingRow.mobileNo || '').trim(),
-        email: (editingRow.emailId || '').trim(),
+        jobTitle: resolvedDesignation,
+        phone: resolvedMobile,
+        email: resolvedEmail,
         address: {
           street: (editingRow.address || '').trim(),
           city: '',
@@ -2736,10 +2808,17 @@ export const ImportDataPage = ({ onNavigate }) => {
         companyName: compName,
         gstin: gstinVal,
         dateOfRegistration: (editingRow.dateOfRegistration || '').trim(),
-        contactPerson: (editingRow.contactPerson || '').trim(),
-        designation: (editingRow.designation || '').trim(),
-        mobileNo: (editingRow.mobileNo || '').trim(),
-        emailId: (editingRow.emailId || '').trim(),
+        contactPerson: resolvedContactPerson,
+        designation: resolvedDesignation,
+        mobileNo: resolvedMobile,
+        emailId: resolvedEmail,
+        contacts: cleanedContacts.length > 0 ? cleanedContacts : (resolvedContactPerson || resolvedMobile ? [{
+          contactPerson: resolvedContactPerson,
+          designation: resolvedDesignation,
+          mobileNo: resolvedMobile,
+          emailId: resolvedEmail,
+          isPrimary: true,
+        }] : []),
         industry: (editingRow.industry || '').trim(),
         source: rowSource,
         leadSource: rowSource,
@@ -2755,6 +2834,9 @@ export const ImportDataPage = ({ onNavigate }) => {
       setRecords((prev) =>
         prev.map((r) => (r.id === editingRow.id ? { ...r, ...updatedRowData } : r))
       );
+
+      // If detail view of this company is open, update it directly
+      setSelectedDetailRecord((prev) => (prev && (prev.id === editingRow.id || prev._id === editingRow._id) ? { ...prev, ...updatedRowData } : prev));
 
       // Sync updated row to CrmImportData on server
       dataService.syncImportData([updatedRowData]).catch((err) => {
@@ -4844,42 +4926,99 @@ export const ImportDataPage = ({ onNavigate }) => {
                 placeholder="e.g. YYYY-MM-DD"
               />
 
-              <Input
-                label="Contact Person"
-                value={editingRow.contactPerson || ''}
-                onChange={(e) =>
-                  setEditingRow((prev) => ({ ...prev, contactPerson: e.target.value }))
-                }
-                placeholder="e.g. John Doe"
-              />
+              {/* Multi-Contact Persons List */}
+              <div className="sm:col-span-2 space-y-3 pt-2 border-t border-slate-100">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                    <User className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>Contact Persons ({(editingRow.contacts || []).length})</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handleAddEditRowContact}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 transition cursor-pointer shadow-2xs"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Add Contact Person</span>
+                  </button>
+                </div>
 
-              <Input
-                label="Designation"
-                value={editingRow.designation || ''}
-                onChange={(e) =>
-                  setEditingRow((prev) => ({ ...prev, designation: e.target.value }))
-                }
-                placeholder="e.g. VP Engineering"
-              />
+                <div className="space-y-2.5 max-h-64 overflow-y-auto pr-1">
+                  {(editingRow.contacts || []).map((contact, idx) => (
+                    <div
+                      key={idx}
+                      className={`p-3 rounded-xl border space-y-2.5 text-xs ${
+                        contact.isPrimary ? 'bg-indigo-50/40 border-indigo-200' : 'bg-slate-50 border-slate-200/90'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="w-4 h-4 rounded-full bg-indigo-100 text-indigo-700 text-[10px] font-bold flex items-center justify-center">
+                            {idx + 1}
+                          </span>
+                          <span className="text-[11px] font-bold text-slate-700">
+                            {contact.contactPerson || `Person ${idx + 1}`}
+                          </span>
+                          {contact.isPrimary ? (
+                            <span className="px-1.5 py-0.2 rounded text-[9.5px] font-semibold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                              Primary
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => handleSetPrimaryEditRowContact(idx)}
+                              className="text-[10px] font-semibold text-indigo-600 hover:underline cursor-pointer"
+                            >
+                              Make Primary
+                            </button>
+                          )}
+                        </div>
+                        {(editingRow.contacts || []).length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveEditRowContact(idx)}
+                            className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition cursor-pointer"
+                            title="Remove contact person"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
 
-              <Input
-                label="Mobile No"
-                value={editingRow.mobileNo || ''}
-                onChange={(e) =>
-                  setEditingRow((prev) => ({ ...prev, mobileNo: e.target.value }))
-                }
-                placeholder="e.g. +91 98765 43210"
-              />
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                        <Input
+                          label="Contact Person"
+                          value={contact.contactPerson || ''}
+                          onChange={(e) => handleUpdateEditRowContact(idx, 'contactPerson', e.target.value)}
+                          placeholder="e.g. Rahul Verma"
+                        />
+                        <Input
+                          label="Designation / Role"
+                          value={contact.designation || ''}
+                          onChange={(e) => handleUpdateEditRowContact(idx, 'designation', e.target.value)}
+                          placeholder="e.g. VP Sales"
+                        />
+                      </div>
 
-              <Input
-                label="Email ID"
-                type="email"
-                value={editingRow.emailId || ''}
-                onChange={(e) =>
-                  setEditingRow((prev) => ({ ...prev, emailId: e.target.value }))
-                }
-                placeholder="e.g. contact@example.com"
-              />
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                        <Input
+                          label="Mobile No"
+                          value={contact.mobileNo || ''}
+                          onChange={(e) => handleUpdateEditRowContact(idx, 'mobileNo', e.target.value)}
+                          placeholder="e.g. +91 98200 12345"
+                        />
+                        <Input
+                          label="Email ID"
+                          type="email"
+                          value={contact.emailId || ''}
+                          onChange={(e) => handleUpdateEditRowContact(idx, 'emailId', e.target.value)}
+                          placeholder="e.g. rahul@company.com"
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
 
               <Input
                 label="Industry"

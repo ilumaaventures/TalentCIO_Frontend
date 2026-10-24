@@ -191,6 +191,40 @@ export const ActivityHistoryModal = ({
                       </span>
                     </div>
 
+                    {(act.contactPersons && act.contactPersons.length > 1) ? (
+                      <div className="space-y-1.5">
+                        <div className="flex items-center gap-1.5 text-[11px] text-slate-500 flex-wrap">
+                          <User className="w-3 h-3 text-indigo-500" />
+                          <span>Reached ({act.contactPersons.length} Contacts):</span>
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {act.contactPersons.map((p, pIdx) => (
+                            <span key={pIdx} className="inline-flex items-center gap-1.5 font-medium text-slate-700 bg-slate-50 px-2 py-0.5 rounded-lg border border-slate-200 text-[10.5px]">
+                              <strong className="text-slate-900">{p.name}</strong>
+                              {p.designation && <span className="text-slate-400">({p.designation})</span>}
+                              {p.phone && <span className="font-mono text-indigo-600">{p.phone}</span>}
+                              {p.callType && <span className="bg-indigo-50 text-indigo-700 px-1 rounded text-[9.5px] font-semibold">{p.callType}</span>}
+                              {p.durationMinutes > 0 && <span className="text-slate-500 font-medium">{p.durationMinutes}m</span>}
+                              {p.outcome && <span className="text-emerald-700 bg-emerald-50 px-1 rounded text-[9.5px] font-semibold">{p.outcome}</span>}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    ) : (act.contactPerson || act.metadata?.contactPerson) ? (
+                      <div className="flex items-center gap-1.5 text-[11px] text-slate-500 flex-wrap">
+                        <User className="w-3 h-3 text-indigo-500" />
+                        <span>Reached: <strong className="text-slate-700">{act.contactPerson || act.metadata?.contactPerson}</strong></span>
+                        {(act.contactDesignation || act.metadata?.contactDesignation) && (
+                          <span className="text-slate-400">({act.contactDesignation || act.metadata?.contactDesignation})</span>
+                        )}
+                        {(act.contactPhone || act.metadata?.contactPhone) && (
+                          <span className="font-mono text-indigo-600 bg-indigo-50 px-1 py-0.2 rounded border border-indigo-100 text-[10px]">
+                            {act.contactPhone || act.metadata?.contactPhone}
+                          </span>
+                        )}
+                      </div>
+                    ) : null}
+
                     {act.description && (
                       <p className="text-slate-600 text-[11px] leading-relaxed bg-slate-50 p-2 rounded-lg border border-slate-100">
                         {act.description}

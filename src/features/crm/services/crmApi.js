@@ -407,6 +407,10 @@ export const crmAdminService = {
     const res = await api.post(`/crm/data/import-data/${id}/activity`, data);
     return res.data;
   },
+  updateImportDataActivity: async (activityId, data) => {
+    const res = await api.put(`/crm/data/import-data/activity/${activityId}`, data);
+    return res.data;
+  },
   getImportDataActivities: async (id, params = {}) => {
     const res = await api.get(`/crm/data/import-data/${id}/activities`, { params });
     return res.data;

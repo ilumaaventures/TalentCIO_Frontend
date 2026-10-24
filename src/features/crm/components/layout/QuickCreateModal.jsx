@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Briefcase, CheckSquare, Clock, UserCheck, PhoneCall, Plus, Database } from 'lucide-react';
+import { Users, Briefcase, CheckSquare, Clock, UserCheck, PhoneCall, Plus, Database, Trash2, User } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
@@ -69,6 +69,44 @@ export const QuickCreateModal = ({ isOpen, onClose, initialType = 'lead', onSucc
     { id: 'contact', label: 'Contact', icon: UserCheck },
     { id: 'database', label: 'Database', icon: Database },
   ];
+
+  const [dbContacts, setDbContacts] = useState([
+    { contactPerson: '', designation: '', mobileNo: '', emailId: '', isPrimary: true },
+  ]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setDbContacts([
+        { contactPerson: '', designation: '', mobileNo: '', emailId: '', isPrimary: true },
+      ]);
+    }
+  }, [isOpen]);
+
+  const handleAddDbContact = () => {
+    setDbContacts((prev) => [
+      ...prev,
+      { contactPerson: '', designation: '', mobileNo: '', emailId: '', isPrimary: false },
+    ]);
+  };
+
+  const handleUpdateDbContact = (index, field, value) => {
+    setDbContacts((prev) => {
+      const next = [...prev];
+      next[index] = { ...next[index], [field]: value };
+      return next;
+    });
+  };
+
+  const handleRemoveDbContact = (index) => {
+    setDbContacts((prev) => {
+      if (prev.length <= 1) return prev;
+      const next = prev.filter((_, i) => i !== index);
+      if (next.length > 0 && !next.some((c) => c.isPrimary)) {
+        next[0].isPrimary = true;
+      }
+      return next;
+    });
+  };
 
   const handleInputChange = (field, value) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
@@ -146,14 +184,38 @@ export const QuickCreateModal = ({ isOpen, onClose, initialType = 'lead', onSucc
           }
         }
 
+        const cleanedContacts = dbContacts
+          .map((c, i) => ({
+            contactPerson: (c.contactPerson || '').trim(),
+            designation: (c.designation || '').trim(),
+            mobileNo: (c.mobileNo || '').trim(),
+            emailId: (c.emailId || '').trim(),
+            isPrimary: i === 0,
+          }))
+          .filter((c) => c.contactPerson || c.mobileNo || c.emailId || c.designation);
+
+        const primaryContact = cleanedContacts.find((c) => c.isPrimary) || cleanedContacts[0] || {};
+        const resolvedContactPerson = (primaryContact.contactPerson || formData.contactPerson || '').trim();
+        const resolvedDesignation = (primaryContact.designation || formData.designation || '').trim();
+        const resolvedMobile = (primaryContact.mobileNo || formData.mobileNo || formData.phone || '').trim();
+        const resolvedEmail = (primaryContact.emailId || formData.emailId || formData.email || '').trim();
+
         const newRecord = {
           id: `row_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
           companyName: (formData.companyName || '').trim(),
           gstin: gstinVal,
-          contactPerson: (formData.contactPerson || '').trim(),
-          designation: (formData.designation || '').trim(),
-          mobileNo: (formData.mobileNo || formData.phone || '').trim(),
-          emailId: (formData.emailId || formData.email || '').trim(),
+          dateOfRegistration: (formData.dateOfRegistration || '').trim(),
+          contactPerson: resolvedContactPerson,
+          designation: resolvedDesignation,
+          mobileNo: resolvedMobile,
+          emailId: resolvedEmail,
+          contacts: cleanedContacts.length > 0 ? cleanedContacts : (resolvedContactPerson || resolvedMobile ? [{
+            contactPerson: resolvedContactPerson,
+            designation: resolvedDesignation,
+            mobileNo: resolvedMobile,
+            emailId: resolvedEmail,
+            isPrimary: true,
+          }] : []),
           industry: (formData.industry || '').trim(),
           source: selectedSource,
           leadSource: selectedSource,
@@ -558,20 +620,91 @@ export const QuickCreateModal = ({ isOpen, onClose, initialType = 'lead', onSucc
                 placeholder="e.g. 29AABCI1234A1Z5"
               />
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <Input
-                label="Contact Person"
-                value={formData.contactPerson || ''}
-                onChange={(e) => handleInputChange('contactPerson', e.target.value)}
-                placeholder="e.g. Rahul Verma"
-              />
-              <Input
-                label="Designation / Job Title"
-                value={formData.designation || ''}
-                onChange={(e) => handleInputChange('designation', e.target.value)}
-                placeholder="e.g. VP Sales"
-              />
+            {/* Contact Persons Section (Multiple Supported) */}
+            <div className="space-y-3 pt-1 border-t border-slate-100">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-semibold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                  <User className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>Contact Persons</span>
+                  {dbContacts.length > 1 && (
+                    <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.2 rounded-full">
+                      {dbContacts.length} Persons
+                    </span>
+                  )}
+                </label>
+                <button
+                  type="button"
+                  onClick={handleAddDbContact}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 transition cursor-pointer shadow-2xs"
+                  title="Add another contact person"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Add Contact Person</span>
+                </button>
+              </div>
+
+              <div className="space-y-2.5">
+                {dbContacts.map((contact, idx) => (
+                  <div
+                    key={idx}
+                    className="p-3 rounded-xl bg-slate-50/80 border border-slate-200/90 space-y-2.5 relative"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
+                        <span className="w-4 h-4 rounded-full bg-indigo-100 text-indigo-700 text-[10px] font-bold flex items-center justify-center">
+                          {idx + 1}
+                        </span>
+                        <span className="text-[11px] font-bold text-slate-700">
+                          {idx === 0 ? 'Primary Contact Person' : `Contact Person ${idx + 1}`}
+                        </span>
+                      </div>
+                      {dbContacts.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveDbContact(idx)}
+                          className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition cursor-pointer"
+                          title="Remove contact person"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <Input
+                        label="Contact Person"
+                        value={contact.contactPerson || ''}
+                        onChange={(e) => handleUpdateDbContact(idx, 'contactPerson', e.target.value)}
+                        placeholder="e.g. Rahul Verma"
+                      />
+                      <Input
+                        label="Designation / Job Title"
+                        value={contact.designation || ''}
+                        onChange={(e) => handleUpdateDbContact(idx, 'designation', e.target.value)}
+                        placeholder="e.g. VP Sales"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <Input
+                        label="Mobile No"
+                        value={contact.mobileNo || ''}
+                        onChange={(e) => handleUpdateDbContact(idx, 'mobileNo', e.target.value)}
+                        placeholder="+91 98200 12345"
+                      />
+                      <Input
+                        label="Email ID"
+                        type="email"
+                        value={contact.emailId || ''}
+                        onChange={(e) => handleUpdateDbContact(idx, 'emailId', e.target.value)}
+                        placeholder="rahul@company.com"
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
+
             <div className="grid grid-cols-2 gap-3">
               <Input
                 label="Industry"
@@ -584,21 +717,6 @@ export const QuickCreateModal = ({ isOpen, onClose, initialType = 'lead', onSucc
                 value={formData.rating || ''}
                 onChange={(e) => handleInputChange('rating', e.target.value)}
                 placeholder="e.g. 4.5"
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <Input
-                label="Mobile No"
-                value={formData.mobileNo || ''}
-                onChange={(e) => handleInputChange('mobileNo', e.target.value)}
-                placeholder="+91 98200 12345"
-              />
-              <Input
-                label="Email ID"
-                type="email"
-                value={formData.emailId || ''}
-                onChange={(e) => handleInputChange('emailId', e.target.value)}
-                placeholder="rahul@company.com"
               />
             </div>
             <div className="grid grid-cols-2 gap-3">
@@ -700,18 +818,24 @@ export const QuickCreateModal = ({ isOpen, onClose, initialType = 'lead', onSucc
             </div>
             <div className="grid grid-cols-2 gap-3">
               <Input
+                label="Date of Registration"
+                type="date"
+                value={formData.dateOfRegistration || ''}
+                onChange={(e) => handleInputChange('dateOfRegistration', e.target.value)}
+              />
+              <Input
                 label="Date"
                 type="date"
                 value={formData.date || new Date().toISOString().split('T')[0]}
                 onChange={(e) => handleInputChange('date', e.target.value)}
               />
-              <Input
-                label="Address / Location"
-                value={formData.address || ''}
-                onChange={(e) => handleInputChange('address', e.target.value)}
-                placeholder="e.g. Unit 402, Cyber City, Gurugram"
-              />
             </div>
+            <Input
+              label="Address / Location"
+              value={formData.address || ''}
+              onChange={(e) => handleInputChange('address', e.target.value)}
+              placeholder="e.g. Unit 402, Cyber City, Gurugram"
+            />
             <div className="space-y-1.5">
               <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600">
                 Remarks / Notes

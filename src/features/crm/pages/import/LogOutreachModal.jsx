@@ -13,7 +13,8 @@ import {
   Building2,
   Maximize2,
   Paperclip,
-  Trash2
+  Trash2,
+  Plus
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { Modal } from '../../components/ui/Modal';
@@ -27,6 +28,19 @@ import {
 } from '@/features/email/utils/templatePlaceholders';
 import { CrmMailComposerModal } from '../../components/communication/CrmMailComposerModal';
 
+const createDefaultContactPerson = (key = '0') => ({
+  key,
+  customName: '',
+  customPhone: '',
+  customDesignation: '',
+  callType: 'Cold Call',
+  customCallType: '',
+  durationMinutes: '2',
+  callOutcome: 'Connected - Interested',
+  customCallOutcome: '',
+  callNotes: '',
+});
+
 export const LogOutreachModal = ({
   isOpen,
   onClose,
@@ -38,12 +52,10 @@ export const LogOutreachModal = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isFullComposerOpen, setIsFullComposerOpen] = useState(false);
 
-  // Call form state
-  const [callType, setCallType] = useState('Cold Call');
-  const [customCallType, setCustomCallType] = useState('');
-  const [callOutcome, setCallOutcome] = useState('Connected - Interested');
-  const [durationMinutes, setDurationMinutes] = useState('2');
-  const [callNotes, setCallNotes] = useState('');
+  // Contact selection state (supports logging for multiple persons with per-person call details)
+  const [selectedContacts, setSelectedContacts] = useState([
+    createDefaultContactPerson('0'),
+  ]);
 
   // WhatsApp form state
   const [whatsappOutcome, setWhatsappOutcome] = useState('Sent');
@@ -176,9 +188,11 @@ export const LogOutreachModal = ({
     return () => { isMounted = false; };
   }, [isOpen]);
 
+  // Reset or initialize contact selection whenever modal opens or row changes
   useEffect(() => {
     if (initialType) setActiveType(initialType);
-    if (row) {
+    if (row && isOpen) {
+      setSelectedContacts([createDefaultContactPerson('0')]);
       setEmailSubject(`TalentCIO Solution Overview for ${row.companyName || 'your team'}`);
       setEmailNotes(`Hi ${row.contactPerson || 'there'},\n\nI am writing to share how our platform can help optimize operations at ${row.companyName || 'your company'}.\n\nBest regards,\nSales Team`);
       // Default follow-up date to tomorrow 10:00 AM
@@ -189,20 +203,178 @@ export const LogOutreachModal = ({
     }
   }, [initialType, row, isOpen]);
 
+  // Aggregate all available contact persons from row.contacts and root row fields
+  const availableContacts = useMemo(() => {
+    if (!row) return [];
+    const list = [];
+    const seen = new Set();
+
+    // 1. Process contacts array from row
+    if (Array.isArray(row.contacts)) {
+      row.contacts.forEach((c) => {
+        const name = (c.contactPerson || c.name || '').trim();
+        const phone = (c.mobileNo || c.phone || '').trim();
+        const email = (c.emailId || c.email || '').trim();
+        const designation = (c.designation || c.role || '').trim();
+        const key = `${name.toLowerCase()}__${phone}__${email.toLowerCase()}`;
+        if ((name || phone || email) && !seen.has(key)) {
+          seen.add(key);
+          list.push({
+            id: c._id || c.id || key,
+            name: name || 'Contact Person',
+            designation,
+            phone,
+            email,
+            isPrimary: Boolean(c.isPrimary),
+          });
+        }
+      });
+    }
+
+    // 2. Also incorporate root fields on row
+    const rootName = (row.contactPerson || '').trim();
+    const rootPhone = (row.mobileNo || row.phone || '').trim();
+    const rootEmail = (row.emailId || row.email || '').trim();
+    const rootDesignation = (row.designation || '').trim();
+    const rootKey = `${rootName.toLowerCase()}__${rootPhone}__${rootEmail.toLowerCase()}`;
+
+    if ((rootName || rootPhone || rootEmail) && !seen.has(rootKey)) {
+      seen.add(rootKey);
+      const hasPrimary = list.some((c) => c.isPrimary);
+      list.unshift({
+        id: 'root-primary',
+        name: rootName || 'Primary Contact',
+        designation: rootDesignation,
+        phone: rootPhone,
+        email: rootEmail,
+        isPrimary: !hasPrimary,
+      });
+    }
+
+    // Fallback if no contacts found
+    if (list.length === 0) {
+      list.push({
+        id: 'default',
+        name: row.companyName ? `${row.companyName} Representative` : 'Decision Maker',
+        designation: '',
+        phone: '',
+        email: '',
+        isPrimary: true,
+      });
+    }
+
+    return list;
+  }, [row]);
+
+  // Multi-person contact handlers
+  const handleAddContactPerson = () => {
+    const usedKeys = new Set(selectedContacts.map((c) => c.key));
+    let nextKey = 'custom';
+    for (let i = 0; i < availableContacts.length; i++) {
+      if (!usedKeys.has(String(i))) {
+        nextKey = String(i);
+        break;
+      }
+    }
+    setSelectedContacts((prev) => [
+      ...prev,
+      createDefaultContactPerson(nextKey),
+    ]);
+  };
+
+  const handleRemoveContactPerson = (idxToRemove) => {
+    if (selectedContacts.length <= 1) return;
+    setSelectedContacts((prev) => prev.filter((_, idx) => idx !== idxToRemove));
+  };
+
+  const handleUpdateContactPerson = (index, field, value) => {
+    setSelectedContacts((prev) => {
+      const next = [...prev];
+      if (next[index]) {
+        next[index] = { ...next[index], [field]: value };
+      }
+      return next;
+    });
+  };
+
+  // Resolved list of all selected contacts
+  const resolvedContacts = useMemo(() => {
+    return selectedContacts.map((item) => {
+      let base = {};
+      if (item.key === 'custom') {
+        base = {
+          name: item.customName?.trim() || 'Custom Contact',
+          phone: item.customPhone?.trim() || '',
+          designation: item.customDesignation?.trim() || '',
+          email: '',
+          isCustom: true,
+        };
+      } else {
+        const idx = parseInt(item.key, 10);
+        if (!isNaN(idx) && availableContacts[idx]) {
+          base = availableContacts[idx];
+        } else {
+          base = (
+            availableContacts[0] || {
+              name: row?.contactPerson || 'Contact',
+              phone: row?.mobileNo || row?.phone || '',
+              designation: row?.designation || '',
+              email: row?.emailId || row?.email || '',
+            }
+          );
+        }
+      }
+
+      const rawType = item.callType || 'Cold Call';
+      const resolvedCallType =
+        rawType === 'Other' ? (item.customCallType?.trim() || 'Other') : rawType;
+
+      const rawOutcome = item.callOutcome || 'Connected - Interested';
+      const resolvedCallOutcome =
+        rawOutcome === 'Other' ? (item.customCallOutcome?.trim() || 'Other') : rawOutcome;
+
+      return {
+        ...base,
+        key: item.key,
+        customName: item.customName || '',
+        customPhone: item.customPhone || '',
+        customDesignation: item.customDesignation || '',
+        callType: resolvedCallType,
+        rawCallType: rawType,
+        customCallType: item.customCallType || '',
+        durationMinutes: Number(item.durationMinutes) || 0,
+        outcome: resolvedCallOutcome,
+        rawOutcome,
+        customCallOutcome: item.customCallOutcome || '',
+        notes: item.callNotes || '',
+      };
+    });
+  }, [selectedContacts, availableContacts, row]);
+
+  const currentContact = resolvedContacts[0] || null;
+  const joinedContactNames = resolvedContacts.map((c) => c.name).filter(Boolean).join(' & ');
+  const joinedContactPhones = resolvedContacts.map((c) => c.phone).filter(Boolean).join(', ');
+  const activeContactPhone = (currentContact?.phone || row?.mobileNo || row?.phone || '').trim();
+  const cleanPhone = activeContactPhone.replace(/\D/g, '').slice(-10);
+
   const mergeContext = useMemo(() => {
     if (!row) return {};
+    const cPerson = currentContact?.name || row.contactPerson || '';
+    const cPhone = currentContact?.phone || row.mobileNo || row.phone || '';
+    const cEmail = currentContact?.email || row.emailId || row.email || '';
+    const cDesig = currentContact?.designation || row.designation || 'Decision Maker';
     return {
       companyName: row.companyName || '',
-      contactPerson: row.contactPerson || '',
-      firstName: row.contactPerson ? row.contactPerson.split(' ')[0] : '',
-      lastName: row.contactPerson ? row.contactPerson.split(' ').slice(1).join(' ') : '',
-      fullName: row.contactPerson || '',
-      email: row.emailId || row.email || '',
-      emailId: row.emailId || row.email || '',
-      mobileNo: row.mobileNo || row.phone || '',
-      phoneNumber: row.mobileNo || row.phone || '',
-      phone: row.mobileNo || row.phone || '',
-      designation: row.designation || 'Decision Maker',
+      contactPerson: cPerson,
+      firstName: cPerson ? cPerson.split(' ')[0] : '',
+      lastName: cPerson ? cPerson.split(' ').slice(1).join(' ') : '',
+      fullName: cPerson,
+      email: cEmail,
+      emailId: cEmail,
+      mobileNo: cPhone,
+      phoneNumber: cPhone,
+      phone: cPhone,
+      designation: cDesig,
       industry: row.industry || 'Technology & Business',
       address: row.address || '',
       rating: String(row.rating || '5'),
@@ -215,7 +387,7 @@ export const LogOutreachModal = ({
       currentDate: new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
       currentYear: String(new Date().getFullYear())
     };
-  }, [row]);
+  }, [row, currentContact]);
 
   const handleTemplateChange = (tmplId) => {
     setSelectedTemplateId(tmplId);
@@ -235,22 +407,21 @@ export const LogOutreachModal = ({
 
   if (!isOpen || !row) return null;
 
-  const cleanPhone = (row.mobileNo || '').replace(/\D/g, '').slice(-10);
-
   const handleLaunchWhatsApp = () => {
     if (!cleanPhone) {
-      toast.error('No valid phone number for this prospect');
+      toast.error('No valid phone number for this contact');
       return;
     }
+    const targetName = currentContact?.name || row.contactPerson || 'Sir/Madam';
     const text = encodeURIComponent(
-      `Hello ${row.contactPerson || 'Sir/Madam'}, this is regarding TalentCIO's HRMS and Workforce Solutions for ${row.companyName || 'your organization'}.`
+      `Hello ${targetName}, this is regarding TalentCIO's HRMS and Workforce Solutions for ${row.companyName || 'your organization'}.`
     );
     window.open(`https://wa.me/91${cleanPhone}?text=${text}`, '_blank');
   };
 
   const handleLaunchCall = () => {
     if (!cleanPhone) {
-      toast.error('No valid phone number for this prospect');
+      toast.error('No valid phone number for this contact');
       return;
     }
     window.location.href = `tel:${cleanPhone}`;
@@ -267,11 +438,13 @@ export const LogOutreachModal = ({
       const pad = (n) => String(n).padStart(2, '0');
       const formatGCal = (d) =>
         `${d.getUTCFullYear()}${pad(d.getUTCMonth() + 1)}${pad(d.getUTCDate())}T${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}00Z`;
+      const targetName = currentContact?.name || row.contactPerson || 'Contact';
       const title = encodeURIComponent(
-        `CRM ${followUpType.toUpperCase()}: ${row.companyName || 'Prospect'} (${row.contactPerson || 'Contact'})`
+        `CRM ${followUpType.toUpperCase()}: ${row.companyName || 'Prospect'} (${targetName})`
       );
+      const allNotes = resolvedContacts.map((c) => c.notes).filter(Boolean).join('; ');
       const details = encodeURIComponent(
-        `Company: ${row.companyName || 'N/A'}\nContact: ${row.contactPerson || 'N/A'}\nPhone: ${row.mobileNo || row.phone || 'N/A'}\nType: ${followUpType}\nNotes: ${followUpNotes || callNotes || ''}`
+        `Company: ${row.companyName || 'N/A'}\nContact: ${targetName}\nPhone: ${activeContactPhone || 'N/A'}\nType: ${followUpType}\nNotes: ${followUpNotes || allNotes || ''}`
       );
       const url = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${formatGCal(start)}/${formatGCal(end)}&details=${details}`;
       window.open(url, '_blank');
@@ -286,17 +459,74 @@ export const LogOutreachModal = ({
     setIsSubmitting(true);
     try {
       const recordId = row._id || row.id;
+      const reachedName = (currentContact?.name || row.contactPerson || row.companyName || 'Prospect').trim();
+      const reachedPhone = (currentContact?.phone || row.mobileNo || row.phone || '').trim();
+      const reachedDesignation = (currentContact?.designation || row.designation || '').trim();
+      const reachedEmail = (currentContact?.email || row.emailId || row.email || '').trim();
 
       if (activeType === 'call') {
-        const resolvedCallType =
-          callType === 'Other' ? (customCallType.trim() || 'Other') : callType;
+        const cleanList = resolvedContacts
+          .map((c) => ({
+            name: (c.name || '').trim(),
+            phone: (c.phone || '').trim(),
+            designation: (c.designation || '').trim(),
+            email: (c.email || '').trim(),
+            callType: c.callType || 'Cold Call',
+            durationMinutes: Number(c.durationMinutes) || 0,
+            outcome: c.outcome || 'Connected - Interested',
+            notes: (c.notes || '').trim(),
+          }))
+          .filter((c) => c.name || c.phone);
+
+        const primaryPerson = cleanList[0] || {
+          name: reachedName,
+          phone: reachedPhone,
+          designation: reachedDesignation,
+          email: reachedEmail,
+          callType: 'Cold Call',
+          durationMinutes: 2,
+          outcome: 'Connected - Interested',
+          notes: '',
+        };
+
+        const finalName = cleanList.map((c) => c.name).filter(Boolean).join(' & ') || reachedName;
+        const finalPhone = cleanList.map((c) => c.phone).filter(Boolean).join(', ') || reachedPhone;
+        const finalDesignation = cleanList.map((c) => c.designation).filter(Boolean).join(', ') || reachedDesignation;
+        const finalEmail = cleanList.map((c) => c.email).filter(Boolean).join(', ') || reachedEmail;
+
+        const totalDuration = cleanList.reduce((acc, c) => acc + (Number(c.durationMinutes) || 0), 0);
+
+        let combinedDescription = '';
+        if (cleanList.length <= 1) {
+          combinedDescription = primaryPerson.notes || '';
+        } else {
+          combinedDescription = cleanList
+            .map((c, idx) => {
+              const header = `[Person ${idx + 1}: ${c.name}${c.designation ? ` (${c.designation})` : ''} • ${c.callType} • ${c.durationMinutes}m • ${c.outcome}]`;
+              return `${header}\n${c.notes || 'No specific notes recorded.'}`;
+            })
+            .join('\n\n');
+        }
+
         const payload = {
           type: 'call',
-          callType: resolvedCallType,
-          outcome: callOutcome,
-          durationMinutes: Number(durationMinutes) || 0,
-          subject: `${resolvedCallType} with ${row.contactPerson || row.companyName || 'Prospect'}`,
-          description: callNotes,
+          callType: primaryPerson.callType || 'Cold Call',
+          outcome: primaryPerson.outcome || 'Connected - Interested',
+          durationMinutes: totalDuration,
+          contactPerson: finalName,
+          contactPhone: finalPhone,
+          contactDesignation: finalDesignation,
+          contactEmail: finalEmail,
+          contactPersons: cleanList,
+          subject: `${cleanList.length > 1 ? `Multi-Person Call (${cleanList.length})` : primaryPerson.callType} with ${finalName}`,
+          description: combinedDescription,
+          metadata: {
+            contactPersons: cleanList,
+            contactPerson: finalName,
+            contactPhone: finalPhone,
+            contactDesignation: finalDesignation,
+            contactEmail: finalEmail,
+          },
         };
         const res = await dataService.logActivity(recordId, payload);
         if (res?.record && onSuccess) onSuccess(res.record);
@@ -304,8 +534,18 @@ export const LogOutreachModal = ({
         const payload = {
           type: 'whatsapp',
           outcome: whatsappOutcome,
-          subject: `WhatsApp outreach to ${row.contactPerson || row.companyName}`,
+          contactPerson: reachedName,
+          contactPhone: reachedPhone,
+          contactDesignation: reachedDesignation,
+          contactEmail: reachedEmail,
+          subject: `WhatsApp outreach to ${reachedName}${reachedDesignation ? ` (${reachedDesignation})` : ''}`,
           description: whatsappNotes,
+          metadata: {
+            contactPerson: reachedName,
+            contactPhone: reachedPhone,
+            contactDesignation: reachedDesignation,
+            contactEmail: reachedEmail,
+          },
         };
         const res = await dataService.logActivity(recordId, payload);
         if (res?.record && onSuccess) onSuccess(res.record);
@@ -390,7 +630,7 @@ export const LogOutreachModal = ({
         isOpen={isOpen && !isFullComposerOpen}
         onClose={onClose}
         title="Log Sales Outreach & Activity"
-        subtitle={`Prospect: ${row.companyName || 'Company'} • ${row.contactPerson || 'Contact'} (${row.mobileNo || 'No phone'})`}
+        subtitle={`Prospect: ${row.companyName || 'Company'} • ${joinedContactNames || row.contactPerson || 'Contact'} (${joinedContactPhones || activeContactPhone || 'No phone'})`}
         maxWidth="max-w-xl"
         footer={
           <div className="flex items-center justify-between w-full">
@@ -433,30 +673,38 @@ export const LogOutreachModal = ({
               </div>
               <div className="flex items-center gap-1 text-slate-600 font-medium text-[11px]">
                 <User className="w-3 h-3 text-slate-400" />
-                <span>{row.contactPerson || 'Decision Maker'}</span>
-                {row.designation && <span className="text-slate-400">• {row.designation}</span>}
+                <span>{joinedContactNames || row.contactPerson || 'Decision Maker'}</span>
+                {resolvedContacts.length === 1 && (resolvedContacts[0]?.designation || row.designation) && (
+                  <span className="text-slate-400">• {resolvedContacts[0]?.designation || row.designation}</span>
+                )}
               </div>
             </div>
 
             {/* Quick Action Buttons */}
-            <div className="flex items-center gap-1.5">
-              {cleanPhone && (
-                <button
-                  type="button"
-                  onClick={handleLaunchCall}
-                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 font-semibold shadow-2xs transition"
-                  title="Dial phone"
-                >
-                  <Phone className="w-3 h-3 text-indigo-600" />
-                  <span>{row.mobileNo}</span>
-                </button>
-              )}
+            <div className="flex items-center gap-1.5 flex-wrap justify-end">
+              {resolvedContacts.map((c, i) => {
+                const cClean = (c.phone || '').replace(/\D/g, '').slice(-10);
+                if (!cClean) return null;
+                const firstName = c.name ? c.name.split(' ')[0] : `Person ${i + 1}`;
+                return (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => { window.location.href = `tel:${cClean}`; }}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 font-semibold shadow-2xs transition text-[11px]"
+                    title={`Dial ${c.name} (${c.phone})`}
+                  >
+                    <Phone className="w-3 h-3 text-indigo-600" />
+                    <span>{resolvedContacts.length > 1 ? `${firstName}: ` : ''}{c.phone}</span>
+                  </button>
+                );
+              })}
 
               {cleanPhone && (
                 <button
                   type="button"
                   onClick={handleLaunchWhatsApp}
-                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 font-semibold shadow-2xs transition"
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 font-semibold shadow-2xs transition text-[11px]"
                   title="Chat on WhatsApp"
                 >
                   <MessageSquare className="w-3 h-3 text-emerald-600" />
@@ -526,84 +774,252 @@ export const LogOutreachModal = ({
             {/* Channel Form: CALL */}
             {activeType === 'call' && (
               <div className="space-y-3.5 bg-white p-3.5 rounded-xl border border-slate-200">
-                <div className="grid grid-cols-2 gap-3 text-xs">
-                  <div>
-                    <label className="block font-semibold text-slate-700 mb-1">Call Type</label>
-                    <select
-                      value={callType}
-                      onChange={(e) => setCallType(e.target.value)}
-                      className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 font-medium focus:ring-1 focus:ring-indigo-500 focus:outline-none"
-                    >
-                      <option value="Cold Call">Cold Call</option>
-                      <option value="Discovery / Pitch">Discovery / Pitch</option>
-                      <option value="Follow-up Call">Follow-up Call</option>
-                      <option value="Demo Scheduled">Demo Scheduled</option>
-                      <option value="Commercial Negotiation">Commercial Negotiation</option>
-                      <option value="Closing Call">Closing Call</option>
-                      <option value="Account Check-in">Account Check-in</option>
-                      <option value="Gatekeeper Inquiry">Gatekeeper Inquiry</option>
-                      <option value="Payment Follow-up">Payment Follow-up</option>
-                      <option value="Other">Other (Custom Type)</option>
-                    </select>
-                  </div>
+                {/* Header: Title + Add Person button */}
+                <div className="flex items-center justify-between">
+                  <label className="block font-semibold text-slate-700 text-xs flex items-center gap-1.5">
+                    <User className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>Contact Person(s) Reached</span>
+                    <span className="text-rose-500">*</span>
+                    {selectedContacts.length > 1 && (
+                      <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.2 rounded-full">
+                        {selectedContacts.length} Persons
+                      </span>
+                    )}
+                  </label>
 
-                  <div>
-                    <label className="block font-semibold text-slate-700 mb-1">Duration (Mins)</label>
-                    <input
-                      type="number"
-                      min="0"
-                      max="180"
-                      value={durationMinutes}
-                      onChange={(e) => setDurationMinutes(e.target.value)}
-                      className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 font-medium focus:ring-1 focus:ring-indigo-500 focus:outline-none"
-                      placeholder="e.g. 3"
-                    />
-                  </div>
-                </div>
-
-                {callType === 'Other' && (
-                  <div className="bg-indigo-50/50 p-2.5 rounded-xl border border-indigo-200/80 animate-in fade-in duration-150">
-                    <label className="block font-semibold text-indigo-950 mb-1 text-xs">
-                      Specify Custom Call Type:
-                    </label>
-                    <input
-                      type="text"
-                      value={customCallType}
-                      onChange={(e) => setCustomCallType(e.target.value)}
-                      placeholder="e.g. Technical Discovery with CTO"
-                      className="w-full px-2.5 py-1.5 rounded-lg border border-indigo-300 bg-white text-xs font-medium focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                    />
-                  </div>
-                )}
-
-                <div className="text-xs">
-                  <label className="block font-semibold text-slate-700 mb-1">Call Outcome</label>
-                  <select
-                    value={callOutcome}
-                    onChange={(e) => setCallOutcome(e.target.value)}
-                    className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 font-medium focus:ring-1 focus:ring-indigo-500 focus:outline-none"
+                  <button
+                    type="button"
+                    onClick={handleAddContactPerson}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 transition cursor-pointer shadow-2xs"
+                    title="Add another contact person to log this call for"
                   >
-                    <option value="Connected - Interested">Connected - Interested / Warm</option>
-                    <option value="Connected - Follow-up Requested">Connected - Follow-up Requested</option>
-                    <option value="Connected - Demo Scheduled">Connected - Demo Scheduled</option>
-                    <option value="Connected - Shared Info on WhatsApp">Connected - Shared Info on WhatsApp</option>
-                    <option value="Connected - Not Interested">Connected - Not Interested</option>
-                    <option value="Connected - Gatekeeper Blocked">Connected - Gatekeeper Blocked</option>
-                    <option value="No Answer / Ringing">No Answer / Ringing</option>
-                    <option value="Busy / Call Dropped">Busy / Call Dropped</option>
-                    <option value="Wrong Number / Invalid">Wrong Number / Invalid</option>
-                  </select>
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Add Person</span>
+                  </button>
                 </div>
 
-                <div className="text-xs">
-                  <label className="block font-semibold text-slate-700 mb-1">Discussion Notes</label>
-                  <textarea
-                    rows={3}
-                    value={callNotes}
-                    onChange={(e) => setCallNotes(e.target.value)}
-                    placeholder="Key talking points, client requirements, budget, next steps..."
-                    className="w-full p-2.5 text-xs rounded-lg border border-slate-300 bg-white text-slate-800 placeholder:text-slate-400 focus:ring-1 focus:ring-indigo-500 focus:outline-none"
-                  />
+                {/* Per-person cards */}
+                <div className="space-y-3">
+                  {selectedContacts.map((entry, idx) => {
+                    const activeC = resolvedContacts[idx];
+                    return (
+                      <div
+                        key={idx}
+                        className="p-3.5 rounded-xl bg-slate-50/90 border border-slate-200 space-y-3 text-xs relative"
+                      >
+                        {/* Person header */}
+                        <div className="flex items-center justify-between gap-2 pb-1.5 border-b border-slate-200/80">
+                          <span className="font-bold text-slate-800 text-[11.5px] flex items-center gap-1.5">
+                            <span className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-[10px] font-bold">
+                              {idx + 1}
+                            </span>
+                            <span>Person #{idx + 1}</span>
+                            {idx === 0 && (
+                              <span className="text-[9.5px] text-emerald-700 bg-emerald-50 border border-emerald-200 font-semibold px-1.5 py-0.2 rounded">
+                                Primary
+                              </span>
+                            )}
+                          </span>
+                          {selectedContacts.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveContactPerson(idx)}
+                              className="text-slate-400 hover:text-rose-600 p-1 rounded hover:bg-rose-50 transition cursor-pointer flex items-center gap-1 text-[11px]"
+                              title="Remove this person"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              <span>Remove</span>
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Contact Person Select */}
+                        <div>
+                          <label className="block text-[10.5px] font-semibold text-slate-600 mb-1">
+                            Contact Person Reached *
+                          </label>
+                          <select
+                            value={entry.key}
+                            onChange={(e) => handleUpdateContactPerson(idx, 'key', e.target.value)}
+                            className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 font-medium text-xs focus:ring-1 focus:ring-indigo-500 focus:outline-none"
+                          >
+                            {availableContacts.map((c, cIdx) => {
+                              const details = [
+                                c.name,
+                                c.designation ? `(${c.designation})` : '',
+                                c.phone ? `— ${c.phone}` : '',
+                                c.isPrimary ? '★ Primary' : '',
+                              ].filter(Boolean);
+                              return (
+                                <option key={cIdx} value={String(cIdx)}>
+                                  {details.join(' ')}
+                                </option>
+                              );
+                            })}
+                            <option value="custom">+ Add New / Custom Contact Person</option>
+                          </select>
+                        </div>
+
+                        {/* Custom Contact Input Fields */}
+                        {entry.key === 'custom' ? (
+                          <div className="p-2.5 rounded-lg bg-indigo-50/70 border border-indigo-200 grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs animate-in fade-in duration-150">
+                            <div>
+                              <label className="block text-[10px] font-bold uppercase text-indigo-900 mb-0.5">Person Name *</label>
+                              <input
+                                type="text"
+                                value={entry.customName || ''}
+                                onChange={(e) => handleUpdateContactPerson(idx, 'customName', e.target.value)}
+                                placeholder="e.g. Vikram Sharma"
+                                className="w-full px-2.5 py-1 rounded-lg border border-indigo-300 bg-white text-xs text-slate-800 font-medium focus:ring-1 focus:ring-indigo-500 focus:outline-none"
+                                required
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[10px] font-bold uppercase text-indigo-900 mb-0.5">Designation</label>
+                              <input
+                                type="text"
+                                value={entry.customDesignation || ''}
+                                onChange={(e) => handleUpdateContactPerson(idx, 'customDesignation', e.target.value)}
+                                placeholder="e.g. Head of HR / CTO"
+                                className="w-full px-2.5 py-1 rounded-lg border border-indigo-300 bg-white text-xs text-slate-800 font-medium focus:ring-1 focus:ring-indigo-500 focus:outline-none"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[10px] font-bold uppercase text-indigo-900 mb-0.5">Phone Number</label>
+                              <input
+                                type="text"
+                                value={entry.customPhone || ''}
+                                onChange={(e) => handleUpdateContactPerson(idx, 'customPhone', e.target.value)}
+                                placeholder="e.g. 9876543210"
+                                className="w-full px-2.5 py-1 rounded-lg border border-indigo-300 bg-white text-xs text-slate-800 font-medium focus:ring-1 focus:ring-indigo-500 focus:outline-none"
+                              />
+                            </div>
+                          </div>
+                        ) : activeC ? (
+                          <div className="flex items-center gap-2 text-[11px] text-slate-600 bg-white px-2.5 py-1 rounded-lg border border-slate-200 flex-wrap">
+                            <span className="font-bold text-slate-900">{activeC.name}</span>
+                            {activeC.designation && (
+                              <span className="text-slate-500 font-medium">• {activeC.designation}</span>
+                            )}
+                            {activeC.phone && (
+                              <span className="font-mono text-indigo-700 bg-indigo-50/80 px-1.5 py-0.2 rounded border border-indigo-100 text-[10.5px]">
+                                {activeC.phone}
+                              </span>
+                            )}
+                            {activeC.email && (
+                              <span className="text-slate-500 text-[10.5px]">
+                                • {activeC.email}
+                              </span>
+                            )}
+                            {activeC.isPrimary && (
+                              <span className="ml-auto text-[9.5px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">
+                                Primary
+                              </span>
+                            )}
+                          </div>
+                        ) : null}
+
+                        {/* Call Type & Duration */}
+                        <div className="grid grid-cols-2 gap-3 text-xs">
+                          <div>
+                            <label className="block font-semibold text-slate-700 mb-1">Call Type</label>
+                            <select
+                              value={entry.callType || 'Cold Call'}
+                              onChange={(e) => handleUpdateContactPerson(idx, 'callType', e.target.value)}
+                              className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 font-medium focus:ring-1 focus:ring-indigo-500 focus:outline-none"
+                            >
+                              <option value="Cold Call">Cold Call</option>
+                              <option value="Discovery / Pitch">Discovery / Pitch</option>
+                              <option value="Follow-up Call">Follow-up Call</option>
+                              <option value="Demo Scheduled">Demo Scheduled</option>
+                              <option value="Commercial Negotiation">Commercial Negotiation</option>
+                              <option value="Closing Call">Closing Call</option>
+                              <option value="Account Check-in">Account Check-in</option>
+                              <option value="Gatekeeper Inquiry">Gatekeeper Inquiry</option>
+                              <option value="Payment Follow-up">Payment Follow-up</option>
+                              <option value="Other">Other (Custom Type)</option>
+                            </select>
+                          </div>
+
+                          <div>
+                            <label className="block font-semibold text-slate-700 mb-1">Duration (Mins)</label>
+                            <input
+                              type="number"
+                              min="0"
+                              max="180"
+                              value={entry.durationMinutes ?? '2'}
+                              onChange={(e) => handleUpdateContactPerson(idx, 'durationMinutes', e.target.value)}
+                              className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 font-medium focus:ring-1 focus:ring-indigo-500 focus:outline-none"
+                              placeholder="e.g. 2"
+                            />
+                          </div>
+                        </div>
+
+                        {entry.callType === 'Other' && (
+                          <div className="bg-indigo-50/50 p-2.5 rounded-xl border border-indigo-200/80 animate-in fade-in duration-150">
+                            <label className="block font-semibold text-indigo-950 mb-1 text-xs">
+                              Specify Custom Call Type:
+                            </label>
+                            <input
+                              type="text"
+                              value={entry.customCallType || ''}
+                              onChange={(e) => handleUpdateContactPerson(idx, 'customCallType', e.target.value)}
+                              placeholder="e.g. Technical Discovery with CTO"
+                              className="w-full px-2.5 py-1.5 rounded-lg border border-indigo-300 bg-white text-xs font-medium focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                            />
+                          </div>
+                        )}
+
+                        {/* Call Outcome */}
+                        <div className="text-xs">
+                          <label className="block font-semibold text-slate-700 mb-1">Call Outcome</label>
+                          <select
+                            value={entry.callOutcome || 'Connected - Interested'}
+                            onChange={(e) => handleUpdateContactPerson(idx, 'callOutcome', e.target.value)}
+                            className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 font-medium focus:ring-1 focus:ring-indigo-500 focus:outline-none"
+                          >
+                            <option value="Connected - Interested">Connected - Interested / Warm</option>
+                            <option value="Connected - Follow-up Requested">Connected - Follow-up Requested</option>
+                            <option value="Connected - Demo Scheduled">Connected - Demo Scheduled</option>
+                            <option value="Connected - Shared Info on WhatsApp">Connected - Shared Info on WhatsApp</option>
+                            <option value="Connected - Not Interested">Connected - Not Interested</option>
+                            <option value="Connected - Gatekeeper Blocked">Connected - Gatekeeper Blocked</option>
+                            <option value="No Answer / Ringing">No Answer / Ringing</option>
+                            <option value="Busy / Call Dropped">Busy / Call Dropped</option>
+                            <option value="Wrong Number / Invalid">Wrong Number / Invalid</option>
+                            <option value="Other">Other (Custom Outcome)</option>
+                          </select>
+                        </div>
+
+                        {entry.callOutcome === 'Other' && (
+                          <div className="bg-indigo-50/50 p-2.5 rounded-xl border border-indigo-200/80 animate-in fade-in duration-150">
+                            <label className="block font-semibold text-indigo-950 mb-1 text-xs">
+                              Specify Custom Call Outcome:
+                            </label>
+                            <input
+                              type="text"
+                              value={entry.customCallOutcome || ''}
+                              onChange={(e) => handleUpdateContactPerson(idx, 'customCallOutcome', e.target.value)}
+                              placeholder="e.g. Call Rescheduled / Decision Postponed"
+                              className="w-full px-2.5 py-1.5 rounded-lg border border-indigo-300 bg-white text-xs font-medium focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                            />
+                          </div>
+                        )}
+
+                        {/* Discussion Notes */}
+                        <div className="text-xs">
+                          <label className="block font-semibold text-slate-700 mb-1">Discussion Notes</label>
+                          <textarea
+                            rows={3}
+                            value={entry.callNotes || ''}
+                            onChange={(e) => handleUpdateContactPerson(idx, 'callNotes', e.target.value)}
+                            placeholder={`Key talking points with ${activeC?.name || 'this contact'}, client requirements, next steps...`}
+                            className="w-full p-2.5 text-xs rounded-lg border border-slate-300 bg-white text-slate-800 placeholder:text-slate-400 focus:ring-1 focus:ring-indigo-500 focus:outline-none"
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
 
                 <label className="flex items-center gap-2 cursor-pointer pt-1 text-xs">
@@ -624,7 +1040,41 @@ export const LogOutreachModal = ({
             {/* Channel Form: WHATSAPP */}
             {activeType === 'whatsapp' && (
               <div className="space-y-3 bg-white p-3.5 rounded-xl border border-slate-200 text-xs">
-                <div className="flex items-center justify-between pb-1 border-b border-slate-100">
+                {availableContacts.length > 1 && (
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1 flex items-center justify-between">
+                      <span className="flex items-center gap-1.5">
+                        <User className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>Contact Person Targeted</span>
+                      </span>
+                      <span className="text-[10px] text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                        {availableContacts.length} Contacts on file
+                      </span>
+                    </label>
+                    <select
+                      value={selectedContactKey}
+                      onChange={(e) => setSelectedContactKey(e.target.value)}
+                      className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 font-medium text-xs focus:ring-1 focus:ring-emerald-500 focus:outline-none"
+                    >
+                      {availableContacts.map((c, idx) => {
+                        const details = [
+                          c.name,
+                          c.designation ? `(${c.designation})` : '',
+                          c.phone ? `— ${c.phone}` : '',
+                          c.isPrimary ? '★ Primary' : '',
+                        ].filter(Boolean);
+                        return (
+                          <option key={idx} value={String(idx)}>
+                            {details.join(' ')}
+                          </option>
+                        );
+                      })}
+                      <option value="custom">+ Other / Specific Contact</option>
+                    </select>
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between pb-1 border-t sm:border-t-0 pt-2 sm:pt-0 border-slate-100">
                   <span className="font-semibold text-slate-700">Quick WhatsApp Message</span>
                   {cleanPhone && (
                     <button

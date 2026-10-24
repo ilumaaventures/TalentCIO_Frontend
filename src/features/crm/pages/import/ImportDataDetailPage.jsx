@@ -202,6 +202,316 @@ export const ImportDataDetailPage = ({
   const [statusChangeNote, setStatusChangeNote] = useState('');
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
 
+  // Edit Contacts Modal state
+  const [isEditContactsModalOpen, setIsEditContactsModalOpen] = useState(false);
+  const [editContactsList, setEditContactsList] = useState([]);
+  const [isSavingContacts, setIsSavingContacts] = useState(false);
+
+  const handleOpenEditContacts = () => {
+    const existing = Array.isArray(record?.contacts) && record.contacts.length > 0
+      ? record.contacts.map((c, i) => ({
+          contactPerson: c.contactPerson || '',
+          designation: c.designation || '',
+          mobileNo: c.mobileNo || '',
+          emailId: c.emailId || '',
+          isPrimary: c.isPrimary !== undefined ? Boolean(c.isPrimary) : i === 0,
+        }))
+      : [{
+          contactPerson: record?.contactPerson || '',
+          designation: record?.designation || '',
+          mobileNo: record?.mobileNo || record?.phone || '',
+          emailId: record?.emailId || record?.email || '',
+          isPrimary: true,
+        }];
+
+    setEditContactsList(existing);
+    setIsEditContactsModalOpen(true);
+  };
+
+  const handleAddEditContact = () => {
+    setEditContactsList((prev) => [
+      ...prev,
+      { contactPerson: '', designation: '', mobileNo: '', emailId: '', isPrimary: false },
+    ]);
+  };
+
+  const handleUpdateContactEntry = (index, field, value) => {
+    setEditContactsList((prev) => {
+      const next = [...prev];
+      next[index] = { ...next[index], [field]: value };
+      return next;
+    });
+  };
+
+  const handleSetPrimaryContact = (index) => {
+    setEditContactsList((prev) =>
+      prev.map((c, i) => ({ ...c, isPrimary: i === index }))
+    );
+  };
+
+  const handleRemoveContactEntry = (index) => {
+    setEditContactsList((prev) => {
+      if (prev.length <= 1) return prev;
+      const next = prev.filter((_, i) => i !== index);
+      if (next.length > 0 && !next.some((c) => c.isPrimary)) {
+        next[0].isPrimary = true;
+      }
+      return next;
+    });
+  };
+
+  const handleSaveContacts = async (e) => {
+    if (e) e.preventDefault();
+    const targetId = record?._id || record?.id;
+    if (!targetId) return;
+
+    setIsSavingContacts(true);
+    try {
+      const cleaned = editContactsList
+        .map((c) => ({
+          contactPerson: (c.contactPerson || '').trim(),
+          designation: (c.designation || '').trim(),
+          mobileNo: (c.mobileNo || '').trim(),
+          emailId: (c.emailId || '').trim(),
+          isPrimary: Boolean(c.isPrimary),
+        }))
+        .filter((c) => c.contactPerson || c.mobileNo || c.emailId || c.designation);
+
+      const finalContacts = cleaned.length > 0 ? cleaned : [{
+        contactPerson: (editContactsList[0]?.contactPerson || '').trim(),
+        designation: (editContactsList[0]?.designation || '').trim(),
+        mobileNo: (editContactsList[0]?.mobileNo || '').trim(),
+        emailId: (editContactsList[0]?.emailId || '').trim(),
+        isPrimary: true,
+      }];
+
+      if (!finalContacts.some((c) => c.isPrimary)) {
+        finalContacts[0].isPrimary = true;
+      }
+
+      const primary = finalContacts.find((c) => c.isPrimary) || finalContacts[0];
+
+      const updatedRecord = {
+        ...record,
+        contactPerson: primary.contactPerson || '',
+        designation: primary.designation || '',
+        mobileNo: primary.mobileNo || '',
+        emailId: primary.emailId || '',
+        contacts: finalContacts,
+      };
+
+      await dataService.syncImportData([updatedRecord]);
+      setRecord(updatedRecord);
+      if (onUpdateRecordRef.current) {
+        onUpdateRecordRef.current(updatedRecord);
+      }
+      window.dispatchEvent(new CustomEvent('crm:import-data-updated'));
+      toast.success('Contact details updated successfully!');
+      setIsEditContactsModalOpen(false);
+    } catch (err) {
+      console.error(err);
+      toast.error(err?.response?.data?.message || 'Failed to update contact details');
+    } finally {
+      setIsSavingContacts(false);
+    }
+  };
+
+  // Edit Activity Modal state
+  const [editingActivity, setEditingActivity] = useState(null);
+  const [isEditActivityModalOpen, setIsEditActivityModalOpen] = useState(false);
+  const [isUpdatingActivity, setIsUpdatingActivity] = useState(false);
+  const [editFormData, setEditFormData] = useState({
+    callType: 'Cold Call',
+    customCallType: '',
+    durationMinutes: 0,
+    outcome: 'Connected - Interested',
+    customOutcome: '',
+    description: '',
+    contactPerson: '',
+    contactPhone: '',
+    contactDesignation: '',
+    contactPersons: [],
+  });
+
+  const handleOpenEditActivity = (act) => {
+    const rawPersons = (act.contactPersons && act.contactPersons.length > 0)
+      ? act.contactPersons
+      : (act.metadata?.contactPersons || []);
+
+    const mappedPersons = rawPersons.map((p) => {
+      const isCustomCallType = p.callType && ![
+        'Cold Call', 'Discovery / Pitch', 'Follow-up Call', 'Demo Scheduled',
+        'Commercial Negotiation', 'Closing Call', 'Account Check-in',
+        'Gatekeeper Inquiry', 'Payment Follow-up'
+      ].includes(p.callType);
+
+      const isCustomOutcome = p.outcome && ![
+        'Connected - Interested', 'Connected - Follow-up Requested', 'Connected - Demo Scheduled',
+        'Connected - Shared Info on WhatsApp', 'Connected - Not Interested', 'Connected - Gatekeeper Blocked',
+        'No Answer / Ringing', 'Busy / Call Dropped', 'Wrong Number / Invalid'
+      ].includes(p.outcome);
+
+      return {
+        name: p.name || '',
+        designation: p.designation || '',
+        phone: p.phone || '',
+        email: p.email || '',
+        callType: isCustomCallType ? 'Other' : (p.callType || 'Cold Call'),
+        customCallType: isCustomCallType ? p.callType : '',
+        durationMinutes: p.durationMinutes ?? 0,
+        outcome: isCustomOutcome ? 'Other' : (p.outcome || 'Connected - Interested'),
+        customOutcome: isCustomOutcome ? p.outcome : '',
+        notes: p.notes || '',
+      };
+    });
+
+    const isRootCustomCallType = act.callType && ![
+      'Cold Call', 'Discovery / Pitch', 'Follow-up Call', 'Demo Scheduled',
+      'Commercial Negotiation', 'Closing Call', 'Account Check-in',
+      'Gatekeeper Inquiry', 'Payment Follow-up'
+    ].includes(act.callType);
+
+    const isRootCustomOutcome = act.outcome && ![
+      'Connected - Interested', 'Connected - Follow-up Requested', 'Connected - Demo Scheduled',
+      'Connected - Shared Info on WhatsApp', 'Connected - Not Interested', 'Connected - Gatekeeper Blocked',
+      'No Answer / Ringing', 'Busy / Call Dropped', 'Wrong Number / Invalid'
+    ].includes(act.outcome);
+
+    setEditingActivity(act);
+    setEditFormData({
+      callType: isRootCustomCallType ? 'Other' : (act.callType || 'Cold Call'),
+      customCallType: isRootCustomCallType ? act.callType : '',
+      durationMinutes: act.durationMinutes || 0,
+      outcome: isRootCustomOutcome ? 'Other' : (act.outcome || 'Connected - Interested'),
+      customOutcome: isRootCustomOutcome ? act.outcome : '',
+      description: act.description || '',
+      contactPerson: act.contactPerson || '',
+      contactPhone: act.contactPhone || '',
+      contactDesignation: act.contactDesignation || '',
+      contactPersons: mappedPersons,
+    });
+    setIsEditActivityModalOpen(true);
+  };
+
+  const handleSaveActivityEdit = async (e) => {
+    if (e) e.preventDefault();
+    if (!editingActivity?._id) return;
+    setIsUpdatingActivity(true);
+
+    try {
+      let resolvedPersons = [];
+      let totalDuration = 0;
+      let finalDescription = editFormData.description;
+      let finalCallType = editFormData.callType === 'Other' ? (editFormData.customCallType?.trim() || 'Other') : editFormData.callType;
+      let finalOutcome = editFormData.outcome === 'Other' ? (editFormData.customOutcome?.trim() || 'Other') : editFormData.outcome;
+
+      if (editFormData.contactPersons && editFormData.contactPersons.length > 0) {
+        resolvedPersons = editFormData.contactPersons.map((p) => {
+          const cType = p.callType === 'Other' ? (p.customCallType?.trim() || 'Other') : (p.callType || 'Cold Call');
+          const cOutcome = p.outcome === 'Other' ? (p.customOutcome?.trim() || 'Other') : (p.outcome || 'Connected - Interested');
+          const dur = Number(p.durationMinutes) || 0;
+          totalDuration += dur;
+          return {
+            name: (p.name || '').trim(),
+            designation: (p.designation || '').trim(),
+            phone: (p.phone || '').trim(),
+            email: (p.email || '').trim(),
+            callType: cType,
+            durationMinutes: dur,
+            outcome: cOutcome,
+            notes: (p.notes || '').trim(),
+          };
+        });
+
+        if (resolvedPersons.length > 1) {
+          finalDescription = resolvedPersons
+            .map((c, idx) => {
+              const header = `[Person ${idx + 1}: ${c.name}${c.designation ? ` (${c.designation})` : ''} • ${c.callType} • ${c.durationMinutes}m • ${c.outcome}]`;
+              return `${header}\n${c.notes || 'No specific notes recorded.'}`;
+            })
+            .join('\n\n');
+        } else if (resolvedPersons.length === 1) {
+          finalDescription = resolvedPersons[0].notes || '';
+          finalCallType = resolvedPersons[0].callType;
+          finalOutcome = resolvedPersons[0].outcome;
+        }
+      } else {
+        totalDuration = Number(editFormData.durationMinutes) || 0;
+      }
+
+      const updatePayload = {
+        callType: finalCallType,
+        outcome: finalOutcome,
+        durationMinutes: totalDuration,
+        description: finalDescription,
+        contactPerson: editFormData.contactPerson,
+        contactPhone: editFormData.contactPhone,
+        contactDesignation: editFormData.contactDesignation,
+        contactPersons: resolvedPersons,
+      };
+
+      const res = await dataService.updateImportDataActivity(editingActivity._id, updatePayload);
+      if (res?.success || res?.data) {
+        toast.success('Call activity updated successfully');
+        setIsEditActivityModalOpen(false);
+
+        const updatedAct = res.data || { ...editingActivity, ...updatePayload };
+        setActivities((prev) =>
+          prev.map((a) => (a._id === editingActivity._id ? { ...a, ...updatedAct } : a))
+        );
+
+        if (selectedCallActivity && selectedCallActivity._id === editingActivity._id) {
+          setSelectedCallActivity((prev) => ({ ...prev, ...updatedAct }));
+        }
+
+        loadActivitiesAndFollowUps();
+      } else {
+        toast.error(res?.message || 'Failed to update activity');
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error(err?.response?.data?.message || 'Failed to update activity');
+    } finally {
+      setIsUpdatingActivity(false);
+    }
+  };
+
+  const handleUpdateEditPerson = (idx, field, value) => {
+    setEditFormData((prev) => {
+      const updated = [...(prev.contactPersons || [])];
+      updated[idx] = { ...updated[idx], [field]: value };
+      return { ...prev, contactPersons: updated };
+    });
+  };
+
+  const handleAddEditPerson = () => {
+    setEditFormData((prev) => ({
+      ...prev,
+      contactPersons: [
+        ...(prev.contactPersons || []),
+        {
+          name: '',
+          designation: '',
+          phone: '',
+          email: '',
+          callType: 'Cold Call',
+          customCallType: '',
+          durationMinutes: 2,
+          outcome: 'Connected - Interested',
+          customOutcome: '',
+          notes: '',
+        },
+      ],
+    }));
+  };
+
+  const handleRemoveEditPerson = (idx) => {
+    setEditFormData((prev) => ({
+      ...prev,
+      contactPersons: (prev.contactPersons || []).filter((_, i) => i !== idx),
+    }));
+  };
+
   const recordId = record?._id || record?.id;
   const cleanPhone = (record?.mobileNo || record?.phone || '').replace(/\D/g, '').slice(-10);
 
@@ -1109,14 +1419,26 @@ export const ImportDataDetailPage = ({
                             </span>
                           </div>
 
-                          <span className="text-[11px] text-slate-400 font-medium">
-                            {new Date(act.performedAt || act.createdAt).toLocaleString('en-IN', {
-                              month: 'short',
-                              day: 'numeric',
-                              hour: '2-digit',
-                              minute: '2-digit',
-                            })}
-                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-[11px] text-slate-400 font-medium">
+                              {new Date(act.performedAt || act.createdAt).toLocaleString('en-IN', {
+                                month: 'short',
+                                day: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit',
+                              })}
+                            </span>
+                            {act.type === 'call' && (
+                              <button
+                                type="button"
+                                onClick={() => handleOpenEditActivity(act)}
+                                className="p-1 rounded text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition cursor-pointer"
+                                title="Edit call details"
+                              >
+                                <Edit3 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
                         </div>
 
                         {/* Remark / Feedback Box */}
@@ -1164,22 +1486,40 @@ export const ImportDataDetailPage = ({
                                 )}
                               </div>
                               <span className="text-[10px] text-slate-500 font-medium">
-                                Target: <strong className="text-slate-700">{record.mobileNo || record.phone || 'Contact Phone'}</strong>
+                                Target:{' '}
+                                <strong className="text-slate-700">
+                                  {act.contactPersons && act.contactPersons.length > 1
+                                    ? act.contactPersons.map((p) => `${p.name}${p.phone ? ` (${p.phone})` : ''}`).join(' & ')
+                                    : act.contactPerson || act.metadata?.contactPerson
+                                    ? `${act.contactPerson || act.metadata?.contactPerson} (${act.contactPhone || act.metadata?.contactPhone || record.mobileNo || record.phone || '—'})`
+                                    : (record.mobileNo || record.phone || 'Contact Phone')}
+                                </strong>
                               </span>
                             </div>
                             <p className="text-slate-700 text-xs leading-relaxed whitespace-pre-wrap">
                               {act.description || 'No detailed feedback notes recorded.'}
                             </p>
                             <div className="flex items-center justify-between pt-1 border-t border-emerald-100">
-                              <button
-                                type="button"
-                                onClick={() => setSelectedCallActivity(act)}
-                                className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 hover:text-emerald-900 hover:underline cursor-pointer"
-                              >
-                                <Phone className="w-3 h-3" />
-                                <span>View Call Details</span>
-                                <ArrowUpRight className="w-3 h-3" />
-                              </button>
+                              <div className="flex items-center gap-3">
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedCallActivity(act)}
+                                  className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 hover:text-emerald-900 hover:underline cursor-pointer"
+                                >
+                                  <Phone className="w-3 h-3" />
+                                  <span>View Call Details</span>
+                                  <ArrowUpRight className="w-3 h-3" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenEditActivity(act)}
+                                  className="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-600 hover:text-indigo-800 hover:underline cursor-pointer"
+                                  title="Edit call details and notes"
+                                >
+                                  <Edit3 className="w-3 h-3" />
+                                  <span>Edit Call</span>
+                                </button>
+                              </div>
                               <span className="text-[10px] text-slate-400">
                                 Logged by: <strong className="text-slate-600 font-semibold">{act.performedByName || 'Representative'}</strong>
                               </span>
@@ -1321,12 +1661,23 @@ export const ImportDataDetailPage = ({
                     Key Contact Details {record?.contacts && record.contacts.length > 1 ? `(${record.contacts.length})` : ''}
                   </h3>
                 </div>
-                {record?.contacts && record.contacts.length > 1 && (
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-violet-50 text-violet-700 border border-violet-200 flex items-center gap-1">
-                    <Users className="w-3 h-3 text-violet-600" />
-                    <span>Multiple Contacts</span>
-                  </span>
-                )}
+                <div className="flex items-center gap-2">
+                  {record?.contacts && record.contacts.length > 1 && (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-violet-50 text-violet-700 border border-violet-200 flex items-center gap-1">
+                      <Users className="w-3 h-3 text-violet-600" />
+                      <span>Multiple Contacts</span>
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={handleOpenEditContacts}
+                    className="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-0.5 rounded-md border border-indigo-200 transition cursor-pointer shadow-2xs"
+                    title="Edit all contact persons"
+                  >
+                    <Edit3 className="w-3 h-3" />
+                    <span>Edit Contacts</span>
+                  </button>
+                </div>
               </div>
 
               {record?.contacts && record.contacts.length > 0 ? (
@@ -2225,13 +2576,28 @@ export const ImportDataDetailPage = ({
           maxWidth="max-w-xl"
           footer={
             <div className="flex items-center justify-between w-full">
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setSelectedCallActivity(null)}
-              >
-                Close
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setSelectedCallActivity(null)}
+                >
+                  Close
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    const actToEdit = selectedCallActivity;
+                    setSelectedCallActivity(null);
+                    handleOpenEditActivity(actToEdit);
+                  }}
+                  icon={Edit3}
+                  className="text-indigo-700 border-indigo-200 hover:bg-indigo-50"
+                >
+                  Edit Call
+                </Button>
+              </div>
               <Button
                 size="sm"
                 onClick={() => {
@@ -2278,30 +2644,142 @@ export const ImportDataDetailPage = ({
 
               {/* Call Metadata Grid */}
               <div className="grid grid-cols-2 gap-2.5 pt-2 border-t border-emerald-100/80 text-xs">
-                <div className="p-2.5 rounded-xl bg-white border border-slate-200/80">
-                  <span className="text-[10px] font-semibold text-slate-400 block uppercase tracking-wider">Call Type</span>
-                  <p className="font-bold text-slate-800 text-xs mt-0.5">
-                    {selectedCallActivity.callType || 'Cold Call'}
-                  </p>
-                </div>
-                <div className="p-2.5 rounded-xl bg-white border border-slate-200/80">
-                  <span className="text-[10px] font-semibold text-slate-400 block uppercase tracking-wider">Duration</span>
-                  <p className="font-bold text-slate-800 text-xs mt-0.5">
-                    {selectedCallActivity.durationMinutes ? `${selectedCallActivity.durationMinutes} minutes` : '0 min (Logged)'}
-                  </p>
-                </div>
-                <div className="p-2.5 rounded-xl bg-white border border-slate-200/80">
-                  <span className="text-[10px] font-semibold text-slate-400 block uppercase tracking-wider">Representative</span>
-                  <p className="font-bold text-slate-800 text-xs mt-0.5">
-                    {selectedCallActivity.performedByName || (selectedCallActivity.performedBy ? `${selectedCallActivity.performedBy.firstName || ''} ${selectedCallActivity.performedBy.lastName || ''}`.trim() : '') || 'Representative'}
-                  </p>
-                </div>
-                <div className="p-2.5 rounded-xl bg-white border border-slate-200/80">
-                  <span className="text-[10px] font-semibold text-slate-400 block uppercase tracking-wider">Target Phone</span>
-                  <p className="font-bold text-slate-800 text-xs mt-0.5">
-                    {record.mobileNo || record.phone || '—'}
-                  </p>
-                </div>
+                {(() => {
+                  const participants = (selectedCallActivity.contactPersons && selectedCallActivity.contactPersons.length > 0)
+                    ? selectedCallActivity.contactPersons
+                    : (selectedCallActivity.metadata?.contactPersons || []);
+                  if (participants.length > 1) {
+                    return (
+                      <div className="col-span-2 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10.5px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                            <User className="w-3.5 h-3.5 text-indigo-600" />
+                            <span>Contact Persons Logged ({participants.length})</span>
+                          </span>
+                          <span className="text-[10px] bg-indigo-50 text-indigo-700 font-bold px-2.5 py-0.5 rounded-full border border-indigo-200">
+                            Multi-Person Joint Call
+                          </span>
+                        </div>
+
+                        <div className="space-y-2.5">
+                          {participants.map((p, pIdx) => (
+                            <div
+                              key={pIdx}
+                              className="p-3 rounded-xl bg-slate-50/90 border border-slate-200/90 space-y-2 text-xs"
+                            >
+                              <div className="flex items-center justify-between flex-wrap gap-1">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-[10px] font-bold">
+                                    {pIdx + 1}
+                                  </span>
+                                  <span className="font-bold text-slate-900">{p.name || 'Contact'}</span>
+                                  {p.designation && (
+                                    <span className="text-slate-500 font-medium text-[11px]">
+                                      • {p.designation}
+                                    </span>
+                                  )}
+                                </div>
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                  <CheckCircle2 className="w-2.5 h-2.5 text-emerald-600" />
+                                  {p.outcome || selectedCallActivity.outcome || 'Connected'}
+                                </span>
+                              </div>
+
+                              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[11px] pt-1 border-t border-slate-200/60">
+                                <div>
+                                  <span className="text-slate-400 block text-[9.5px] uppercase font-semibold">Call Type</span>
+                                  <span className="font-semibold text-slate-800">{p.callType || selectedCallActivity.callType || 'Cold Call'}</span>
+                                </div>
+                                <div>
+                                  <span className="text-slate-400 block text-[9.5px] uppercase font-semibold">Duration</span>
+                                  <span className="font-semibold text-slate-800">
+                                    {p.durationMinutes ? `${p.durationMinutes} mins` : '—'}
+                                  </span>
+                                </div>
+                                {p.phone && (
+                                  <div className="flex items-center gap-1">
+                                    <div>
+                                      <span className="text-slate-400 block text-[9.5px] uppercase font-semibold">Phone</span>
+                                      <span className="font-mono font-semibold text-indigo-700 text-[10.5px]">{p.phone}</span>
+                                    </div>
+                                    <a
+                                      href={`tel:${p.phone.replace(/[^0-9+]/g, '')}`}
+                                      className="p-1 ml-auto rounded bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition"
+                                      title="Call"
+                                    >
+                                      <Phone className="w-3 h-3" />
+                                    </a>
+                                  </div>
+                                )}
+                              </div>
+
+                              {p.notes && (
+                                <div className="mt-1.5 p-2 rounded-lg bg-white border border-slate-200 text-slate-700 text-[11px] leading-relaxed">
+                                  <span className="font-semibold text-slate-900 block text-[10px] uppercase text-indigo-900 mb-0.5">Discussion Notes:</span>
+                                  <p className="whitespace-pre-wrap">{p.notes}</p>
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2.5 pt-1">
+                          <div className="p-2.5 rounded-xl bg-white border border-slate-200/80">
+                            <span className="text-[10px] font-semibold text-slate-400 block uppercase tracking-wider">Total Duration</span>
+                            <p className="font-bold text-slate-800 text-xs mt-0.5">
+                              {selectedCallActivity.durationMinutes ? `${selectedCallActivity.durationMinutes} minutes` : '0 min'}
+                            </p>
+                          </div>
+                          <div className="p-2.5 rounded-xl bg-white border border-slate-200/80">
+                            <span className="text-[10px] font-semibold text-slate-400 block uppercase tracking-wider">Representative</span>
+                            <p className="font-bold text-slate-800 text-xs mt-0.5">
+                              {selectedCallActivity.performedByName || (selectedCallActivity.performedBy ? `${selectedCallActivity.performedBy.firstName || ''} ${selectedCallActivity.performedBy.lastName || ''}`.trim() : '') || 'Representative'}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  }
+                  return (
+                    <>
+                      <div className="p-2.5 rounded-xl bg-white border border-slate-200/80">
+                        <span className="text-[10px] font-semibold text-slate-400 block uppercase tracking-wider">Contact Person Reached</span>
+                        <p className="font-bold text-slate-800 text-xs mt-0.5">
+                          {selectedCallActivity.contactPerson || selectedCallActivity.metadata?.contactPerson || record.contactPerson || 'Decision Maker'}
+                          {(selectedCallActivity.contactDesignation || selectedCallActivity.metadata?.contactDesignation) && (
+                            <span className="text-slate-500 font-normal ml-1">
+                              ({selectedCallActivity.contactDesignation || selectedCallActivity.metadata?.contactDesignation})
+                            </span>
+                          )}
+                        </p>
+                      </div>
+                      <div className="p-2.5 rounded-xl bg-white border border-slate-200/80">
+                        <span className="text-[10px] font-semibold text-slate-400 block uppercase tracking-wider">Target Phone</span>
+                        <p className="font-bold text-slate-800 text-xs mt-0.5">
+                          {selectedCallActivity.contactPhone || selectedCallActivity.metadata?.contactPhone || record.mobileNo || record.phone || '—'}
+                        </p>
+                      </div>
+                      <div className="p-2.5 rounded-xl bg-white border border-slate-200/80">
+                        <span className="text-[10px] font-semibold text-slate-400 block uppercase tracking-wider">Call Type</span>
+                        <p className="font-bold text-slate-800 text-xs mt-0.5">
+                          {selectedCallActivity.callType || 'Cold Call'}
+                        </p>
+                      </div>
+                      <div className="p-2.5 rounded-xl bg-white border border-slate-200/80">
+                        <span className="text-[10px] font-semibold text-slate-400 block uppercase tracking-wider">Duration</span>
+                        <p className="font-bold text-slate-800 text-xs mt-0.5">
+                          {selectedCallActivity.durationMinutes ? `${selectedCallActivity.durationMinutes} minutes` : '0 min (Logged)'}
+                        </p>
+                      </div>
+                      <div className="p-2.5 rounded-xl bg-white border border-slate-200/80 col-span-2">
+                        <span className="text-[10px] font-semibold text-slate-400 block uppercase tracking-wider">Representative</span>
+                        <p className="font-bold text-slate-800 text-xs mt-0.5">
+                          {selectedCallActivity.performedByName || (selectedCallActivity.performedBy ? `${selectedCallActivity.performedBy.firstName || ''} ${selectedCallActivity.performedBy.lastName || ''}`.trim() : '') || 'Representative'}
+                        </p>
+                      </div>
+                    </>
+                  );
+                })()}
               </div>
             </div>
 
@@ -2405,6 +2883,529 @@ export const ImportDataDetailPage = ({
               <p className="text-[11px] text-slate-400 mt-1">
                 This note will be logged in the company's status history audit trail.
               </p>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {/* Edit Call Activity Modal */}
+      {isEditActivityModalOpen && editingActivity && (
+        <Modal
+          isOpen={isEditActivityModalOpen}
+          onClose={() => setIsEditActivityModalOpen(false)}
+          title="Edit Call Details"
+          subtitle={`Company: ${record?.companyName || 'Prospect'} • Update call record, outcomes, duration & feedback`}
+          maxWidth="max-w-2xl"
+          footer={
+            <div className="flex items-center justify-between w-full">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsEditActivityModalOpen(false)}
+                disabled={isUpdatingActivity}
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                onClick={handleSaveActivityEdit}
+                disabled={isUpdatingActivity}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold"
+                icon={Check}
+              >
+                {isUpdatingActivity ? 'Saving Changes...' : 'Save Changes'}
+              </Button>
+            </div>
+          }
+        >
+          <form onSubmit={handleSaveActivityEdit} className="space-y-4">
+            {/* If multi-person call */}
+            {editFormData.contactPersons && editFormData.contactPersons.length > 0 ? (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700">
+                    <Users className="w-4 h-4 text-indigo-600" />
+                    <span>Call Participants ({editFormData.contactPersons.length})</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleAddEditPerson}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 transition cursor-pointer shadow-2xs"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Add Participant</span>
+                  </button>
+                </div>
+
+                <div className="space-y-3">
+                  {editFormData.contactPersons.map((person, pIdx) => (
+                    <div
+                      key={pIdx}
+                      className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/90 space-y-3 text-xs"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-indigo-900 flex items-center gap-1.5">
+                          <span className="w-5 h-5 rounded-full bg-indigo-600 text-white flex items-center justify-center text-[10px] font-bold">
+                            {pIdx + 1}
+                          </span>
+                          <span>Person {pIdx + 1} Details</span>
+                        </span>
+                        {editFormData.contactPersons.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveEditPerson(pIdx)}
+                            className="p-1 rounded text-rose-500 hover:text-rose-700 hover:bg-rose-50 transition cursor-pointer"
+                            title="Remove participant"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Name, Designation, Phone */}
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                        <div>
+                          <label className="block text-[10px] font-bold uppercase text-slate-500 mb-0.5">
+                            Name *
+                          </label>
+                          <input
+                            type="text"
+                            value={person.name}
+                            onChange={(e) => handleUpdateEditPerson(pIdx, 'name', e.target.value)}
+                            placeholder="e.g. Monika Sinha"
+                            className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-xs text-slate-800 font-medium focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                            required
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold uppercase text-slate-500 mb-0.5">
+                            Designation
+                          </label>
+                          <input
+                            type="text"
+                            value={person.designation}
+                            onChange={(e) => handleUpdateEditPerson(pIdx, 'designation', e.target.value)}
+                            placeholder="e.g. Director"
+                            className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-xs text-slate-800 font-medium focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold uppercase text-slate-500 mb-0.5">
+                            Phone
+                          </label>
+                          <input
+                            type="text"
+                            value={person.phone}
+                            onChange={(e) => handleUpdateEditPerson(pIdx, 'phone', e.target.value)}
+                            placeholder="e.g. 7903583435"
+                            className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-xs text-slate-800 font-medium focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Call Type & Duration */}
+                      <div className="grid grid-cols-2 gap-2.5">
+                        <div>
+                          <label className="block text-[10px] font-bold uppercase text-slate-500 mb-0.5">
+                            Call Type
+                          </label>
+                          <select
+                            value={person.callType || 'Cold Call'}
+                            onChange={(e) => handleUpdateEditPerson(pIdx, 'callType', e.target.value)}
+                            className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-xs text-slate-800 font-medium focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                          >
+                            <option value="Cold Call">Cold Call</option>
+                            <option value="Discovery / Pitch">Discovery / Pitch</option>
+                            <option value="Follow-up Call">Follow-up Call</option>
+                            <option value="Demo Scheduled">Demo Scheduled</option>
+                            <option value="Commercial Negotiation">Commercial Negotiation</option>
+                            <option value="Closing Call">Closing Call</option>
+                            <option value="Account Check-in">Account Check-in</option>
+                            <option value="Gatekeeper Inquiry">Gatekeeper Inquiry</option>
+                            <option value="Payment Follow-up">Payment Follow-up</option>
+                            <option value="Other">Other (Custom Type)</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold uppercase text-slate-500 mb-0.5">
+                            Duration (Mins)
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            max="180"
+                            value={person.durationMinutes}
+                            onChange={(e) => handleUpdateEditPerson(pIdx, 'durationMinutes', e.target.value)}
+                            className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-xs text-slate-800 font-medium focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                          />
+                        </div>
+                      </div>
+
+                      {person.callType === 'Other' && (
+                        <div>
+                          <label className="block text-[10px] font-bold uppercase text-indigo-900 mb-0.5">
+                            Custom Call Type
+                          </label>
+                          <input
+                            type="text"
+                            value={person.customCallType || ''}
+                            onChange={(e) => handleUpdateEditPerson(pIdx, 'customCallType', e.target.value)}
+                            placeholder="Specify custom call type..."
+                            className="w-full px-2.5 py-1.5 rounded-lg border border-indigo-300 bg-white text-xs text-slate-800 font-medium focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                          />
+                        </div>
+                      )}
+
+                      {/* Outcome */}
+                      <div>
+                        <label className="block text-[10px] font-bold uppercase text-slate-500 mb-0.5">
+                          Call Outcome
+                        </label>
+                        <select
+                          value={person.outcome || 'Connected - Interested'}
+                          onChange={(e) => handleUpdateEditPerson(pIdx, 'outcome', e.target.value)}
+                          className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-xs text-slate-800 font-medium focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        >
+                          <option value="Connected - Interested">Connected - Interested / Warm</option>
+                          <option value="Connected - Follow-up Requested">Connected - Follow-up Requested</option>
+                          <option value="Connected - Demo Scheduled">Connected - Demo Scheduled</option>
+                          <option value="Connected - Shared Info on WhatsApp">Connected - Shared Info on WhatsApp</option>
+                          <option value="Connected - Not Interested">Connected - Not Interested</option>
+                          <option value="Connected - Gatekeeper Blocked">Connected - Gatekeeper Blocked</option>
+                          <option value="No Answer / Ringing">No Answer / Ringing</option>
+                          <option value="Busy / Call Dropped">Busy / Call Dropped</option>
+                          <option value="Wrong Number / Invalid">Wrong Number / Invalid</option>
+                          <option value="Other">Other (Custom Outcome)</option>
+                        </select>
+                      </div>
+
+                      {person.outcome === 'Other' && (
+                        <div>
+                          <label className="block text-[10px] font-bold uppercase text-indigo-900 mb-0.5">
+                            Custom Call Outcome
+                          </label>
+                          <input
+                            type="text"
+                            value={person.customOutcome || ''}
+                            onChange={(e) => handleUpdateEditPerson(pIdx, 'customOutcome', e.target.value)}
+                            placeholder="Specify custom outcome..."
+                            className="w-full px-2.5 py-1.5 rounded-lg border border-indigo-300 bg-white text-xs text-slate-800 font-medium focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                          />
+                        </div>
+                      )}
+
+                      {/* Notes */}
+                      <div>
+                        <label className="block text-[10px] font-bold uppercase text-slate-500 mb-0.5">
+                          Discussion Notes
+                        </label>
+                        <textarea
+                          rows={2}
+                          value={person.notes || ''}
+                          onChange={(e) => handleUpdateEditPerson(pIdx, 'notes', e.target.value)}
+                          placeholder="Feedback or key discussion points with this person..."
+                          className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              /* Single person call */
+              <div className="space-y-3 text-xs">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase text-slate-500 mb-0.5">
+                      Contact Person
+                    </label>
+                    <input
+                      type="text"
+                      value={editFormData.contactPerson || ''}
+                      onChange={(e) => setEditFormData({ ...editFormData, contactPerson: e.target.value })}
+                      placeholder="e.g. Rahul Sharma"
+                      className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-xs text-slate-800 font-medium focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase text-slate-500 mb-0.5">
+                      Designation
+                    </label>
+                    <input
+                      type="text"
+                      value={editFormData.contactDesignation || ''}
+                      onChange={(e) => setEditFormData({ ...editFormData, contactDesignation: e.target.value })}
+                      placeholder="e.g. HR Manager"
+                      className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-xs text-slate-800 font-medium focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase text-slate-500 mb-0.5">
+                      Phone Number
+                    </label>
+                    <input
+                      type="text"
+                      value={editFormData.contactPhone || ''}
+                      onChange={(e) => setEditFormData({ ...editFormData, contactPhone: e.target.value })}
+                      placeholder="e.g. 9876543210"
+                      className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-xs text-slate-800 font-medium focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2.5">
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase text-slate-500 mb-0.5">
+                      Call Type
+                    </label>
+                    <select
+                      value={editFormData.callType || 'Cold Call'}
+                      onChange={(e) => setEditFormData({ ...editFormData, callType: e.target.value })}
+                      className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-xs text-slate-800 font-medium focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    >
+                      <option value="Cold Call">Cold Call</option>
+                      <option value="Discovery / Pitch">Discovery / Pitch</option>
+                      <option value="Follow-up Call">Follow-up Call</option>
+                      <option value="Demo Scheduled">Demo Scheduled</option>
+                      <option value="Commercial Negotiation">Commercial Negotiation</option>
+                      <option value="Closing Call">Closing Call</option>
+                      <option value="Account Check-in">Account Check-in</option>
+                      <option value="Gatekeeper Inquiry">Gatekeeper Inquiry</option>
+                      <option value="Payment Follow-up">Payment Follow-up</option>
+                      <option value="Other">Other (Custom Type)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase text-slate-500 mb-0.5">
+                      Duration (Mins)
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="180"
+                      value={editFormData.durationMinutes || 0}
+                      onChange={(e) => setEditFormData({ ...editFormData, durationMinutes: e.target.value })}
+                      className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-xs text-slate-800 font-medium focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    />
+                  </div>
+                </div>
+
+                {editFormData.callType === 'Other' && (
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase text-indigo-900 mb-0.5">
+                      Custom Call Type
+                    </label>
+                    <input
+                      type="text"
+                      value={editFormData.customCallType || ''}
+                      onChange={(e) => setEditFormData({ ...editFormData, customCallType: e.target.value })}
+                      placeholder="Specify custom call type..."
+                      className="w-full px-2.5 py-1.5 rounded-lg border border-indigo-300 bg-white text-xs text-slate-800 font-medium focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    />
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-[10px] font-bold uppercase text-slate-500 mb-0.5">
+                    Call Outcome
+                  </label>
+                  <select
+                    value={editFormData.outcome || 'Connected - Interested'}
+                    onChange={(e) => setEditFormData({ ...editFormData, outcome: e.target.value })}
+                    className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-xs text-slate-800 font-medium focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  >
+                    <option value="Connected - Interested">Connected - Interested / Warm</option>
+                    <option value="Connected - Follow-up Requested">Connected - Follow-up Requested</option>
+                    <option value="Connected - Demo Scheduled">Connected - Demo Scheduled</option>
+                    <option value="Connected - Shared Info on WhatsApp">Connected - Shared Info on WhatsApp</option>
+                    <option value="Connected - Not Interested">Connected - Not Interested</option>
+                    <option value="Connected - Gatekeeper Blocked">Connected - Gatekeeper Blocked</option>
+                    <option value="No Answer / Ringing">No Answer / Ringing</option>
+                    <option value="Busy / Call Dropped">Busy / Call Dropped</option>
+                    <option value="Wrong Number / Invalid">Wrong Number / Invalid</option>
+                    <option value="Other">Other (Custom Outcome)</option>
+                  </select>
+                </div>
+
+                {editFormData.outcome === 'Other' && (
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase text-indigo-900 mb-0.5">
+                      Custom Call Outcome
+                    </label>
+                    <input
+                      type="text"
+                      value={editFormData.customOutcome || ''}
+                      onChange={(e) => setEditFormData({ ...editFormData, customOutcome: e.target.value })}
+                      placeholder="Specify custom outcome..."
+                      className="w-full px-2.5 py-1.5 rounded-lg border border-indigo-300 bg-white text-xs text-slate-800 font-medium focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    />
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-[10px] font-bold uppercase text-slate-500 mb-0.5">
+                    Discussion Notes
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={editFormData.description || ''}
+                    onChange={(e) => setEditFormData({ ...editFormData, description: e.target.value })}
+                    placeholder="Feedback or key discussion points..."
+                    className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  />
+                </div>
+              </div>
+            )}
+          </form>
+        </Modal>
+      )}
+
+      {/* Edit Contacts Modal */}
+      {isEditContactsModalOpen && (
+        <Modal
+          isOpen={isEditContactsModalOpen}
+          onClose={() => !isSavingContacts && setIsEditContactsModalOpen(false)}
+          title="Edit Contact Persons"
+          subtitle={`Company: ${record?.companyName || 'Company'} • Manage all key decision makers and contact persons`}
+          maxWidth="max-w-2xl"
+          footer={
+            <div className="flex items-center justify-between w-full">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsEditContactsModalOpen(false)}
+                disabled={isSavingContacts}
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                onClick={handleSaveContacts}
+                disabled={isSavingContacts}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold"
+                icon={Check}
+              >
+                {isSavingContacts ? 'Saving Changes...' : 'Save Contacts'}
+              </Button>
+            </div>
+          }
+        >
+          <form onSubmit={handleSaveContacts} className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700">
+                <Users className="w-4 h-4 text-indigo-600" />
+                <span>Contact Persons ({editContactsList.length})</span>
+              </div>
+              <button
+                type="button"
+                onClick={handleAddEditContact}
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 transition cursor-pointer shadow-2xs"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Add Contact Person</span>
+              </button>
+            </div>
+
+            <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
+              {editContactsList.map((contact, idx) => (
+                <div
+                  key={idx}
+                  className={`p-3.5 rounded-xl border space-y-3 text-xs transition ${
+                    contact.isPrimary
+                      ? 'bg-indigo-50/40 border-indigo-200 shadow-2xs'
+                      : 'bg-slate-50 border-slate-200/90'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="w-5 h-5 rounded-full bg-indigo-600 text-white flex items-center justify-center text-[10px] font-bold">
+                        {idx + 1}
+                      </span>
+                      <span className="font-bold text-slate-900">
+                        {contact.contactPerson ? contact.contactPerson : `Person ${idx + 1}`}
+                      </span>
+                      {contact.isPrimary ? (
+                        <span className="px-2 py-0.5 rounded-full text-[9.5px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                          Primary Contact
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => handleSetPrimaryContact(idx)}
+                          className="text-[10px] font-semibold text-indigo-600 hover:text-indigo-800 hover:underline cursor-pointer"
+                        >
+                          Make Primary
+                        </button>
+                      )}
+                    </div>
+                    {editContactsList.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveContactEntry(idx)}
+                        className="p-1 rounded text-rose-500 hover:text-rose-700 hover:bg-rose-50 transition cursor-pointer"
+                        title="Remove contact person"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">
+                        Contact Person Name *
+                      </label>
+                      <input
+                        type="text"
+                        value={contact.contactPerson || ''}
+                        onChange={(e) => handleUpdateContactEntry(idx, 'contactPerson', e.target.value)}
+                        placeholder="e.g. Rahul Verma"
+                        className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-xs text-slate-800 font-medium focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">
+                        Designation / Role
+                      </label>
+                      <input
+                        type="text"
+                        value={contact.designation || ''}
+                        onChange={(e) => handleUpdateContactEntry(idx, 'designation', e.target.value)}
+                        placeholder="e.g. VP Sales / Director"
+                        className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-xs text-slate-800 font-medium focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">
+                        Mobile Number
+                      </label>
+                      <input
+                        type="text"
+                        value={contact.mobileNo || ''}
+                        onChange={(e) => handleUpdateContactEntry(idx, 'mobileNo', e.target.value)}
+                        placeholder="e.g. +91 98200 12345"
+                        className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-xs text-slate-800 font-medium focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">
+                        Email Address
+                      </label>
+                      <input
+                        type="email"
+                        value={contact.emailId || ''}
+                        onChange={(e) => handleUpdateContactEntry(idx, 'emailId', e.target.value)}
+                        placeholder="e.g. rahul@company.com"
+                        className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-xs text-slate-800 font-medium focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
           </form>
         </Modal>
