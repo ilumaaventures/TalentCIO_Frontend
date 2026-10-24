@@ -3999,11 +3999,11 @@ export const ImportDataPage = ({ onNavigate }) => {
               {/* Main Table */}
               <div className="bg-white rounded-xl border border-slate-200/90 shadow-xs">
                 <div className="overflow-x-auto max-h-[600px] min-h-[260px]">
-                  <table className="w-full text-left border-collapse text-xs">
+                  <table className="w-full min-w-[1280px] text-left border-collapse text-xs">
                     {/* Grey Table Header */}
                     <thead className="bg-slate-100 text-slate-700 font-bold uppercase tracking-wider sticky top-0 z-10 border-b border-slate-200">
                       <tr>
-                        <th className="p-3 w-10 text-center">
+                        <th className="p-3 w-10 min-w-[40px] max-w-[40px] text-center">
                           <input
                             type="checkbox"
                             checked={isAllSelected}
@@ -4012,14 +4012,14 @@ export const ImportDataPage = ({ onNavigate }) => {
                             title="Select/Deselect All Visible"
                           />
                         </th>
-                        <th className="p-3 border-l border-slate-200 text-center w-12 whitespace-nowrap">S.NO</th>
-                        <th className="p-3 border-l border-slate-200 whitespace-nowrap w-[210px] min-w-[180px] max-w-[220px]">Company Name</th>
-                        <th className="p-3 border-l border-slate-200 whitespace-nowrap w-[130px] min-w-[110px] max-w-[140px]">GSTIN</th>
-                        <th className="p-3 border-l border-slate-200 whitespace-nowrap w-[150px] min-w-[130px] max-w-[160px]">Industry</th>
-                        <th className="p-3 border-l border-slate-200 whitespace-nowrap w-[140px] min-w-[120px] max-w-[150px]">Source</th>
-                        <th className="p-3 border-l border-slate-200 whitespace-nowrap">Status</th>
+                        <th className="p-3 border-l border-slate-200 text-center w-14 min-w-[56px] whitespace-nowrap">S.NO</th>
+                        <th className="p-3 border-l border-slate-200 whitespace-nowrap w-[240px] min-w-[210px]">Company Name</th>
+                        <th className="p-3 border-l border-slate-200 whitespace-nowrap w-[130px] min-w-[120px]">GSTIN</th>
+                        <th className="p-3 border-l border-slate-200 whitespace-nowrap w-[130px] min-w-[120px] max-w-[140px]">Industry</th>
+                        <th className="p-3 border-l border-slate-200 whitespace-nowrap w-[160px] min-w-[140px]">Source</th>
+                        <th className="p-3 border-l border-slate-200 whitespace-nowrap w-[180px] min-w-[170px]">Status</th>
                         <th
-                          className="p-3 border-l border-slate-200 whitespace-nowrap cursor-pointer select-none hover:bg-slate-200 transition-colors"
+                          className="p-3 border-l border-slate-200 whitespace-nowrap cursor-pointer select-none hover:bg-slate-200 transition-colors w-[140px] min-w-[130px]"
                           onClick={() => setSortDirection((prev) => (prev === 'desc' ? 'asc' : 'desc'))}
                           title="Click to toggle Date Sort Ascending/Descending"
                         >
@@ -4032,8 +4032,8 @@ export const ImportDataPage = ({ onNavigate }) => {
                             )}
                           </div>
                         </th>
-                        <th className="p-3 border-l border-slate-200 whitespace-nowrap">Imported By</th>
-                        <th className="p-3 border-l border-slate-200 text-center w-16 whitespace-nowrap">Actions</th>
+                        <th className="p-3 border-l border-slate-200 whitespace-nowrap w-[160px] min-w-[140px]">Imported By</th>
+                        <th className="p-3 border-l border-slate-200 text-center w-16 min-w-[64px] whitespace-nowrap">Actions</th>
                       </tr>
                     </thead>
 
@@ -4065,7 +4065,7 @@ export const ImportDataPage = ({ onNavigate }) => {
                               className={`hover:bg-slate-50/80 transition-colors cursor-pointer group ${isSelected ? 'bg-indigo-50/40' : ''}`}
                               onClick={() => setSelectedDetailRecord(row)}
                             >
-                              <td className="p-3 text-center" onClick={(e) => e.stopPropagation()}>
+                              <td className="p-3 text-center w-10 min-w-[40px] max-w-[40px]" onClick={(e) => e.stopPropagation()}>
                                 <input
                                   type="checkbox"
                                   checked={isSelected}
@@ -4073,11 +4073,11 @@ export const ImportDataPage = ({ onNavigate }) => {
                                   className="rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer w-4 h-4"
                                 />
                               </td>
-                              <td className="p-3 border-l border-slate-200 text-center font-semibold text-slate-500 whitespace-nowrap">
+                              <td className="p-3 border-l border-slate-200 text-center font-semibold text-slate-500 whitespace-nowrap w-14 min-w-[56px]">
                                 {startEntry + idx}
                               </td>
-                              <td className="p-3 border-l border-slate-200 font-bold text-slate-900 w-[210px] min-w-[180px] max-w-[220px]">
-                                <div className="w-full max-w-[210px] flex flex-col gap-1.5 py-0.5">
+                              <td className="p-3 border-l border-slate-200 font-bold text-slate-900 w-[240px] min-w-[210px]">
+                                <div className="w-full flex flex-col gap-1.5 py-0.5">
                                   <div className="flex items-start gap-1.5">
                                     <Building2 className="w-4 h-4 text-slate-400 group-hover:text-indigo-600 transition-colors shrink-0 mt-0.5" />
                                     <span className="font-bold text-slate-900 group-hover:text-indigo-600 transition-colors whitespace-normal break-words leading-snug">
@@ -4097,32 +4097,24 @@ export const ImportDataPage = ({ onNavigate }) => {
                                   )}
                                 </div>
                               </td>
-                              <td className="p-3 border-l border-slate-200 text-slate-700 whitespace-nowrap font-mono w-[130px] min-w-[110px] max-w-[140px]">
+                              <td className="p-3 border-l border-slate-200 text-slate-700 whitespace-nowrap font-mono w-[130px] min-w-[120px]">
                                 {row.gstin || '—'}
                               </td>
-                              <td className="p-3 border-l border-slate-200 text-slate-700 w-[150px] min-w-[130px] max-w-[160px]">
-                                <div className="w-full max-w-[145px]">
-                                  {row.industry ? (
-                                    <Badge
-                                      variant="neutral"
-                                      size="sm"
-                                      className="whitespace-normal break-words leading-snug py-1 px-2.5 text-center justify-center flex-wrap"
-                                    >
-                                      {row.industry}
-                                    </Badge>
-                                  ) : (
-                                    '—'
-                                  )}
+                              <td className="p-3 border-l border-slate-200 text-slate-700 w-[130px] min-w-[120px] max-w-[140px]">
+                                <div className="w-full">
+                                  <span className="text-slate-800 font-medium whitespace-normal break-words leading-snug block text-xs">
+                                    {row.industry || '—'}
+                                  </span>
                                 </div>
                               </td>
-                              <td className="p-3 border-l border-slate-200 text-slate-700 font-medium w-[140px] min-w-[120px] max-w-[150px]">
-                                <div className="w-full max-w-[135px]">
-                                  <span className="whitespace-normal break-words leading-snug block">
+                              <td className="p-3 border-l border-slate-200 text-slate-700 font-medium w-[160px] min-w-[140px]">
+                                <div className="w-full">
+                                  <span className="whitespace-normal break-words leading-relaxed block text-xs">
                                     {row.source || row.leadSource || '—'}
                                   </span>
                                 </div>
                               </td>
-                              <td className="p-3 border-l border-slate-200 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                              <td className="p-3 border-l border-slate-200 w-[180px] min-w-[170px] whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                                 {row.isDuplicate ? (
                                   <span
                                     className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200"
@@ -4150,7 +4142,7 @@ export const ImportDataPage = ({ onNavigate }) => {
                                     </button>
                                   </div>
                                 ) : (
-                                  <div className="relative inline-flex items-center gap-1.5">
+                                  <div className="relative inline-flex items-center gap-1.5 flex-nowrap">
                                     <div className="relative inline-flex items-center">
                                       <select
                                         value={row.status || row.leadStatus || 'New'}
@@ -4172,7 +4164,7 @@ export const ImportDataPage = ({ onNavigate }) => {
                                         type="button"
                                         onClick={(e) => {
                                           e.stopPropagation();
-                                          handleRowClick(row);
+                                          handleOpenHistory(row);
                                         }}
                                         className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100 transition shrink-0"
                                         title={`Status changed ${row.statusHistory.length} time(s). Latest: from "${row.statusHistory[0]?.previousStatus || 'New'}" to "${row.statusHistory[0]?.status}". Click to view company history.`}
@@ -4184,7 +4176,7 @@ export const ImportDataPage = ({ onNavigate }) => {
                                   </div>
                                 )}
                               </td>
-                              <td className="p-3 border-l border-slate-200 text-slate-600 whitespace-nowrap font-medium">
+                              <td className="p-3 border-l border-slate-200 text-slate-600 whitespace-nowrap font-medium w-[140px] min-w-[130px]">
                                 {(() => {
                                   const targetDate = dateFilterType === 'createdAt'
                                     ? (row.createdAt || row.date)
@@ -4204,17 +4196,17 @@ export const ImportDataPage = ({ onNavigate }) => {
                                   );
                                 })()}
                               </td>
-                              <td className="p-3 border-l border-slate-200 text-slate-700 whitespace-nowrap">
+                              <td className="p-3 border-l border-slate-200 text-slate-700 whitespace-nowrap w-[160px] min-w-[140px]">
                                 <div className="flex items-center gap-1.5">
                                   <div className="w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 text-[11px] font-bold flex items-center justify-center shrink-0 uppercase">
                                     {(row.importedBy || 'U').charAt(0)}
                                   </div>
-                                  <span className="font-medium text-slate-800 text-xs truncate max-w-[130px]" title={row.importedBy || '—'}>
+                                  <span className="font-medium text-slate-800 text-xs truncate max-w-[120px]" title={row.importedBy || '—'}>
                                     {row.importedBy || '—'}
                                   </span>
                                 </div>
                               </td>
-                              <td className="p-3 border-l border-slate-200 text-center whitespace-nowrap relative" onClick={(e) => e.stopPropagation()}>
+                              <td className="p-3 border-l border-slate-200 text-center whitespace-nowrap w-16 min-w-[64px] relative" onClick={(e) => e.stopPropagation()}>
                                 <div className="relative inline-flex items-center justify-center">
                                   <button
                                     type="button"
