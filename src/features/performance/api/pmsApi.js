@@ -24,6 +24,25 @@ export const pmsApi = {
   submitKpiEvidence: (id, data) => api.post(`/performance/kpis/${id}/evidence`, data),
   verifyKpi: (id, data) => api.post(`/performance/kpis/${id}/verify`, data),
 
+  // Department-wise KPI Templates & Assignment
+  getKpiTemplates: (params) => api.get('/performance/kpi-templates', { params }),
+  getKpiTemplate: (id) => api.get(`/performance/kpi-templates/${id}`),
+  createKpiTemplate: (data) => api.post('/performance/kpi-templates', data),
+  updateKpiTemplate: (id, data) => api.put(`/performance/kpi-templates/${id}`, data),
+  deleteKpiTemplate: (id) => api.delete(`/performance/kpi-templates/${id}`),
+  changeKpiTemplateStatus: (id, status) => api.patch(`/performance/kpi-templates/${id}/status`, { status }),
+
+  // KRA-KPI Linkage
+  getKpisByKra: (kraId) => api.get(`/performance/kras/${kraId}/kpis`),
+
+  // Employee KPI Assignments & Evaluation
+  assignKpisToEmployees: (data) => api.post('/performance/kpis/assign', data),
+  getAssignedKpis: (params) => api.get('/performance/kpis/assignments', { params }),
+  evaluateAssignedKpi: (id, data) => api.put(`/performance/kpis/assignments/${id}/evaluation`, data),
+
+  // Performance Options Metadata
+  getPmsMetadata: (params) => api.get('/performance/meta/options', { params }),
+
   // Goals
   getGoals: (params) => api.get('/performance/goals', { params }),
   getGoalTree: (params) => api.get('/performance/goals/tree', { params }),
@@ -72,8 +91,14 @@ export const pmsApi = {
   createDevPlan: (data) => api.post('/performance/dev-plans', data),
   updateDevObjective: (id, data) => api.patch(`/performance/dev-plans/${id}/objective`, data),
 
-  // Analytics & Export
+  // Analytics, Reports & Automated Reminders
   getDashboardMetrics: (params) => api.get('/performance/analytics/dashboard', { params }),
+  getReportData: (reportType, params) => api.get(`/performance/analytics/reports/${reportType}`, { params }),
+  getReportExportUrl: (reportType, format = 'xlsx', params = {}) => {
+    const searchParams = new URLSearchParams({ format, ...params });
+    return `${api.defaults.baseURL || ''}/performance/analytics/reports/${reportType}?${searchParams.toString()}`;
+  },
+  triggerReminders: (data) => api.post('/performance/analytics/reminders/trigger', data),
   exportAppraisalsUrl: (cycleId) => `${api.defaults.baseURL || ''}/performance/analytics/export?cycleId=${cycleId || ''}`,
 
   // Settings

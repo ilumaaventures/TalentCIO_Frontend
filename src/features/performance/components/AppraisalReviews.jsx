@@ -23,6 +23,12 @@ import {
   Building,
   UserCheck,
   GitBranch,
+  Target,
+  ExternalLink,
+  Sparkles,
+  Info,
+  CheckSquare,
+  TrendingUp,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '@/features/auth/context/AuthContext';
@@ -51,12 +57,16 @@ export default function AppraisalReviews({ defaultAppraisalId, defaultScope = 's
   const [revisionTarget, setRevisionTarget] = useState('self_review');
   const [revisionReason, setRevisionReason] = useState('');
 
+  // Validation error tracking for scorecard fields
+  const [validationErrors, setValidationErrors] = useState({});
+
   // Form states for active review
   const [selfForm, setSelfForm] = useState({
     accomplishments: '',
     challenges: '',
     careerAspirations: '',
     kraRatings: [],
+    kpiRatings: [],
     competencyRatings: [],
   });
 
@@ -67,6 +77,7 @@ export default function AppraisalReviews({ defaultAppraisalId, defaultScope = 's
     promotionRecommendation: { recommended: false, proposedDesignation: '', notes: '' },
     trainingNeeds: '',
     kraRatings: [],
+    kpiRatings: [],
     competencyRatings: [],
   });
 
@@ -134,6 +145,66 @@ export default function AppraisalReviews({ defaultAppraisalId, defaultScope = 's
     }
   };
 
+  const RATING_SCALE = [
+    { value: 1, label: 'Needs Improvement', desc: '<70%', color: 'rose' },
+    { value: 2, label: 'Partially Meets', desc: '70-84%', color: 'amber' },
+    { value: 3, label: 'Meets Expectations', desc: '85-99%', color: 'slate' },
+    { value: 4, label: 'Exceeds Expectations', desc: '100-114%', color: 'blue' },
+    { value: 5, label: 'Outstanding', desc: '≥115%', color: 'emerald' },
+  ];
+
+  const calculatePreview = (type, direction, target, actual) => {
+    if (actual === '' || actual === null || actual === undefined) return null;
+    if (type === 'boolean' || type === 'yes_no') {
+      const isYes = actual === 1 || actual === '1' || actual === true || actual === 'yes';
+      return isYes ? 100 : 0;
+    }
+    const t = Number(target);
+    const a = Number(actual);
+    if (isNaN(t) || isNaN(a) || t <= 0) return 0;
+    let pct = 0;
+    if (direction === 'lower_is_better') {
+      pct = a <= 0 ? 100 : Math.round((t / a) * 100);
+    } else {
+      pct = Math.round((a / t) * 100);
+    }
+    return Math.min(Math.max(pct, 0), 200);
+  };
+
+  const getRatingBandInfo = (rating) => {
+    switch (Number(rating)) {
+      case 5:
+        return { label: 'Outstanding (5/5)', badgeClass: 'bg-emerald-100 text-emerald-800 border-emerald-200' };
+      case 4:
+        return { label: 'Exceeds Expectations (4/5)', badgeClass: 'bg-blue-100 text-blue-800 border-blue-200' };
+      case 3:
+        return { label: 'Meets Expectations (3/5)', badgeClass: 'bg-slate-100 text-slate-800 border-slate-200' };
+      case 2:
+        return { label: 'Partially Meets (2/5)', badgeClass: 'bg-amber-100 text-amber-800 border-amber-200' };
+      case 1:
+        return { label: 'Needs Improvement (1/5)', badgeClass: 'bg-rose-100 text-rose-800 border-rose-200' };
+      default:
+        return { label: 'Unrated', badgeClass: 'bg-slate-50 text-slate-400 border-slate-200' };
+    }
+  };
+
+  const computeManagerOverallPreview = () => {
+    const kpis = managerForm.kpiRatings || [];
+    if (kpis.length === 0) return null;
+    let totalWeight = 0;
+    let weightedSum = 0;
+    kpis.forEach((k) => {
+      const w = Number(k.weightage) || 1;
+      const r = Number(k.managerRating) || 0;
+      if (r > 0) {
+        weightedSum += r * w;
+        totalWeight += w;
+      }
+    });
+    if (totalWeight === 0) return null;
+    return (weightedSum / totalWeight).toFixed(2);
+  };
+
   const loadAppraisalDetails = async (id) => {
     try {
       const res = await pmsApi.getAppraisal(id);
@@ -141,11 +212,121 @@ export default function AppraisalReviews({ defaultAppraisalId, defaultScope = 's
         const app = res.data.data;
         setSelectedAppraisal(app);
 
+        const assignedKpis = app.assignedKpis || [];
+        const existingSelfRatings = app.selfAppraisal?.kpiRatings || [];
+        const existingManagerRatings = app.managerAppraisal?.kpiRatings || [];
+
+        const initialSelfKpis = assignedKpis.length > 0
+          ? assignedKpis.map((kpi) => {
+              const found = existingSelfRatings.find(
+                (r) => (r.kpiId && (r.kpiId._id || r.kpiId).toString() === kpi._id.toString()) || (r.code && r.code === kpi.code)
+              );
+              return {
+                kpiId: kpi._id,
+                kraId: kpi.kraId?._id || kpi.kraId || '',
+                kraTitle: kpi.kraId?.title || 'Core Responsibilities',
+                title: kpi.title,
+                code: kpi.code || '',
+                description: kpi.description || '',
+                targetValue: kpi.targetValue,
+                unit: kpi.unit || '',
+                measurementType: kpi.measurementType || 'numeric',
+                measurementDirection: kpi.measurementDirection || 'higher_is_better',
+                weightage: kpi.weightage || 0,
+                actualValue: found?.actualValue !== undefined ? found.actualValue : (kpi.actualValue !== undefined ? kpi.actualValue : ''),
+                selfRating: found?.selfRating || 0,
+                achievementPercent: found?.achievementPercent || 0,
+                comments: found?.comments || '',
+                evidenceUrl: found?.evidenceUrl || '',
+                evidenceNote: found?.evidenceNote || '',
+              };
+            })
+          : existingSelfRatings.map((r) => ({
+              kpiId: r.kpiId?._id || r.kpiId || '',
+              kraId: r.kraId?._id || r.kraId || '',
+              kraTitle: 'Core Responsibilities',
+              title: r.title || 'Assigned KPI',
+              code: r.code || '',
+              description: r.description || '',
+              targetValue: r.targetValue,
+              unit: r.unit || '',
+              measurementType: r.measurementType || 'numeric',
+              measurementDirection: r.measurementDirection || 'higher_is_better',
+              weightage: r.weightage || 0,
+              actualValue: r.actualValue !== undefined ? r.actualValue : '',
+              selfRating: r.selfRating || 0,
+              achievementPercent: r.achievementPercent || 0,
+              comments: r.comments || '',
+              evidenceUrl: r.evidenceUrl || '',
+              evidenceNote: r.evidenceNote || '',
+            }));
+
+        const initialManagerKpis = assignedKpis.length > 0
+          ? assignedKpis.map((kpi) => {
+              const foundMgr = existingManagerRatings.find(
+                (r) => (r.kpiId && (r.kpiId._id || r.kpiId).toString() === kpi._id.toString()) || (r.code && r.code === kpi.code)
+              );
+              const foundSelf = existingSelfRatings.find(
+                (r) => (r.kpiId && (r.kpiId._id || r.kpiId).toString() === kpi._id.toString()) || (r.code && r.code === kpi.code)
+              );
+              return {
+                kpiId: kpi._id,
+                kraId: kpi.kraId?._id || kpi.kraId || '',
+                kraTitle: kpi.kraId?.title || 'Core Responsibilities',
+                title: kpi.title,
+                code: kpi.code || '',
+                description: kpi.description || '',
+                targetValue: kpi.targetValue,
+                unit: kpi.unit || '',
+                measurementType: kpi.measurementType || 'numeric',
+                measurementDirection: kpi.measurementDirection || 'higher_is_better',
+                weightage: kpi.weightage || 0,
+                // Employee reported inputs (read-only for evaluator)
+                employeeActualValue: foundSelf?.actualValue !== undefined ? foundSelf.actualValue : '',
+                employeeSelfRating: foundSelf?.selfRating || 0,
+                employeeAchievementPercent: foundSelf?.achievementPercent || 0,
+                employeeComments: foundSelf?.comments || '',
+                employeeEvidenceUrl: foundSelf?.evidenceUrl || '',
+                employeeEvidenceNote: foundSelf?.evidenceNote || '',
+                // Manager evaluation fields
+                verifiedActualValue: foundMgr?.verifiedActualValue !== undefined
+                  ? foundMgr.verifiedActualValue
+                  : (foundSelf?.actualValue !== undefined ? foundSelf.actualValue : ''),
+                evidenceVerified: foundMgr?.evidenceVerified !== undefined ? foundMgr.evidenceVerified : false,
+                managerRating: foundMgr?.managerRating || 0,
+                managerComments: foundMgr?.managerComments || '',
+              };
+            })
+          : existingManagerRatings.map((r) => ({
+              kpiId: r.kpiId?._id || r.kpiId || '',
+              kraId: r.kraId?._id || r.kraId || '',
+              kraTitle: 'Core Responsibilities',
+              title: r.title || 'Assigned KPI',
+              code: r.code || '',
+              description: r.description || '',
+              targetValue: r.targetValue,
+              unit: r.unit || '',
+              measurementType: r.measurementType || 'numeric',
+              measurementDirection: r.measurementDirection || 'higher_is_better',
+              weightage: r.weightage || 0,
+              employeeActualValue: '',
+              employeeSelfRating: 0,
+              employeeAchievementPercent: 0,
+              employeeComments: '',
+              employeeEvidenceUrl: '',
+              employeeEvidenceNote: '',
+              verifiedActualValue: r.verifiedActualValue !== undefined ? r.verifiedActualValue : '',
+              evidenceVerified: r.evidenceVerified !== undefined ? r.evidenceVerified : false,
+              managerRating: r.managerRating || 0,
+              managerComments: r.managerComments || '',
+            }));
+
         setSelfForm({
           accomplishments: app.selfAppraisal?.accomplishments || '',
           challenges: app.selfAppraisal?.challenges || '',
           careerAspirations: app.selfAppraisal?.careerAspirations || '',
           kraRatings: app.selfAppraisal?.kraRatings || [],
+          kpiRatings: initialSelfKpis,
           competencyRatings: app.selfAppraisal?.competencyRatings || [],
         });
 
@@ -153,9 +334,10 @@ export default function AppraisalReviews({ defaultAppraisalId, defaultScope = 's
           strengths: app.managerAppraisal?.strengths || '',
           areasOfImprovement: app.managerAppraisal?.areasOfImprovement || '',
           overallComments: app.managerAppraisal?.overallComments || '',
-          promotionRecommendation: app.managerAppraisal?.promotionRecommendation || { recommended: false },
+          promotionRecommendation: app.managerAppraisal?.promotionRecommendation || { recommended: false, proposedDesignation: '', notes: '' },
           trainingNeeds: (app.managerAppraisal?.trainingNeeds || []).join(', '),
           kraRatings: app.managerAppraisal?.kraRatings || [],
+          kpiRatings: initialManagerKpis,
           competencyRatings: app.managerAppraisal?.competencyRatings || [],
         });
 
@@ -170,6 +352,7 @@ export default function AppraisalReviews({ defaultAppraisalId, defaultScope = 's
         });
 
         setFinalApprovalComments(app.finalApproval?.comments || '');
+        setValidationErrors({});
 
         if (activeTab === 'self') setDrawerTab('self_form');
         else if (activeTab === 'dept') setDrawerTab('dept_form');
@@ -185,6 +368,32 @@ export default function AppraisalReviews({ defaultAppraisalId, defaultScope = 's
   };
 
   const handleSaveSelf = async (isSubmit = false) => {
+    if (isSubmit) {
+      const errors = {};
+      const kpis = selfForm.kpiRatings || [];
+      if (kpis.length === 0) {
+        toast.error('No assigned KPIs found for this appraisal.');
+        return;
+      }
+      kpis.forEach((kpi, idx) => {
+        if (kpi.actualValue === '' || kpi.actualValue === null || kpi.actualValue === undefined) {
+          errors[`kpi_${idx}_actual`] = 'Actual value is required';
+        }
+        if (!kpi.selfRating || kpi.selfRating < 1 || kpi.selfRating > 5) {
+          errors[`kpi_${idx}_rating`] = 'Self-rating (1-5) is required';
+        }
+      });
+      if (Object.keys(errors).length > 0) {
+        setValidationErrors(errors);
+        toast.error('Please fill in actual achievement and self-ratings (1-5) for all assigned KPIs.');
+        return;
+      }
+      const confirmed = window.confirm(
+        'Are you sure you want to submit your self-appraisal? Once submitted, it will be locked and routed to your reporting manager for evaluation.'
+      );
+      if (!confirmed) return;
+    }
+
     try {
       setSaving(true);
       const res = await pmsApi.saveSelfAppraisal(selectedAppraisal._id, {
@@ -194,6 +403,7 @@ export default function AppraisalReviews({ defaultAppraisalId, defaultScope = 's
       if (res.data?.success) {
         toast.success(isSubmit ? 'Self-appraisal submitted for review' : 'Draft saved');
         setSelectedAppraisal(res.data.data);
+        setValidationErrors({});
         fetchAppraisals();
         if (isSubmit) setDrawerOpen(false);
       }
@@ -205,6 +415,29 @@ export default function AppraisalReviews({ defaultAppraisalId, defaultScope = 's
   };
 
   const handleSaveManager = async (isSubmit = false) => {
+    if (isSubmit) {
+      const errors = {};
+      const kpis = managerForm.kpiRatings || [];
+      if (kpis.length === 0) {
+        toast.error('No assigned KPIs found for this appraisal.');
+        return;
+      }
+      kpis.forEach((kpi, idx) => {
+        if (!kpi.managerRating || kpi.managerRating < 1 || kpi.managerRating > 5) {
+          errors[`mgr_kpi_${idx}_rating`] = 'Manager rating (1-5) is required';
+        }
+      });
+      if (Object.keys(errors).length > 0) {
+        setValidationErrors(errors);
+        toast.error('Please provide an independent rating (1-5) for each assigned KPI before submitting.');
+        return;
+      }
+      const confirmed = window.confirm(
+        'Are you sure you want to submit this manager review? Authoritative scores will be computed and the appraisal will advance to the next workflow stage.'
+      );
+      if (!confirmed) return;
+    }
+
     try {
       setSaving(true);
       const payload = {
@@ -219,6 +452,7 @@ export default function AppraisalReviews({ defaultAppraisalId, defaultScope = 's
       if (res.data?.success) {
         toast.success(isSubmit ? 'Manager appraisal submitted & advanced' : 'Draft saved');
         setSelectedAppraisal(res.data.data);
+        setValidationErrors({});
         fetchAppraisals();
         if (isSubmit) setDrawerOpen(false);
       }
@@ -326,6 +560,15 @@ export default function AppraisalReviews({ defaultAppraisalId, defaultScope = 's
   const getStageBadge = (stageKey, status) => {
     if (status === 'published') {
       return <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 border border-emerald-200">Published</span>;
+    }
+    if (status === 'approved') {
+      return <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 border border-emerald-200">Approved</span>;
+    }
+    if (status === 'acknowledged') {
+      return <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-bold text-blue-700 border border-blue-200">Acknowledged</span>;
+    }
+    if (status === 'disputed') {
+      return <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700 border border-amber-200">Disputed</span>;
     }
     if (status === 'revision_requested') {
       return <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-bold text-rose-700 border border-rose-200">Revision Requested</span>;
@@ -507,7 +750,7 @@ export default function AppraisalReviews({ defaultAppraisalId, defaultScope = 's
       {/* ─── REVIEW DETAIL DRAWER ─────────────────────────────────────────── */}
       {drawerOpen && selectedAppraisal && (
         <div className="fixed inset-0 z-50 flex justify-end bg-slate-900/40 backdrop-blur-xs transition-opacity font-sans">
-          <div className="w-full max-w-4xl bg-white h-full shadow-2xl flex flex-col overflow-hidden">
+          <div className="w-full max-w-5xl bg-white h-full shadow-2xl flex flex-col overflow-hidden">
             {/* Drawer Header */}
             <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4 bg-slate-50/50">
               <div>
@@ -540,6 +783,68 @@ export default function AppraisalReviews({ defaultAppraisalId, defaultScope = 's
                 >
                   <X size={18} />
                 </button>
+              </div>
+            </div>
+
+            {/* Appraisal Summary Banner */}
+            <div className="border-b border-slate-200 px-6 py-3.5 bg-slate-50/60 text-xs">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div>
+                  <span className="text-slate-400 font-semibold block text-[10px]">EMPLOYEE & CODE</span>
+                  <span className="font-bold text-slate-800">
+                    {selectedAppraisal.employeeId?.firstName} {selectedAppraisal.employeeId?.lastName}
+                    {selectedAppraisal.employeeId?.employeeId ? ` (${selectedAppraisal.employeeId.employeeId})` : ''}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-slate-400 font-semibold block text-[10px]">DEPARTMENT / ROLE</span>
+                  <span className="font-bold text-slate-800">
+                    {selectedAppraisal.employeeId?.department?.name || selectedAppraisal.employeeId?.department || 'General'} • {selectedAppraisal.employeeId?.designation || 'Staff'}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-slate-400 font-semibold block text-[10px]">REVIEW PERIOD</span>
+                  <span className="font-bold text-slate-800">
+                    {selectedAppraisal.cycleId?.startDate ? new Date(selectedAppraisal.cycleId.startDate).toLocaleDateString() : 'N/A'} - {selectedAppraisal.cycleId?.endDate ? new Date(selectedAppraisal.cycleId.endDate).toLocaleDateString() : 'N/A'}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-slate-400 font-semibold block text-[10px]">SELF-APPRAISAL PROGRESS</span>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
+                      <div
+                        className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                        style={{
+                          width: `${
+                            (selfForm.kpiRatings || []).length > 0
+                              ? Math.round(
+                                  ((selfForm.kpiRatings || []).filter(
+                                    (k) =>
+                                      k.actualValue !== '' &&
+                                      k.actualValue !== null &&
+                                      k.actualValue !== undefined &&
+                                      k.selfRating >= 1
+                                  ).length /
+                                    (selfForm.kpiRatings || []).length) *
+                                    100
+                                )
+                              : 0
+                          }%`,
+                        }}
+                      />
+                    </div>
+                    <span className="font-extrabold text-blue-700 text-[11px] whitespace-nowrap">
+                      {(selfForm.kpiRatings || []).filter(
+                        (k) =>
+                          k.actualValue !== '' &&
+                          k.actualValue !== null &&
+                          k.actualValue !== undefined &&
+                          k.selfRating >= 1
+                      ).length}
+                      /{(selfForm.kpiRatings || []).length}
+                    </span>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -593,29 +898,29 @@ export default function AppraisalReviews({ defaultAppraisalId, defaultScope = 's
                 onClick={() => setDrawerTab('self_form')}
                 className={`py-3 border-b-2 transition ${drawerTab === 'self_form' ? 'border-blue-600 text-blue-600' : 'border-transparent hover:text-slate-800'}`}
               >
-                Self-Appraisal
+                Self-Appraisal Scorecard
               </button>
               <button
                 onClick={() => setDrawerTab('manager_form')}
                 className={`py-3 border-b-2 transition ${drawerTab === 'manager_form' ? 'border-blue-600 text-blue-600' : 'border-transparent hover:text-slate-800'}`}
               >
-                Manager Evaluation
+                Manager Evaluation Scorecard
               </button>
               <button
                 onClick={() => setDrawerTab('dept_form')}
-                className={`py-3 border-b-2 transition ${drawerTab === 'dept_form' ? 'border-blue-600 text-blue-600' : 'border-transparent hover:text-slate-800'}`}
+                className={`py-3 border-b-2 transition ${drawerTab === 'dept_form' ? 'border-purple-600 text-purple-600' : 'border-transparent hover:text-slate-800'}`}
               >
                 Dept Head Review
               </button>
               <button
                 onClick={() => setDrawerTab('hr_form')}
-                className={`py-3 border-b-2 transition ${drawerTab === 'hr_form' ? 'border-blue-600 text-blue-600' : 'border-transparent hover:text-slate-800'}`}
+                className={`py-3 border-b-2 transition ${drawerTab === 'hr_form' ? 'border-amber-600 text-amber-600' : 'border-transparent hover:text-slate-800'}`}
               >
                 HR Evaluation
               </button>
               <button
                 onClick={() => setDrawerTab('final_approval_form')}
-                className={`py-3 border-b-2 transition ${drawerTab === 'final_approval_form' ? 'border-blue-600 text-blue-600' : 'border-transparent hover:text-slate-800'}`}
+                className={`py-3 border-b-2 transition ${drawerTab === 'final_approval_form' ? 'border-sky-600 text-sky-600' : 'border-transparent hover:text-slate-800'}`}
               >
                 Final Approval
               </button>
@@ -636,119 +941,838 @@ export default function AppraisalReviews({ defaultAppraisalId, defaultScope = 's
             {/* Drawer Body Form Panels */}
             <div className="flex-1 overflow-y-auto p-6 space-y-6">
               {/* PANEL 1: Self Appraisal Form */}
-              {drawerTab === 'self_form' && (
-                <div className="space-y-5">
-                  <div>
-                    <label className="text-xs font-bold text-slate-700">Key Accomplishments</label>
-                    <textarea
-                      rows={3}
-                      value={selfForm.accomplishments}
-                      onChange={(e) => setSelfForm({ ...selfForm, accomplishments: e.target.value })}
-                      placeholder="Outline major milestones achieved during this cycle..."
-                      className="mt-1.5 w-full rounded-xl border border-slate-200 p-3 text-xs text-slate-800 focus:border-blue-500 focus:outline-hidden"
-                    />
-                  </div>
+              {drawerTab === 'self_form' && (() => {
+                const isSelfEditable =
+                  selectedAppraisal.currentStageKey === 'self_review' &&
+                  selectedAppraisal.status !== 'submitted' &&
+                  !selectedAppraisal.selfAppraisal?.submittedAt;
 
-                  <div>
-                    <label className="text-xs font-bold text-slate-700">Challenges & Blockers</label>
-                    <textarea
-                      rows={3}
-                      value={selfForm.challenges}
-                      onChange={(e) => setSelfForm({ ...selfForm, challenges: e.target.value })}
-                      placeholder="Describe any challenges or operational hurdles faced..."
-                      className="mt-1.5 w-full rounded-xl border border-slate-200 p-3 text-xs text-slate-800 focus:border-blue-500 focus:outline-hidden"
-                    />
-                  </div>
+                const kpis = selfForm.kpiRatings || [];
 
-                  <div>
-                    <label className="text-xs font-bold text-slate-700">Career Aspirations & Growth Goals</label>
-                    <textarea
-                      rows={2}
-                      value={selfForm.careerAspirations}
-                      onChange={(e) => setSelfForm({ ...selfForm, careerAspirations: e.target.value })}
-                      placeholder="Future skills, leadership goals, and development aspirations..."
-                      className="mt-1.5 w-full rounded-xl border border-slate-200 p-3 text-xs text-slate-800 focus:border-blue-500 focus:outline-hidden"
-                    />
-                  </div>
+                // Group KPIs by KRA
+                const kraGroups = {};
+                kpis.forEach((kpi, idx) => {
+                  const key = kpi.kraId || 'general';
+                  if (!kraGroups[key]) {
+                    kraGroups[key] = {
+                      title: kpi.kraTitle || 'Core Key Result Areas',
+                      items: [],
+                    };
+                  }
+                  kraGroups[key].items.push({ ...kpi, formIndex: idx });
+                });
 
-                  {/* Actions */}
-                  <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
-                    <button
-                      type="button"
-                      onClick={() => handleSaveSelf(false)}
-                      disabled={saving}
-                      className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50"
-                    >
-                      Save Draft
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleSaveSelf(true)}
-                      disabled={saving}
-                      className="rounded-xl bg-blue-600 px-5 py-2 text-xs font-bold text-white hover:bg-blue-700 shadow-xs"
-                    >
-                      Submit Self-Appraisal →
-                    </button>
+                return (
+                  <div className="space-y-6">
+                    {/* Read-Only Banner if locked */}
+                    {!isSelfEditable && (
+                      <div className="rounded-2xl border border-blue-200 bg-blue-50/70 p-4 text-xs text-blue-900 flex items-start gap-3">
+                        <Info className="text-blue-600 shrink-0 mt-0.5" size={16} />
+                        <div>
+                          <p className="font-bold">Self-Appraisal is in Read-Only Mode</p>
+                          <p className="text-blue-700 mt-0.5">
+                            {selectedAppraisal.selfAppraisal?.submittedAt
+                              ? `Submitted on ${new Date(selectedAppraisal.selfAppraisal.submittedAt).toLocaleDateString()} at ${new Date(selectedAppraisal.selfAppraisal.submittedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}. Currently under ${selectedAppraisal.currentStageKey || 'manager_review'}.`
+                              : `Locked because the appraisal is in '${selectedAppraisal.currentStageKey || selectedAppraisal.status}' stage.`}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Assigned KRAs & KPIs Scorecard */}
+                    <div className="space-y-5">
+                      <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                        <div>
+                          <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                            <Target className="text-blue-600" size={16} />
+                            <span>Assigned KRA & KPI Scorecard</span>
+                          </h3>
+                          <p className="text-xs text-slate-500">
+                            Evaluate each assigned objective against the authoritative cycle targets. Targets and weightages are established by policy.
+                          </p>
+                        </div>
+                        <span className="text-xs font-bold text-slate-600 bg-slate-100 px-2.5 py-1 rounded-full">
+                          {kpis.length} Assigned {kpis.length === 1 ? 'Objective' : 'Objectives'}
+                        </span>
+                      </div>
+
+                      {kpis.length === 0 ? (
+                        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-6 text-center text-xs text-slate-500">
+                          <Target className="mx-auto text-slate-300 mb-2" size={24} />
+                          No specific KRAs/KPIs assigned for this performance cycle. You may complete your overall narrative reflections below.
+                        </div>
+                      ) : (
+                        Object.entries(kraGroups).map(([kraId, group]) => (
+                          <div key={kraId} className="rounded-2xl border border-slate-200 bg-white shadow-2xs overflow-hidden">
+                            {/* KRA Header */}
+                            <div className="bg-slate-50 border-b border-slate-200 px-5 py-3 flex items-center justify-between">
+                              <span className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-2">
+                                <Award className="text-blue-500" size={14} />
+                                {group.title}
+                              </span>
+                              <span className="text-[11px] font-bold text-slate-500 bg-white border border-slate-200 px-2.5 py-0.5 rounded-full">
+                                {group.items.reduce((sum, item) => sum + (Number(item.weightage) || 0), 0)}% Total Weightage
+                              </span>
+                            </div>
+
+                            {/* KPI Items inside KRA */}
+                            <div className="p-5 space-y-5 divide-y divide-slate-100">
+                              {group.items.map((kpi) => {
+                                const idx = kpi.formIndex;
+                                const previewPct = calculatePreview(kpi.measurementType, kpi.measurementDirection, kpi.targetValue, kpi.actualValue);
+                                const hasActualError = !!validationErrors[`kpi_${idx}_actual`];
+                                const hasRatingError = !!validationErrors[`kpi_${idx}_rating`];
+
+                                return (
+                                  <div key={kpi.kpiId || idx} className={`${idx > 0 ? 'pt-5' : ''} space-y-3.5`}>
+                                    {/* KPI Header & Badges */}
+                                    <div className="flex flex-wrap items-start justify-between gap-2">
+                                      <div>
+                                        <div className="flex items-center gap-2">
+                                          <h4 className="text-xs font-bold text-slate-900">{kpi.title}</h4>
+                                          {kpi.code && (
+                                            <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] font-mono font-bold text-slate-600">
+                                              {kpi.code}
+                                            </span>
+                                          )}
+                                        </div>
+                                        {kpi.description && (
+                                          <p className="text-[11px] text-slate-500 mt-0.5">{kpi.description}</p>
+                                        )}
+                                      </div>
+
+                                      <div className="flex items-center gap-1.5 flex-wrap">
+                                        <span className="rounded-lg bg-blue-50 px-2 py-0.5 text-[10px] font-bold text-blue-700 border border-blue-200">
+                                          Weight: {kpi.weightage}%
+                                        </span>
+                                        <span className="rounded-lg bg-slate-50 px-2 py-0.5 text-[10px] font-bold text-slate-600 border border-slate-200 capitalize">
+                                          {kpi.measurementType}
+                                        </span>
+                                        <span className="rounded-lg bg-slate-50 px-2 py-0.5 text-[10px] font-bold text-slate-600 border border-slate-200">
+                                          {kpi.measurementDirection === 'lower_is_better' ? 'Lower is Better' : 'Higher is Better'}
+                                        </span>
+                                      </div>
+                                    </div>
+
+                                    {/* Official Target & Achievement Inputs */}
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1">
+                                      {/* Official Target (Read-Only) */}
+                                      <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+                                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                                          Official Assigned Target
+                                        </span>
+                                        <div className="mt-1 flex items-baseline gap-1">
+                                          <span className="text-sm font-black text-slate-900">
+                                            {kpi.measurementType === 'boolean' || kpi.measurementType === 'yes_no'
+                                              ? 'Met / Completed'
+                                              : kpi.targetValue !== undefined ? kpi.targetValue : 'N/A'}
+                                          </span>
+                                          {kpi.unit && <span className="text-xs font-bold text-slate-500">{kpi.unit}</span>}
+                                        </div>
+                                        <span className="text-[10px] text-slate-400 mt-1 block font-semibold">(Read-Only)</span>
+                                      </div>
+
+                                      {/* Actual Achievement Input */}
+                                      <div className={`rounded-xl border p-3 ${hasActualError ? 'border-rose-400 bg-rose-50/20' : 'border-slate-200 bg-white'}`}>
+                                        <div className="flex items-center justify-between">
+                                          <label className="text-[10px] font-bold uppercase tracking-wider text-slate-600">
+                                            Actual Achievement <span className="text-rose-500">*</span>
+                                          </label>
+                                          {previewPct !== null && (
+                                            <span className="text-[10px] font-extrabold text-blue-600">
+                                              Preview: {previewPct}%
+                                            </span>
+                                          )}
+                                        </div>
+
+                                        {kpi.measurementType === 'boolean' || kpi.measurementType === 'yes_no' ? (
+                                          <div className="mt-1.5 flex items-center gap-2">
+                                            <button
+                                              type="button"
+                                              disabled={!isSelfEditable}
+                                              onClick={() => {
+                                                const updated = [...kpis];
+                                                updated[idx].actualValue = 1;
+                                                setSelfForm({ ...selfForm, kpiRatings: updated });
+                                              }}
+                                              className={`flex-1 rounded-lg py-1.5 text-xs font-bold border transition ${
+                                                kpi.actualValue === 1 || kpi.actualValue === '1' || kpi.actualValue === true || kpi.actualValue === 'yes'
+                                                  ? 'bg-emerald-600 text-white border-emerald-600'
+                                                  : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                                              }`}
+                                            >
+                                              Yes / Met
+                                            </button>
+                                            <button
+                                              type="button"
+                                              disabled={!isSelfEditable}
+                                              onClick={() => {
+                                                const updated = [...kpis];
+                                                updated[idx].actualValue = 0;
+                                                setSelfForm({ ...selfForm, kpiRatings: updated });
+                                              }}
+                                              className={`flex-1 rounded-lg py-1.5 text-xs font-bold border transition ${
+                                                kpi.actualValue === 0 || kpi.actualValue === '0' || kpi.actualValue === false || kpi.actualValue === 'no'
+                                                  ? 'bg-rose-600 text-white border-rose-600'
+                                                  : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                                              }`}
+                                            >
+                                              No / Not Met
+                                            </button>
+                                          </div>
+                                        ) : (
+                                          <div className="mt-1.5 flex items-center gap-2">
+                                            <input
+                                              type="number"
+                                              step="any"
+                                              disabled={!isSelfEditable}
+                                              value={kpi.actualValue !== undefined ? kpi.actualValue : ''}
+                                              onChange={(e) => {
+                                                const updated = [...kpis];
+                                                updated[idx].actualValue = e.target.value === '' ? '' : Number(e.target.value);
+                                                setSelfForm({ ...selfForm, kpiRatings: updated });
+                                              }}
+                                              placeholder={`e.g. ${kpi.targetValue || 100}`}
+                                              className="w-full rounded-lg border border-slate-200 p-2 text-xs font-bold text-slate-900 focus:border-blue-500 focus:outline-hidden disabled:bg-slate-50"
+                                            />
+                                            {kpi.unit && (
+                                              <span className="text-xs font-bold text-slate-500 whitespace-nowrap">{kpi.unit}</span>
+                                            )}
+                                          </div>
+                                        )}
+                                        {hasActualError && (
+                                          <p className="text-[10px] text-rose-600 font-bold mt-1">Achievement is required</p>
+                                        )}
+                                      </div>
+
+                                      {/* Self-Rating (1-5) */}
+                                      <div className={`rounded-xl border p-3 ${hasRatingError ? 'border-rose-400 bg-rose-50/20' : 'border-slate-200 bg-white'}`}>
+                                        <div className="flex items-center justify-between">
+                                          <label className="text-[10px] font-bold uppercase tracking-wider text-slate-600">
+                                            Self-Rating <span className="text-rose-500">*</span>
+                                          </label>
+                                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-sm border ${getRatingBandInfo(kpi.selfRating).badgeClass}`}>
+                                            {getRatingBandInfo(kpi.selfRating).label}
+                                          </span>
+                                        </div>
+
+                                        <div className="mt-2 flex items-center justify-between gap-1">
+                                          {RATING_SCALE.map((scale) => {
+                                            const isSelected = Number(kpi.selfRating) === scale.value;
+                                            return (
+                                              <button
+                                                key={scale.value}
+                                                type="button"
+                                                disabled={!isSelfEditable}
+                                                onClick={() => {
+                                                  const updated = [...kpis];
+                                                  updated[idx].selfRating = scale.value;
+                                                  setSelfForm({ ...selfForm, kpiRatings: updated });
+                                                }}
+                                                title={`${scale.value}/5 - ${scale.label} (${scale.desc})`}
+                                                className={`flex-1 flex flex-col items-center justify-center py-1.5 rounded-lg border text-xs font-extrabold transition ${
+                                                  isSelected
+                                                    ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                                                    : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                                                }`}
+                                              >
+                                                <Star size={12} className={isSelected ? 'fill-white' : 'text-slate-400'} />
+                                                <span className="text-[11px] mt-0.5">{scale.value}</span>
+                                              </button>
+                                            );
+                                          })}
+                                        </div>
+                                        {hasRatingError && (
+                                          <p className="text-[10px] text-rose-600 font-bold mt-1">Rating is required</p>
+                                        )}
+                                      </div>
+                                    </div>
+
+                                    {/* Explanation & Evidence inputs */}
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+                                      <div>
+                                        <label className="text-[10px] font-bold text-slate-600 block">
+                                          Achievement Explanation & Context
+                                        </label>
+                                        <textarea
+                                          rows={2}
+                                          disabled={!isSelfEditable}
+                                          value={kpi.comments || ''}
+                                          onChange={(e) => {
+                                            const updated = [...kpis];
+                                            updated[idx].comments = e.target.value;
+                                            setSelfForm({ ...selfForm, kpiRatings: updated });
+                                          }}
+                                          placeholder="Explain context, milestones delivered, or any variances..."
+                                          className="mt-1 w-full rounded-xl border border-slate-200 p-2 text-xs text-slate-800 focus:border-blue-500 focus:outline-hidden disabled:bg-slate-50"
+                                        />
+                                      </div>
+
+                                      <div>
+                                        <label className="text-[10px] font-bold text-slate-600 flex items-center justify-between">
+                                          <span>Evidence Link (Drive, Jira, URL)</span>
+                                          {kpi.evidenceUrl && (
+                                            <a
+                                              href={kpi.evidenceUrl}
+                                              target="_blank"
+                                              rel="noreferrer"
+                                              className="text-blue-600 hover:underline inline-flex items-center gap-1 font-bold"
+                                            >
+                                              Open Link <ExternalLink size={10} />
+                                            </a>
+                                          )}
+                                        </label>
+                                        <input
+                                          type="url"
+                                          disabled={!isSelfEditable}
+                                          value={kpi.evidenceUrl || ''}
+                                          onChange={(e) => {
+                                            const updated = [...kpis];
+                                            updated[idx].evidenceUrl = e.target.value;
+                                            setSelfForm({ ...selfForm, kpiRatings: updated });
+                                          }}
+                                          placeholder="https://drive.google.com/... or task URL"
+                                          className="mt-1 w-full rounded-xl border border-slate-200 p-2 text-xs text-slate-800 focus:border-blue-500 focus:outline-hidden disabled:bg-slate-50"
+                                        />
+                                        <input
+                                          type="text"
+                                          disabled={!isSelfEditable}
+                                          value={kpi.evidenceNote || ''}
+                                          onChange={(e) => {
+                                            const updated = [...kpis];
+                                            updated[idx].evidenceNote = e.target.value;
+                                            setSelfForm({ ...selfForm, kpiRatings: updated });
+                                          }}
+                                          placeholder="Evidence description or brief note (optional)"
+                                          className="mt-1 w-full rounded-xl border border-slate-200 p-1.5 text-[11px] text-slate-600 focus:border-blue-500 focus:outline-hidden disabled:bg-slate-50"
+                                        />
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+
+                    {/* Overall Reflections */}
+                    <div className="space-y-4 pt-2 border-t border-slate-200">
+                      <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
+                        Overall Narrative Reflection
+                      </h3>
+
+                      <div>
+                        <label className="text-xs font-bold text-slate-700">Key Accomplishments</label>
+                        <textarea
+                          rows={3}
+                          disabled={!isSelfEditable}
+                          value={selfForm.accomplishments}
+                          onChange={(e) => setSelfForm({ ...selfForm, accomplishments: e.target.value })}
+                          placeholder="Outline major milestones and noteworthy contributions achieved during this cycle..."
+                          className="mt-1.5 w-full rounded-xl border border-slate-200 p-3 text-xs text-slate-800 focus:border-blue-500 focus:outline-hidden disabled:bg-slate-50"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-bold text-slate-700">Challenges & Blockers</label>
+                        <textarea
+                          rows={3}
+                          disabled={!isSelfEditable}
+                          value={selfForm.challenges}
+                          onChange={(e) => setSelfForm({ ...selfForm, challenges: e.target.value })}
+                          placeholder="Describe operational roadblocks, cross-functional dependencies, or resource constraints faced..."
+                          className="mt-1.5 w-full rounded-xl border border-slate-200 p-3 text-xs text-slate-800 focus:border-blue-500 focus:outline-hidden disabled:bg-slate-50"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-bold text-slate-700">Career Aspirations & Growth Goals</label>
+                        <textarea
+                          rows={2}
+                          disabled={!isSelfEditable}
+                          value={selfForm.careerAspirations}
+                          onChange={(e) => setSelfForm({ ...selfForm, careerAspirations: e.target.value })}
+                          placeholder="Target competencies, leadership roles, or domain learning goals for upcoming cycles..."
+                          className="mt-1.5 w-full rounded-xl border border-slate-200 p-3 text-xs text-slate-800 focus:border-blue-500 focus:outline-hidden disabled:bg-slate-50"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Self-Appraisal Actions */}
+                    <div className="flex items-center justify-between pt-4 border-t border-slate-100">
+                      <div className="text-xs text-slate-500">
+                        {isSelfEditable ? (
+                          <span>Draft auto-loads on reopen. Submit to advance to manager evaluation.</span>
+                        ) : (
+                          <span className="font-semibold text-slate-600">Self-Appraisal is locked from further edits.</span>
+                        )}
+                      </div>
+
+                      {isSelfEditable && (
+                        <div className="flex items-center gap-3">
+                          <button
+                            type="button"
+                            onClick={() => handleSaveSelf(false)}
+                            disabled={saving}
+                            className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-1.5"
+                          >
+                            <Save size={14} />
+                            <span>Save Draft</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleSaveSelf(true)}
+                            disabled={saving}
+                            className="rounded-xl bg-blue-600 px-5 py-2 text-xs font-bold text-white hover:bg-blue-700 shadow-xs flex items-center gap-1.5"
+                          >
+                            <Send size={14} />
+                            <span>Submit Self-Appraisal →</span>
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
 
               {/* PANEL 2: Manager Form */}
-              {drawerTab === 'manager_form' && (
-                <div className="space-y-5">
-                  <div>
-                    <label className="text-xs font-bold text-slate-700">Strengths & Core Competencies Observed</label>
-                    <textarea
-                      rows={3}
-                      value={managerForm.strengths}
-                      onChange={(e) => setManagerForm({ ...managerForm, strengths: e.target.value })}
-                      placeholder="Highlight exceptional delivery, leadership, and team collaboration..."
-                      className="mt-1.5 w-full rounded-xl border border-slate-200 p-3 text-xs text-slate-800 focus:border-blue-500 focus:outline-hidden"
-                    />
-                  </div>
+              {drawerTab === 'manager_form' && (() => {
+                const isManagerEditable =
+                  selectedAppraisal.currentStageKey === 'manager_review' &&
+                  !selectedAppraisal.managerAppraisal?.submittedAt &&
+                  activeTab !== 'self';
 
-                  <div>
-                    <label className="text-xs font-bold text-slate-700">Areas for Improvement</label>
-                    <textarea
-                      rows={3}
-                      value={managerForm.areasOfImprovement}
-                      onChange={(e) => setManagerForm({ ...managerForm, areasOfImprovement: e.target.value })}
-                      placeholder="Identified skill gaps, execution speed, or quality adjustments..."
-                      className="mt-1.5 w-full rounded-xl border border-slate-200 p-3 text-xs text-slate-800 focus:border-blue-500 focus:outline-hidden"
-                    />
-                  </div>
+                const kpis = managerForm.kpiRatings || [];
+                const overallPreview = computeManagerOverallPreview();
 
-                  <div>
-                    <label className="text-xs font-bold text-slate-700">Overall Evaluator Comments</label>
-                    <textarea
-                      rows={3}
-                      value={managerForm.overallComments}
-                      onChange={(e) => setManagerForm({ ...managerForm, overallComments: e.target.value })}
-                      placeholder="Consolidated evaluation feedback..."
-                      className="mt-1.5 w-full rounded-xl border border-slate-200 p-3 text-xs text-slate-800 focus:border-blue-500 focus:outline-hidden"
-                    />
-                  </div>
+                return (
+                  <div className="space-y-6">
+                    {/* Read-Only Banner if locked */}
+                    {!isManagerEditable && (
+                      <div className="rounded-2xl border border-indigo-200 bg-indigo-50/70 p-4 text-xs text-indigo-900 flex items-start gap-3">
+                        <Info className="text-indigo-600 shrink-0 mt-0.5" size={16} />
+                        <div>
+                          <p className="font-bold">Manager Evaluation Mode</p>
+                          <p className="text-indigo-700 mt-0.5">
+                            {selectedAppraisal.managerAppraisal?.submittedAt
+                              ? `Manager review was submitted on ${new Date(selectedAppraisal.managerAppraisal.submittedAt).toLocaleDateString()}. Ratings and comments are locked.`
+                              : selectedAppraisal.currentStageKey === 'self_review'
+                              ? 'Waiting for employee self-appraisal submission before manager evaluation begins.'
+                              : `Currently in '${selectedAppraisal.currentStageKey || selectedAppraisal.status}' stage.`}
+                          </p>
+                        </div>
+                      </div>
+                    )}
 
-                  <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
-                    <button
-                      type="button"
-                      onClick={() => handleSaveManager(false)}
-                      disabled={saving}
-                      className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50"
-                    >
-                      Save Draft
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleSaveManager(true)}
-                      disabled={saving}
-                      className="rounded-xl bg-indigo-600 px-5 py-2 text-xs font-bold text-white hover:bg-indigo-700 shadow-xs"
-                    >
-                      Submit Manager Review & Calculate Scores →
-                    </button>
+                    {/* Manager Live Score Preview Header */}
+                    <div className="rounded-2xl border border-indigo-200 bg-indigo-50/40 p-4 flex flex-wrap items-center justify-between gap-4">
+                      <div>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-600 block">
+                          Manager Evaluated Score (Preview)
+                        </span>
+                        <div className="flex items-baseline gap-2 mt-0.5">
+                          <span className="text-xl font-black text-indigo-950">
+                            {overallPreview ? `${overallPreview} / 5` : 'Pending Evaluation'}
+                          </span>
+                          {overallPreview && (
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${getRatingBandInfo(Math.round(overallPreview)).badgeClass}`}>
+                              {getRatingBandInfo(Math.round(overallPreview)).label}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="text-xs text-slate-500 max-w-sm">
+                        Authoritative consolidated score is computed by server upon submission based on assigned KPI weights and company policy.
+                      </div>
+                    </div>
+
+                    {/* Side-by-Side KRA/KPI Evaluation Scorecard */}
+                    <div className="space-y-5">
+                      <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                        <div>
+                          <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                            <Target className="text-indigo-600" size={16} />
+                            <span>Side-by-Side KPI Evaluation</span>
+                          </h3>
+                          <p className="text-xs text-slate-500">
+                            Review employee self-reported actuals and self-ratings, then assign your verified actuals and independent ratings.
+                          </p>
+                        </div>
+                        <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-full border border-indigo-100">
+                          {kpis.length} Assigned {kpis.length === 1 ? 'KPI' : 'KPIs'}
+                        </span>
+                      </div>
+
+                      {kpis.length === 0 ? (
+                        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-6 text-center text-xs text-slate-500">
+                          <Target className="mx-auto text-slate-300 mb-2" size={24} />
+                          No assigned KPIs found for this appraisal.
+                        </div>
+                      ) : (
+                        kpis.map((kpi, idx) => {
+                          const hasRatingError = !!validationErrors[`mgr_kpi_${idx}_rating`];
+
+                          return (
+                            <div key={kpi.kpiId || idx} className="rounded-2xl border border-slate-200 bg-white shadow-2xs overflow-hidden">
+                              {/* KPI Title & Weight Header */}
+                              <div className="bg-slate-50 border-b border-slate-200 px-5 py-3 flex flex-wrap items-center justify-between gap-2">
+                                <div>
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-xs font-black text-slate-900">{kpi.title}</span>
+                                    {kpi.code && (
+                                      <span className="rounded-md bg-slate-200 px-1.5 py-0.5 text-[10px] font-mono font-bold text-slate-700">
+                                        {kpi.code}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <span className="text-[11px] text-slate-500">
+                                    Target: <span className="font-bold text-slate-800">{kpi.targetValue} {kpi.unit}</span> ({kpi.measurementDirection === 'lower_is_better' ? 'Lower is Better' : 'Higher is Better'})
+                                  </span>
+                                </div>
+
+                                <div className="flex items-center gap-2">
+                                  <span className="rounded-lg bg-indigo-50 px-2.5 py-0.5 text-[11px] font-bold text-indigo-700 border border-indigo-200">
+                                    Weightage: {kpi.weightage}%
+                                  </span>
+                                </div>
+                              </div>
+
+                              {/* 2-Column Side-by-Side: Employee Input vs Manager Review */}
+                              <div className="p-5 grid grid-cols-1 lg:grid-cols-2 gap-5 divide-y lg:divide-y-0 lg:divide-x divide-slate-200">
+                                {/* LEFT COLUMN: Employee Self-Appraisal (Read-Only) */}
+                                <div className="space-y-3">
+                                  <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                                    <User size={12} />
+                                    <span>Employee Self-Evaluation (Read-Only)</span>
+                                  </span>
+
+                                  <div className="grid grid-cols-2 gap-2 text-xs">
+                                    <div className="rounded-xl bg-slate-50 p-2.5 border border-slate-200">
+                                      <span className="text-[10px] font-bold text-slate-400 block">REPORTED ACTUAL</span>
+                                      <span className="font-extrabold text-slate-900 text-sm">
+                                        {kpi.employeeActualValue !== '' && kpi.employeeActualValue !== undefined
+                                          ? `${kpi.employeeActualValue} ${kpi.unit || ''}`
+                                          : '(Not provided)'}
+                                      </span>
+                                    </div>
+
+                                    <div className="rounded-xl bg-slate-50 p-2.5 border border-slate-200">
+                                      <span className="text-[10px] font-bold text-slate-400 block">ACHIEVEMENT PREVIEW</span>
+                                      <span className="font-extrabold text-blue-600 text-sm">
+                                        {kpi.employeeAchievementPercent ? `${kpi.employeeAchievementPercent}%` : 'N/A'}
+                                      </span>
+                                    </div>
+                                  </div>
+
+                                  <div className="rounded-xl bg-slate-50 p-2.5 border border-slate-200 text-xs">
+                                    <span className="text-[10px] font-bold text-slate-400 block">EMPLOYEE SELF-RATING</span>
+                                    <div className="mt-1 flex items-center gap-2">
+                                      <span className="font-extrabold text-slate-900 text-sm">
+                                        {kpi.employeeSelfRating ? `${kpi.employeeSelfRating} / 5` : 'Unrated'}
+                                      </span>
+                                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${getRatingBandInfo(kpi.employeeSelfRating).badgeClass}`}>
+                                        {getRatingBandInfo(kpi.employeeSelfRating).label}
+                                      </span>
+                                    </div>
+                                  </div>
+
+                                  <div className="rounded-xl bg-slate-50 p-2.5 border border-slate-200 text-xs space-y-1">
+                                    <span className="text-[10px] font-bold text-slate-400 block">EMPLOYEE EXPLANATION</span>
+                                    <p className="text-slate-700 italic text-[11px]">
+                                      {kpi.employeeComments || 'No explanation provided.'}
+                                    </p>
+                                  </div>
+
+                                  {kpi.employeeEvidenceUrl && (
+                                    <div className="rounded-xl bg-blue-50/50 p-2.5 border border-blue-200 text-xs flex items-center justify-between">
+                                      <span className="text-[11px] font-bold text-blue-900">Evidence Attached</span>
+                                      <a
+                                        href={kpi.employeeEvidenceUrl}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="text-xs font-bold text-blue-600 hover:underline flex items-center gap-1"
+                                      >
+                                        <span>View Document</span>
+                                        <ExternalLink size={12} />
+                                      </a>
+                                    </div>
+                                  )}
+                                </div>
+
+                                {/* RIGHT COLUMN: Manager Verification & Rating */}
+                                <div className="space-y-3 lg:pl-5 pt-4 lg:pt-0">
+                                  <span className="text-[10px] font-extrabold uppercase tracking-wider text-indigo-600 flex items-center gap-1.5">
+                                    <CheckSquare size={12} />
+                                    <span>Manager Independent Evaluation</span>
+                                  </span>
+
+                                  {/* Verified Actual & Evidence Check */}
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                                    <div>
+                                      <label className="text-[10px] font-bold text-slate-600 block">
+                                        Verified Actual Value
+                                      </label>
+                                      <input
+                                        type="number"
+                                        step="any"
+                                        disabled={!isManagerEditable}
+                                        value={kpi.verifiedActualValue !== undefined ? kpi.verifiedActualValue : ''}
+                                        onChange={(e) => {
+                                          const updated = [...kpis];
+                                          updated[idx].verifiedActualValue = e.target.value === '' ? '' : Number(e.target.value);
+                                          setManagerForm({ ...managerForm, kpiRatings: updated });
+                                        }}
+                                        placeholder="Same as reported if verified"
+                                        className="mt-1 w-full rounded-xl border border-slate-200 p-2 text-xs font-bold text-slate-900 focus:border-indigo-500 focus:outline-hidden disabled:bg-slate-50"
+                                      />
+                                    </div>
+
+                                    <div className="flex items-end pb-1.5">
+                                      <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-700">
+                                        <input
+                                          type="checkbox"
+                                          disabled={!isManagerEditable}
+                                          checked={!!kpi.evidenceVerified}
+                                          onChange={(e) => {
+                                            const updated = [...kpis];
+                                            updated[idx].evidenceVerified = e.target.checked;
+                                            setManagerForm({ ...managerForm, kpiRatings: updated });
+                                          }}
+                                          className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                                        />
+                                        <span>Evidence Verified</span>
+                                      </label>
+                                    </div>
+                                  </div>
+
+                                  {/* Manager Independent Rating (1-5) */}
+                                  <div className={`rounded-xl border p-3 ${hasRatingError ? 'border-rose-400 bg-rose-50/20' : 'border-slate-200 bg-white'}`}>
+                                    <div className="flex items-center justify-between">
+                                      <label className="text-[10px] font-bold uppercase tracking-wider text-slate-600">
+                                        Manager Independent Rating <span className="text-rose-500">*</span>
+                                      </label>
+                                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-sm border ${getRatingBandInfo(kpi.managerRating).badgeClass}`}>
+                                        {getRatingBandInfo(kpi.managerRating).label}
+                                      </span>
+                                    </div>
+
+                                    <div className="mt-2 flex items-center justify-between gap-1">
+                                      {RATING_SCALE.map((scale) => {
+                                        const isSelected = Number(kpi.managerRating) === scale.value;
+                                        return (
+                                          <button
+                                            key={scale.value}
+                                            type="button"
+                                            disabled={!isManagerEditable}
+                                            onClick={() => {
+                                              const updated = [...kpis];
+                                              updated[idx].managerRating = scale.value;
+                                              setManagerForm({ ...managerForm, kpiRatings: updated });
+                                            }}
+                                            title={`${scale.value}/5 - ${scale.label} (${scale.desc})`}
+                                            className={`flex-1 flex flex-col items-center justify-center py-1.5 rounded-lg border text-xs font-extrabold transition ${
+                                              isSelected
+                                                ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+                                                : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                                            }`}
+                                          >
+                                            <Star size={12} className={isSelected ? 'fill-white' : 'text-slate-400'} />
+                                            <span className="text-[11px] mt-0.5">{scale.value}</span>
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
+                                    {hasRatingError && (
+                                      <p className="text-[10px] text-rose-600 font-bold mt-1">Manager rating is required</p>
+                                    )}
+                                  </div>
+
+                                  {/* Manager Comments */}
+                                  <div>
+                                    <label className="text-[10px] font-bold text-slate-600 block">
+                                      Evaluator Feedback & Justification
+                                    </label>
+                                    <textarea
+                                      rows={2}
+                                      disabled={!isManagerEditable}
+                                      value={kpi.managerComments || ''}
+                                      onChange={(e) => {
+                                        const updated = [...kpis];
+                                        updated[idx].managerComments = e.target.value;
+                                        setManagerForm({ ...managerForm, kpiRatings: updated });
+                                      }}
+                                      placeholder="Specific observations, rating justification, or performance adjustments..."
+                                      className="mt-1 w-full rounded-xl border border-slate-200 p-2 text-xs text-slate-800 focus:border-indigo-500 focus:outline-hidden disabled:bg-slate-50"
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+
+                    {/* Overall Manager Qualitative Assessment */}
+                    <div className="space-y-4 pt-2 border-t border-slate-200">
+                      <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
+                        Overall Manager Qualitative Assessment
+                      </h3>
+
+                      <div>
+                        <label className="text-xs font-bold text-slate-700">Strengths & Core Competencies Observed</label>
+                        <textarea
+                          rows={3}
+                          disabled={!isManagerEditable}
+                          value={managerForm.strengths}
+                          onChange={(e) => setManagerForm({ ...managerForm, strengths: e.target.value })}
+                          placeholder="Highlight exceptional delivery, leadership, domain expertise, and cross-functional teamwork..."
+                          className="mt-1.5 w-full rounded-xl border border-slate-200 p-3 text-xs text-slate-800 focus:border-indigo-500 focus:outline-hidden disabled:bg-slate-50"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-bold text-slate-700">Areas for Improvement</label>
+                        <textarea
+                          rows={3}
+                          disabled={!isManagerEditable}
+                          value={managerForm.areasOfImprovement}
+                          onChange={(e) => setManagerForm({ ...managerForm, areasOfImprovement: e.target.value })}
+                          placeholder="Identified skill gaps, execution bottlenecks, or behavioral adjustments required..."
+                          className="mt-1.5 w-full rounded-xl border border-slate-200 p-3 text-xs text-slate-800 focus:border-indigo-500 focus:outline-hidden disabled:bg-slate-50"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-bold text-slate-700">Overall Evaluator Comments</label>
+                        <textarea
+                          rows={3}
+                          disabled={!isManagerEditable}
+                          value={managerForm.overallComments}
+                          onChange={(e) => setManagerForm({ ...managerForm, overallComments: e.target.value })}
+                          placeholder="Consolidated evaluation remarks and qualitative performance summary..."
+                          className="mt-1.5 w-full rounded-xl border border-slate-200 p-3 text-xs text-slate-800 focus:border-indigo-500 focus:outline-hidden disabled:bg-slate-50"
+                        />
+                      </div>
+
+                      {/* Promotion Recommendation */}
+                      <div className="rounded-xl border border-slate-200 p-4 bg-slate-50/50 space-y-3">
+                        <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-800">
+                          <input
+                            type="checkbox"
+                            disabled={!isManagerEditable}
+                            checked={!!managerForm.promotionRecommendation?.recommended}
+                            onChange={(e) =>
+                              setManagerForm({
+                                ...managerForm,
+                                promotionRecommendation: {
+                                  ...managerForm.promotionRecommendation,
+                                  recommended: e.target.checked,
+                                },
+                              })
+                            }
+                            className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                          />
+                          <span>Recommend Employee for Promotion or Role Progression</span>
+                        </label>
+
+                        {managerForm.promotionRecommendation?.recommended && (
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+                            <div>
+                              <label className="text-[10px] font-bold text-slate-600 block">Proposed Designation</label>
+                              <input
+                                type="text"
+                                disabled={!isManagerEditable}
+                                value={managerForm.promotionRecommendation?.proposedDesignation || ''}
+                                onChange={(e) =>
+                                  setManagerForm({
+                                    ...managerForm,
+                                    promotionRecommendation: {
+                                      ...managerForm.promotionRecommendation,
+                                      proposedDesignation: e.target.value,
+                                    },
+                                  })
+                                }
+                                placeholder="e.g. Senior Software Engineer"
+                                className="mt-1 w-full rounded-xl border border-slate-200 p-2 text-xs text-slate-800 focus:border-indigo-500 focus:outline-hidden disabled:bg-slate-50"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-[10px] font-bold text-slate-600 block">Promotion Justification</label>
+                              <input
+                                type="text"
+                                disabled={!isManagerEditable}
+                                value={managerForm.promotionRecommendation?.notes || ''}
+                                onChange={(e) =>
+                                  setManagerForm({
+                                    ...managerForm,
+                                    promotionRecommendation: {
+                                      ...managerForm.promotionRecommendation,
+                                      notes: e.target.value,
+                                    },
+                                  })
+                                }
+                                placeholder="Key rationale for promotion..."
+                                className="mt-1 w-full rounded-xl border border-slate-200 p-2 text-xs text-slate-800 focus:border-indigo-500 focus:outline-hidden disabled:bg-slate-50"
+                              />
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Training Needs */}
+                      <div>
+                        <label className="text-xs font-bold text-slate-700">Recommended Training & Development Needs</label>
+                        <input
+                          type="text"
+                          disabled={!isManagerEditable}
+                          value={managerForm.trainingNeeds || ''}
+                          onChange={(e) => setManagerForm({ ...managerForm, trainingNeeds: e.target.value })}
+                          placeholder="e.g. Advanced Cloud Architecture, Executive Communication (comma separated)"
+                          className="mt-1.5 w-full rounded-xl border border-slate-200 p-2.5 text-xs text-slate-800 focus:border-indigo-500 focus:outline-hidden disabled:bg-slate-50"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Manager Review Actions */}
+                    <div className="flex items-center justify-between pt-4 border-t border-slate-100">
+                      <div className="text-xs text-slate-500">
+                        {isManagerEditable ? (
+                          <span>Submission locks manager evaluation and advances workflow to Department Head / HR.</span>
+                        ) : (
+                          <span className="font-semibold text-slate-600">Manager evaluation is locked from further edits.</span>
+                        )}
+                      </div>
+
+                      {isManagerEditable && (
+                        <div className="flex items-center gap-3">
+                          <button
+                            type="button"
+                            onClick={() => handleSaveManager(false)}
+                            disabled={saving}
+                            className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-1.5"
+                          >
+                            <Save size={14} />
+                            <span>Save Draft</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleSaveManager(true)}
+                            disabled={saving}
+                            className="rounded-xl bg-indigo-600 px-5 py-2 text-xs font-bold text-white hover:bg-indigo-700 shadow-xs flex items-center gap-1.5"
+                          >
+                            <Send size={14} />
+                            <span>Submit Manager Review & Calculate Scores →</span>
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
 
               {/* PANEL 3: Department Head Form */}
               {drawerTab === 'dept_form' && (
@@ -912,7 +1936,7 @@ export default function AppraisalReviews({ defaultAppraisalId, defaultScope = 's
                         <button
                           type="button"
                           onClick={() => handleAcknowledge(false)}
-                          className="rounded-xl bg-blue-600 px-4 py-2 text-xs font-bold text-white hover:bg-blue-700 shadow-xs"
+                          className="rounded-xl bg-blue-600 px-4 py-2 text-xs font-bold text-white hover:bg-blue-700 shadow-xs cursor-pointer"
                         >
                           Sign-off & Acknowledge
                         </button>
@@ -922,11 +1946,44 @@ export default function AppraisalReviews({ defaultAppraisalId, defaultScope = 's
                             const reason = prompt('Please enter the reason for your dispute:');
                             if (reason) handleAcknowledge(true, reason);
                           }}
-                          className="rounded-xl border border-rose-300 bg-white px-4 py-2 text-xs font-bold text-rose-700 hover:bg-rose-50"
+                          className="rounded-xl border border-rose-300 bg-white px-4 py-2 text-xs font-bold text-rose-700 hover:bg-rose-50 cursor-pointer"
                         >
                           File Dispute
                         </button>
                       </div>
+                    </div>
+                  )}
+
+                  {/* Completed Acknowledgment or Dispute Banner */}
+                  {selectedAppraisal.isPublished && selectedAppraisal.acknowledgement?.isAcknowledged && (
+                    <div className={`rounded-2xl border p-4 space-y-2 ${
+                      selectedAppraisal.acknowledgement.isDisputed
+                        ? 'border-amber-200 bg-amber-50/70 text-amber-900'
+                        : 'border-emerald-200 bg-emerald-50/70 text-emerald-900'
+                    }`}>
+                      <div className="flex items-center gap-2 font-bold text-xs">
+                        <CheckCircle2 size={16} className={selectedAppraisal.acknowledgement.isDisputed ? 'text-amber-600' : 'text-emerald-600'} />
+                        <span>
+                          {selectedAppraisal.acknowledgement.isDisputed
+                            ? 'Appraisal Disputed by Employee'
+                            : 'Appraisal Formally Acknowledged & Signed Off'}
+                        </span>
+                        <span className="text-[10px] font-normal text-slate-500 ml-auto">
+                          {selectedAppraisal.acknowledgement.acknowledgedAt
+                            ? new Date(selectedAppraisal.acknowledgement.acknowledgedAt).toLocaleString()
+                            : ''}
+                        </span>
+                      </div>
+                      {selectedAppraisal.acknowledgement.isDisputed && selectedAppraisal.acknowledgement.disputeReason && (
+                        <p className="text-xs bg-white/80 p-2.5 rounded-xl border border-amber-200/60 text-slate-700">
+                          <strong>Dispute Reason:</strong> "{selectedAppraisal.acknowledgement.disputeReason}"
+                        </p>
+                      )}
+                      {selectedAppraisal.acknowledgement.employeeComments && !selectedAppraisal.acknowledgement.isDisputed && (
+                        <p className="text-xs bg-white/80 p-2.5 rounded-xl border border-emerald-200/60 text-slate-700">
+                          <strong>Comments:</strong> "{selectedAppraisal.acknowledgement.employeeComments}"
+                        </p>
+                      )}
                     </div>
                   )}
                 </div>

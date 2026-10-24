@@ -8,18 +8,44 @@ import {
   TrendingUp,
   Award,
   Users,
+  Search,
+  Clock,
+  AlertTriangle,
+  FileText,
+  ChevronLeft,
+  ChevronRight,
+  Filter,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import pmsApi from '../api/pmsApi';
 
-export default function PmsReports() {
+const REPORT_TABS = [
+  { id: 'cycle-completion', label: 'Cycle Completion', icon: CheckCircle2, desc: 'Enrolled employees, stages, overdue flags & sign-off dates' },
+  { id: 'employee-performance', label: 'Employee Performance', icon: Award, desc: 'Self, manager, calibrated & final scores with rating bands' },
+  { id: 'department-summary', label: 'Department Summary', icon: Users, desc: 'Completion rates & average performance benchmarked by team' },
+  { id: 'kpi-achievement', label: 'KRA & KPI Achievement', icon: TrendingUp, desc: 'Target vs verified actuals with percentage achievement' },
+  { id: 'rating-distribution', label: 'Rating Distribution', icon: BarChart3, desc: 'Bell-curve distribution across grades and score brackets' },
+  { id: 'pending-reviews', label: 'Pending & Overdue', icon: Clock, desc: 'Outstanding reviews, responsible roles & bottleneck tracking' },
+  { id: 'acknowledgment-dispute', label: 'Acknowledgments & Disputes', icon: AlertTriangle, desc: 'Published sign-offs, employee feedback & dispute audit' },
+  { id: 'historical-comparison', label: 'Multi-Cycle Comparison', icon: Calendar, desc: 'Historical employee score trajectory across completed cycles' },
+];
+
+export default function PmsReports({ onNavigateTab }) {
+  const [activeReport, setActiveReport] = useState('cycle-completion');
   const [cycles, setCycles] = useState([]);
   const [selectedCycle, setSelectedCycle] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [reportData, setReportData] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
 
   useEffect(() => {
     loadCycles();
   }, []);
+
+  useEffect(() => {
+    fetchReportData(activeReport, selectedCycle, searchQuery, currentPage);
+  }, [activeReport, selectedCycle, currentPage]);
 
   const loadCycles = async () => {
     try {
@@ -33,102 +59,254 @@ export default function PmsReports() {
     }
   };
 
-  const handleDownloadExcel = () => {
+  const fetchReportData = async (reportType, cycleId, search, page) => {
     try {
-      const url = pmsApi.exportAppraisalsUrl(selectedCycle);
-      window.open(url, '_blank');
-      toast.success('Downloading PMS Appraisal Report...');
+      setLoading(true);
+      const params = { page, limit: 25 };
+      if (cycleId) params.cycleId = cycleId;
+      if (search) params.search = search;
+
+      const res = await pmsApi.getReportData(reportType, params);
+      if (res.data?.success) {
+        setReportData(res.data.data);
+      }
     } catch (err) {
-      toast.error('Failed to download report');
+      console.error('[Fetch Report Error]:', err);
+      toast.error('Failed to load report data');
+    } finally {
+      setLoading(false);
     }
   };
 
+  const handleSearchSubmit = (e) => {
+    e.preventDefault();
+    setCurrentPage(1);
+    fetchReportData(activeReport, selectedCycle, searchQuery, 1);
+  };
+
+  const handleDownload = (format) => {
+    try {
+      const params = {};
+      if (selectedCycle) params.cycleId = selectedCycle;
+      if (searchQuery) params.search = searchQuery;
+
+      const url = pmsApi.getReportExportUrl(activeReport, format, params);
+      window.open(url, '_blank');
+      toast.success(`Exporting ${activeReport} report as .${format}...`);
+    } catch (err) {
+      toast.error('Failed to export report');
+    }
+  };
+
+  const headers = reportData?.headers || [];
+  const records = reportData?.records || [];
+  const totalRecords = reportData?.totalRecords || 0;
+  const totalPages = reportData?.totalPages || 1;
+
   return (
     <div className="space-y-6">
-      {/* Export Header Card */}
-      <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-slate-200/80 bg-white p-6 shadow-xs">
+      {/* ─── Top Control Header & Actions ───────────────────────────────────── */}
+      <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-slate-200/80 bg-white p-5 shadow-xs">
         <div>
-          <h3 className="text-base font-bold text-slate-900">Performance Reports & Data Exports</h3>
-          <p className="mt-1 text-xs text-slate-500">
-            Export comprehensive appraisal summaries, rating distributions, and calibration audit logs to Excel.
+          <h2 className="text-base font-bold text-slate-900">Performance Reports & Organizational Exports</h2>
+          <p className="mt-0.5 text-xs text-slate-500">
+            Generate audited reports, calculate completion benchmarks, and export sanitized datasets to Excel or CSV.
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Cycle Selector */}
           {cycles.length > 0 && (
-            <select
-              value={selectedCycle}
-              onChange={(e) => setSelectedCycle(e.target.value)}
-              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 focus:border-blue-500 focus:outline-hidden"
-            >
-              {cycles.map((c) => (
-                <option key={c._id} value={c._id}>{c.name}</option>
-              ))}
-            </select>
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs font-semibold text-slate-500">Cycle:</span>
+              <select
+                value={selectedCycle}
+                onChange={(e) => {
+                  setSelectedCycle(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-2 text-xs font-bold text-slate-700 focus:border-blue-500 focus:outline-hidden"
+              >
+                <option value="">All Review Cycles</option>
+                {cycles.map((c) => (
+                  <option key={c._id} value={c._id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </div>
           )}
 
-          <button
-            onClick={handleDownloadExcel}
-            className="flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white shadow-xs hover:bg-emerald-700 transition"
-          >
-            <FileSpreadsheet size={16} />
-            <span>Export to Excel (.xlsx)</span>
-          </button>
+          {/* Export Buttons */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => handleDownload('csv')}
+              className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-bold text-slate-700 shadow-2xs hover:bg-slate-50 transition"
+              title="Export as CSV with formula-injection sanitization"
+            >
+              <Download size={14} className="text-slate-500" />
+              <span>Export CSV</span>
+            </button>
+
+            <button
+              onClick={() => handleDownload('xlsx')}
+              className="flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-emerald-700 transition"
+              title="Export formatted workbook with formula-injection sanitization"
+            >
+              <FileSpreadsheet size={15} />
+              <span>Export Excel (.xlsx)</span>
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Available Standard Reports Grid */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-xs hover:shadow-md transition">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-600 mb-3">
-            <Award size={20} />
+      {/* ─── 8 Standard Report Selector Tabs ────────────────────────────────── */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-8">
+        {REPORT_TABS.map((tab) => {
+          const Icon = tab.icon;
+          const isActive = activeReport === tab.id;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => {
+                setActiveReport(tab.id);
+                setCurrentPage(1);
+              }}
+              className={`flex flex-col items-center rounded-2xl border p-3 text-center transition-all ${
+                isActive
+                  ? 'border-blue-500 bg-blue-50/80 text-blue-700 shadow-xs'
+                  : 'border-slate-200/80 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50/50'
+              }`}
+            >
+              <div
+                className={`flex h-8 w-8 items-center justify-center rounded-xl mb-1.5 ${
+                  isActive ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500'
+                }`}
+              >
+                <Icon size={16} />
+              </div>
+              <span className="text-[11px] font-bold line-clamp-2 leading-tight">{tab.label}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* ─── Live Table Data Preview ────────────────────────────────────────── */}
+      <div className="rounded-2xl border border-slate-200/80 bg-white shadow-xs overflow-hidden">
+        {/* Table Header Filter & Search */}
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 p-4">
+          <div>
+            <h3 className="text-sm font-bold text-slate-900">{reportData?.reportTitle || 'Report Preview'}</h3>
+            <p className="text-xs text-slate-500">
+              Showing {records.length} of {totalRecords} records
+            </p>
           </div>
-          <h4 className="text-sm font-bold text-slate-900">Appraisal Summary Report</h4>
-          <p className="mt-1 text-xs text-slate-500">
-            All enrolled employees, self scores, manager ratings, calibrated ratings, and sign-off status.
-          </p>
-          <button
-            onClick={handleDownloadExcel}
-            className="mt-4 inline-flex items-center gap-1 text-xs font-bold text-blue-600 hover:text-blue-800"
-          >
-            <Download size={13} />
-            <span>Download Dataset</span>
-          </button>
+
+          <form onSubmit={handleSearchSubmit} className="flex items-center gap-2">
+            <div className="relative">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Search report records..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-56 rounded-xl border border-slate-200 bg-slate-50/80 pl-8 pr-3 py-1.5 text-xs focus:border-blue-500 focus:outline-hidden"
+              />
+            </div>
+            <button
+              type="submit"
+              className="rounded-xl bg-slate-800 px-3 py-1.5 text-xs font-bold text-white hover:bg-slate-900 transition"
+            >
+              Filter
+            </button>
+          </form>
         </div>
 
-        <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-xs hover:shadow-md transition">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 mb-3">
-            <TrendingUp size={20} />
-          </div>
-          <h4 className="text-sm font-bold text-slate-900">KRA & KPI Achievement Audit</h4>
-          <p className="mt-1 text-xs text-slate-500">
-            Target vs actual values, calculated percentage achievement, and submitted verification evidence.
-          </p>
-          <button
-            onClick={handleDownloadExcel}
-            className="mt-4 inline-flex items-center gap-1 text-xs font-bold text-indigo-600 hover:text-indigo-800"
-          >
-            <Download size={13} />
-            <span>Download Dataset</span>
-          </button>
+        {/* Records Table */}
+        <div className="overflow-x-auto">
+          {loading ? (
+            <div className="flex min-h-[300px] items-center justify-center">
+              <div className="h-7 w-7 animate-spin rounded-full border-2 border-blue-600 border-t-transparent" />
+            </div>
+          ) : records.length === 0 ? (
+            <div className="flex min-h-[250px] flex-col items-center justify-center p-6 text-center">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-slate-400 mb-3">
+                <FileText size={22} />
+              </div>
+              <h4 className="text-sm font-bold text-slate-800">No records found</h4>
+              <p className="text-xs text-slate-500 mt-1 max-w-sm">
+                No data matched the selected cycle or search filter. Try clearing the filter or choosing another cycle.
+              </p>
+            </div>
+          ) : (
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-50/80 text-[11px] font-bold uppercase tracking-wider text-slate-500 border-b border-slate-200/80">
+                <tr>
+                  {headers.map((h) => (
+                    <th key={h.key} className="px-4 py-3 whitespace-nowrap">
+                      {h.header}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 text-slate-700">
+                {records.map((row, idx) => (
+                  <tr key={idx} className="hover:bg-slate-50/60 transition">
+                    {headers.map((h) => {
+                      const val = row[h.key];
+                      const isOverdueCol = h.key === 'isOverdue';
+                      const isStatusCol = h.key === 'status';
+
+                      return (
+                        <td key={h.key} className="px-4 py-3 whitespace-nowrap">
+                          {isOverdueCol && String(val).includes('Overdue') ? (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-bold text-rose-700">
+                              <AlertTriangle size={11} />
+                              {val}
+                            </span>
+                          ) : isStatusCol ? (
+                            <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-700 capitalize">
+                              {val}
+                            </span>
+                          ) : (
+                            <span className="font-medium text-slate-800">{String(val ?? '—')}</span>
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
 
-        <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-xs hover:shadow-md transition">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-purple-50 text-purple-600 mb-3">
-            <BarChart3 size={20} />
+        {/* Pagination Bar */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between border-t border-slate-100 px-4 py-3 text-xs">
+            <span className="text-slate-500">
+              Page {currentPage} of {totalPages} ({totalRecords} items)
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1 text-slate-600 hover:bg-slate-50 disabled:opacity-40"
+              >
+                <ChevronLeft size={13} />
+                <span>Prev</span>
+              </button>
+              <button
+                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                className="flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1 text-slate-600 hover:bg-slate-50 disabled:opacity-40"
+              >
+                <span>Next</span>
+                <ChevronRight size={13} />
+              </button>
+            </div>
           </div>
-          <h4 className="text-sm font-bold text-slate-900">Bell Curve Calibration Audit</h4>
-          <p className="mt-1 text-xs text-slate-500">
-            Before-and-after scores, documented moderation reasons, and timestamped reviewer audit trail.
-          </p>
-          <button
-            onClick={handleDownloadExcel}
-            className="mt-4 inline-flex items-center gap-1 text-xs font-bold text-purple-600 hover:text-purple-800"
-          >
-            <Download size={13} />
-            <span>Download Dataset</span>
-          </button>
-        </div>
+        )}
       </div>
     </div>
   );
