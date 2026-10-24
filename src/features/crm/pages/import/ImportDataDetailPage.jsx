@@ -646,27 +646,16 @@ export const ImportDataDetailPage = ({
               </button>
             </div>
 
-            {/* Activity Group */}
-            <div className="inline-flex items-center h-8 rounded-xl border border-slate-200/90 bg-white p-0.5 shadow-2xs shrink-0 divide-x divide-slate-100">
-              <button
-                type="button"
-                onClick={() => handleOpenOutreach('followup')}
-                className="h-full inline-flex items-center gap-1.5 px-2.5 text-xs font-semibold text-slate-700 hover:text-violet-700 hover:bg-violet-50 rounded-lg transition-colors whitespace-nowrap cursor-pointer"
-                title="Schedule Follow-up"
-              >
-                <Clock className="w-3.5 h-3.5 text-violet-600" />
-                <span>Follow-up</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setIsTaskModalOpen(true)}
-                className="h-full inline-flex items-center gap-1.5 px-2.5 text-xs font-semibold text-slate-700 hover:text-indigo-700 hover:bg-indigo-50 rounded-lg transition-colors whitespace-nowrap cursor-pointer"
-                title="Add Task"
-              >
-                <CheckSquare className="w-3.5 h-3.5 text-indigo-500" />
-                <span>+ Task</span>
-              </button>
-            </div>
+            {/* Follow-up Action */}
+            <button
+              type="button"
+              onClick={() => handleOpenOutreach('followup')}
+              className="h-8 inline-flex items-center gap-1.5 px-3 text-xs font-semibold text-slate-700 hover:text-violet-700 hover:bg-violet-50 rounded-xl border border-slate-200/90 bg-white shadow-2xs transition-colors whitespace-nowrap cursor-pointer shrink-0"
+              title="Schedule Follow-up"
+            >
+              <Clock className="w-3.5 h-3.5 text-violet-600" />
+              <span>Follow-up</span>
+            </button>
 
             {/* Manage Group */}
             {((onEdit && !record.isConvertedToLead) || (onDelete && !record.isConvertedToLead)) && (
