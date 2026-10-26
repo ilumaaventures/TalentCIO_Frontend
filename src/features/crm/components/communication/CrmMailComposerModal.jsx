@@ -20,6 +20,9 @@ import {
   File,
   Trash2,
   UploadCloud,
+  Loader2,
+  AlertCircle,
+  HelpCircle,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '@/features/auth/context/AuthContext';
@@ -102,6 +105,23 @@ export const CrmMailComposerModal = ({
   const [activeTab, setActiveTab] = useState('compose'); // 'compose' | 'preview'
   const [isSending, setIsSending] = useState(false);
   const [isLoadingSenders, setIsLoadingSenders] = useState(true);
+
+  // Send Confirmation Modal State
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [sendStage, setSendStage] = useState('idle'); // 'idle' | 'sending' | 'error' | 'success'
+  const [sendErrorMsg, setSendErrorMsg] = useState('');
+
+  useEffect(() => {
+    if (!isOpen) {
+      setShowConfirmModal(false);
+      setSendStage('idle');
+      setSendErrorMsg('');
+    }
+  }, [isOpen]);
+
+  const currentSender = useMemo(() => {
+    return senders.find((s) => String(s._id) === String(selectedSenderId)) || null;
+  }, [senders, selectedSenderId]);
 
   // File Attachments State (Photos, PDF, Docs, PPT, ZIP - max 5MB)
   const [attachments, setAttachments] = useState([]);
@@ -394,7 +414,7 @@ export const CrmMailComposerModal = ({
   const previewSubject = useMemo(() => resolveTemplate(subject, mergeContext), [subject, mergeContext]);
   const previewHtml = useMemo(() => renderTemplateBody(htmlBody, mergeContext), [htmlBody, mergeContext]);
 
-  const handleSendEmail = async (e) => {
+  const handleInitiateSend = (e) => {
     e?.preventDefault();
 
     if (!toEmail || !toEmail.trim()) {
@@ -412,8 +432,16 @@ export const CrmMailComposerModal = ({
       return;
     }
 
+    setSendStage('idle');
+    setSendErrorMsg('');
+    setShowConfirmModal(true);
+  };
+
+  const handleConfirmSendEmail = async () => {
     try {
       setIsSending(true);
+      setSendStage('sending');
+      setSendErrorMsg('');
 
       if (attachments.length > 0) {
         // Send as multipart FormData
@@ -459,17 +487,22 @@ export const CrmMailComposerModal = ({
         await crmEmailTemplateService.sendEmail(payload);
       }
 
+      setSendStage('success');
       toast.success(
         attachments.length > 0
           ? `Sales email sent successfully with ${attachments.length} attachment${attachments.length > 1 ? 's' : ''}!`
           : 'Sales email sent successfully!'
       );
       setAttachments([]);
+      setShowConfirmModal(false);
       onSuccess?.();
       onClose();
     } catch (error) {
       console.error('Failed to dispatch CRM email', error);
-      toast.error(error.response?.data?.message || 'Failed to deliver email');
+      const errMsg = error.response?.data?.message || error.message || 'Failed to deliver email';
+      setSendErrorMsg(errMsg);
+      setSendStage('error');
+      toast.error(errMsg);
     } finally {
       setIsSending(false);
     }
@@ -547,7 +580,7 @@ export const CrmMailComposerModal = ({
         </div>
 
         {/* Modal Body */}
-        <form onSubmit={handleSendEmail} className="flex-1 overflow-y-auto px-6 py-5">
+        <form onSubmit={handleInitiateSend} className="flex-1 overflow-y-auto px-6 py-5">
           {activeTab === 'compose' ? (
             <div className="grid gap-5 lg:grid-cols-12 items-start">
               {/* Left Form: Configurations & Editor (8 cols) */}
@@ -1064,6 +1097,186 @@ export const CrmMailComposerModal = ({
           </div>
         </form>
       </div>
+
+      {/* Send Confirmation & Live Dispatch Status Modal */}
+      {showConfirmModal && (
+        <div
+          className="fixed inset-0 z-[10020] flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-md animate-in fade-in duration-150"
+          onClick={() => {
+            if (!isSending) setShowConfirmModal(false);
+          }}
+        >
+          <div
+            className="w-full max-w-lg bg-white rounded-3xl shadow-2xl border border-slate-200/90 overflow-hidden transform animate-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="relative px-6 pt-6 pb-4 bg-gradient-to-b from-indigo-50/80 via-white to-white border-b border-slate-100">
+              <div className="flex items-start gap-4">
+                <div className="w-12 h-12 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shadow-md shadow-indigo-200 shrink-0">
+                  {sendStage === 'sending' ? (
+                    <Loader2 className="w-6 h-6 animate-spin text-white" />
+                  ) : sendStage === 'error' ? (
+                    <AlertCircle className="w-6 h-6 text-white" />
+                  ) : (
+                    <Send className="w-6 h-6 text-white" />
+                  )}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h3 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight">
+                    {sendStage === 'sending'
+                      ? 'Sending Email...'
+                      : sendStage === 'error'
+                      ? 'Email Dispatch Failed'
+                      : 'Confirm Email Dispatch'}
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    {sendStage === 'sending'
+                      ? 'Connecting to mail server and dispatching your email...'
+                      : sendStage === 'error'
+                      ? 'An error occurred while attempting to send the email.'
+                      : 'Please review and confirm before sending this email.'}
+                  </p>
+                </div>
+                {!isSending && (
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmModal(false)}
+                    className="text-slate-400 hover:text-slate-600 p-1.5 rounded-xl hover:bg-slate-100 transition cursor-pointer"
+                  >
+                    <X size={18} />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Body */}
+            <div className="p-6 space-y-4 max-h-[60vh] overflow-y-auto">
+              {sendStage === 'sending' ? (
+                <div className="py-8 px-4 bg-indigo-50/60 rounded-2xl border border-indigo-100 flex flex-col items-center justify-center text-center">
+                  <div className="relative mb-4">
+                    <div className="w-14 h-14 rounded-full border-4 border-indigo-200 border-t-indigo-600 animate-spin" />
+                    <Mail className="w-6 h-6 text-indigo-600 absolute inset-0 m-auto" />
+                  </div>
+                  <p className="font-bold text-indigo-950 text-sm">Delivering to {toEmail}</p>
+                  <p className="text-xs text-indigo-600/80 mt-1 max-w-sm">
+                    Please wait a moment while the email {attachments.length > 0 ? `and ${attachments.length} attachment(s)` : ''} are transferred to the mail server.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  {sendStage === 'error' && (
+                    <div className="p-3.5 bg-rose-50 rounded-2xl border border-rose-200 flex items-start gap-2.5 text-xs text-rose-800">
+                      <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                      <div className="flex-1">
+                        <p className="font-bold">Error delivering email</p>
+                        <p className="text-rose-700 mt-0.5">{sendErrorMsg || 'Failed to dispatch email. Please check your network or email credentials.'}</p>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4 space-y-2.5 text-xs">
+                    <div className="flex items-start justify-between gap-2 pb-2 border-b border-slate-200/70">
+                      <span className="text-slate-500 font-medium shrink-0">Recipient (To):</span>
+                      <div className="text-right">
+                        <span className="font-bold text-slate-900 break-all">{toEmail}</span>
+                        {(recipientName || target.contactPerson || target.companyName) && (
+                          <p className="text-[11px] text-slate-500 font-medium">
+                            {[recipientName || target.contactPerson, target.companyName].filter(Boolean).join(' • ')}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    {(cc || bcc) && (
+                      <div className="space-y-1.5 pb-2 border-b border-slate-200/70">
+                        {cc && (
+                          <div className="flex items-start justify-between gap-2">
+                            <span className="text-slate-500 font-medium shrink-0">CC:</span>
+                            <span className="text-slate-700 font-medium text-right break-all">{cc}</span>
+                          </div>
+                        )}
+                        {bcc && (
+                          <div className="flex items-start justify-between gap-2">
+                            <span className="text-slate-500 font-medium shrink-0">BCC:</span>
+                            <span className="text-slate-700 font-medium text-right break-all">{bcc}</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    <div className="flex items-start justify-between gap-2 pb-2 border-b border-slate-200/70">
+                      <span className="text-slate-500 font-medium shrink-0">Subject:</span>
+                      <span className="font-semibold text-slate-800 text-right line-clamp-2 max-w-[280px]">
+                        {previewSubject.trim() || subject.trim()}
+                      </span>
+                    </div>
+
+                    <div className="flex items-start justify-between gap-2 pb-2 border-b border-slate-200/70">
+                      <span className="text-slate-500 font-medium shrink-0">From (Sender):</span>
+                      <span className="font-medium text-slate-700 text-right truncate max-w-[260px]">
+                        {currentSender?.name ? `${currentSender.name} (${currentSender.fromAddress || ''})` : 'TalentCIO Platform'}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-slate-500 font-medium shrink-0">Attachments:</span>
+                      {attachments.length > 0 ? (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-700 font-bold text-[11px]">
+                          <Paperclip size={12} />
+                          <span>{attachments.length} file{attachments.length > 1 ? 's' : ''} ({formatFileSize(totalAttachmentBytes)})</span>
+                        </span>
+                      ) : (
+                        <span className="text-slate-400 font-medium">None</span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 p-3 bg-amber-50/70 border border-amber-200/80 rounded-xl text-amber-800 text-[11.5px]">
+                    <HelpCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                    <span>This email will be dispatched immediately and logged to the prospect timeline.</span>
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setShowConfirmModal(false)}
+                disabled={isSending}
+                className="px-4 py-2 rounded-xl border border-slate-300 text-xs font-bold text-slate-700 hover:bg-slate-200 transition cursor-pointer disabled:opacity-50"
+              >
+                {sendStage === 'error' ? 'Close & Edit' : 'Cancel'}
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmSendEmail}
+                disabled={isSending}
+                className="inline-flex items-center gap-2 px-5 py-2 rounded-xl bg-indigo-600 text-xs font-bold text-white shadow-sm hover:bg-indigo-700 transition cursor-pointer disabled:opacity-60"
+              >
+                {isSending ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Sending...</span>
+                  </>
+                ) : sendStage === 'error' ? (
+                  <>
+                    <Send className="w-3.5 h-3.5" />
+                    <span>Retry Sending</span>
+                  </>
+                ) : (
+                  <>
+                    <Send className="w-3.5 h-3.5" />
+                    <span>Yes, Send Email</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>,
     document.body
   );

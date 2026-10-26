@@ -56,6 +56,7 @@ export const dataService = {
   exportData: (entityType) => crmAdminService.exportData(entityType),
   mergeDuplicates: (data) => crmAdminService.mergeDuplicates(data),
   logActivity: (id, data) => crmAdminService.logImportDataActivity(id, data),
+  updateImportDataActivity: (activityId, data) => crmAdminService.updateImportDataActivity(activityId, data),
   getActivities: (id, params) => crmAdminService.getImportDataActivities(id, params),
   scheduleFollowUp: (id, data) => crmAdminService.scheduleImportDataFollowUp(id, data),
   updateImportDataStatus: (id, status, note) => crmAdminService.updateImportDataStatus(id, status, note),

@@ -24,6 +24,7 @@ import {
   Database,
   RefreshCw,
   User,
+  Plus,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -38,6 +39,8 @@ import {
   MoreVertical,
   Menu,
   Users,
+  Filter,
+  Globe,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import ExcelJS from 'exceljs';
@@ -407,6 +410,17 @@ export const ImportDataPage = ({ onNavigate }) => {
   const [userFilterSearch, setUserFilterSearch] = useState('');
   const userDropdownRef = useRef(null);
 
+  // Status Filter state (multi-select)
+  const [selectedStatuses, setSelectedStatuses] = useState([]);
+  const [isStatusDropdownOpen, setIsStatusDropdownOpen] = useState(false);
+  const statusDropdownRef = useRef(null);
+
+  // Source Filter state (multi-select with search)
+  const [selectedSources, setSelectedSources] = useState([]);
+  const [isSourceDropdownOpen, setIsSourceDropdownOpen] = useState(false);
+  const [sourceFilterSearch, setSourceFilterSearch] = useState('');
+  const sourceDropdownRef = useRef(null);
+
   // Staging state for File Preview before actual import
   const [stagedData, setStagedData] = useState(null); // { fileName, fileSize, rows: [], newCount, updateCount, duplicateCount }
   const [showPreview, setShowPreview] = useState(true);
@@ -459,18 +473,24 @@ export const ImportDataPage = ({ onNavigate }) => {
     };
   }, []);
 
-  // Handle clicking outside user filter dropdown to close it
+  // Handle clicking outside filter dropdowns to close them
   useEffect(() => {
     const handleClickOutside = (e) => {
       if (userDropdownRef.current && !userDropdownRef.current.contains(e.target)) {
         setIsUserDropdownOpen(false);
       }
+      if (statusDropdownRef.current && !statusDropdownRef.current.contains(e.target)) {
+        setIsStatusDropdownOpen(false);
+      }
+      if (sourceDropdownRef.current && !sourceDropdownRef.current.contains(e.target)) {
+        setIsSourceDropdownOpen(false);
+      }
     };
-    if (isUserDropdownOpen) {
+    if (isUserDropdownOpen || isStatusDropdownOpen || isSourceDropdownOpen) {
       document.addEventListener('mousedown', handleClickOutside);
     }
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [isUserDropdownOpen]);
+  }, [isUserDropdownOpen, isStatusDropdownOpen, isSourceDropdownOpen]);
 
   // Consolidated list of active users available to filter (strictly active only)
   const activeUserOptions = useMemo(() => {
@@ -1034,11 +1054,11 @@ export const ImportDataPage = ({ onNavigate }) => {
                   ? matchedWorkspaceRec.contacts
                   : ((matchedWorkspaceRec.contactPerson || matchedWorkspaceRec.mobileNo || matchedWorkspaceRec.emailId)
                     ? [{
-                        contactPerson: matchedWorkspaceRec.contactPerson || '',
-                        designation: matchedWorkspaceRec.designation || '',
-                        mobileNo: matchedWorkspaceRec.mobileNo || '',
-                        emailId: matchedWorkspaceRec.emailId || '',
-                      }]
+                      contactPerson: matchedWorkspaceRec.contactPerson || '',
+                      designation: matchedWorkspaceRec.designation || '',
+                      mobileNo: matchedWorkspaceRec.mobileNo || '',
+                      emailId: matchedWorkspaceRec.emailId || '',
+                    }]
                     : []);
 
                 hasNewContact = (row.contacts || []).some((newC) => {
@@ -1050,8 +1070,8 @@ export const ImportDataPage = ({ onNavigate }) => {
                     const oEmail = (oldC.emailId || '').toLowerCase();
                     const oName = (oldC.contactPerson || '').toLowerCase();
                     return (nPhone && oPhone && nPhone === oPhone) ||
-                           (nEmail && oEmail && nEmail === oEmail) ||
-                           (nName && oName && nName === oName);
+                      (nEmail && oEmail && nEmail === oEmail) ||
+                      (nName && oName && nName === oName);
                   });
                 });
               }
@@ -1125,8 +1145,8 @@ export const ImportDataPage = ({ onNavigate }) => {
                   const oEmail = (oldC.emailId || '').toLowerCase();
                   const oName = (oldC.contactPerson || '').toLowerCase();
                   return (nPhone && oPhone && nPhone === oPhone) ||
-                         (nEmail && oEmail && nEmail === oEmail) ||
-                         (nName && oName && nName === oName);
+                    (nEmail && oEmail && nEmail === oEmail) ||
+                    (nName && oName && nName === oName);
                 });
               });
 
@@ -1251,24 +1271,24 @@ export const ImportDataPage = ({ onNavigate }) => {
             ? [...ex.contacts]
             : ((ex.contactPerson || ex.mobileNo || ex.emailId)
               ? [{
-                  contactPerson: ex.contactPerson || '',
-                  designation: ex.designation || '',
-                  mobileNo: ex.mobileNo || '',
-                  emailId: ex.emailId || '',
-                  isPrimary: true,
-                }]
+                contactPerson: ex.contactPerson || '',
+                designation: ex.designation || '',
+                mobileNo: ex.mobileNo || '',
+                emailId: ex.emailId || '',
+                isPrimary: true,
+              }]
               : []);
 
           const incomingContacts = Array.isArray(uRow.contacts) && uRow.contacts.length > 0
             ? uRow.contacts
             : ((uRow.contactPerson || uRow.mobileNo || uRow.emailId)
               ? [{
-                  contactPerson: uRow.contactPerson || '',
-                  designation: uRow.designation || '',
-                  mobileNo: uRow.mobileNo || '',
-                  emailId: uRow.emailId || '',
-                  isPrimary: false,
-                }]
+                contactPerson: uRow.contactPerson || '',
+                designation: uRow.designation || '',
+                mobileNo: uRow.mobileNo || '',
+                emailId: uRow.emailId || '',
+                isPrimary: false,
+              }]
               : []);
 
           const mergedContacts = [...existingContacts];
@@ -1329,12 +1349,12 @@ export const ImportDataPage = ({ onNavigate }) => {
               ? uRow.contacts
               : ((uRow.contactPerson || uRow.mobileNo || uRow.emailId)
                 ? [{
-                    contactPerson: uRow.contactPerson || '',
-                    designation: uRow.designation || '',
-                    mobileNo: uRow.mobileNo || '',
-                    emailId: uRow.emailId || '',
-                    isPrimary: true,
-                  }]
+                  contactPerson: uRow.contactPerson || '',
+                  designation: uRow.designation || '',
+                  mobileNo: uRow.mobileNo || '',
+                  emailId: uRow.emailId || '',
+                  isPrimary: true,
+                }]
                 : []),
             status: uRow.status || uRow.leadStatus || 'New',
             leadStatus: uRow.status || uRow.leadStatus || 'New',
@@ -1354,12 +1374,12 @@ export const ImportDataPage = ({ onNavigate }) => {
           ? r.contacts
           : ((r.contactPerson || r.mobileNo || r.emailId)
             ? [{
-                contactPerson: r.contactPerson || '',
-                designation: r.designation || '',
-                mobileNo: r.mobileNo || '',
-                emailId: r.emailId || '',
-                isPrimary: true,
-              }]
+              contactPerson: r.contactPerson || '',
+              designation: r.designation || '',
+              mobileNo: r.mobileNo || '',
+              emailId: r.emailId || '',
+              isPrimary: true,
+            }]
             : []),
         status: r.status || r.leadStatus || 'New',
         leadStatus: r.status || r.leadStatus || 'New',
@@ -1674,17 +1694,17 @@ export const ImportDataPage = ({ onNavigate }) => {
           ? row.contacts
           : ((row.contactPerson || row.mobileNo || row.emailId)
             ? [{
-                contactPerson: row.contactPerson || '',
-                designation: row.designation || '',
-                mobileNo: row.mobileNo || '',
-                emailId: row.emailId || '',
-              }]
+              contactPerson: row.contactPerson || '',
+              designation: row.designation || '',
+              mobileNo: row.mobileNo || '',
+              emailId: row.emailId || '',
+            }]
             : [{
-                contactPerson: '',
-                designation: '',
-                mobileNo: '',
-                emailId: '',
-              }]);
+              contactPerson: '',
+              designation: '',
+              mobileNo: '',
+              emailId: '',
+            }]);
 
         const startRowIndex = worksheet.rowCount + 1;
 
@@ -1995,19 +2015,73 @@ export const ImportDataPage = ({ onNavigate }) => {
     return dateFilteredRecords.filter(isStatusChangedRecord).length;
   }, [dateFilteredRecords]);
 
+  // Status Filter options & live counts
+  const allFilterableStatuses = useMemo(() => {
+    const list = [...STATUS_OPTIONS, 'Converted to Lead'];
+    records.forEach((r) => {
+      const st = r.status || r.leadStatus;
+      if (st && !list.some((x) => x.toLowerCase() === st.toLowerCase())) {
+        list.push(st);
+      }
+    });
+    return list;
+  }, [records]);
+
+  const statusCounts = useMemo(() => {
+    const map = {};
+    dateFilteredRecords.forEach((r) => {
+      const s = r.isConvertedToLead ? 'Converted to Lead' : (r.status || r.leadStatus || 'New');
+      map[s] = (map[s] || 0) + 1;
+    });
+    return map;
+  }, [dateFilteredRecords]);
+
+  // Source Filter options & live counts
+  const availableSources = useMemo(() => {
+    const map = {};
+    records.forEach((r) => {
+      const src = (r.source || r.leadSource || '').trim();
+      if (src) map[src] = (map[src] || 0) + 1;
+    });
+    return Object.keys(map).sort((a, b) => a.localeCompare(b)).map((name) => ({
+      name,
+      count: map[name] || 0,
+    }));
+  }, [records]);
+
+  const filteredSourceOptions = useMemo(() => {
+    if (!sourceFilterSearch.trim()) return availableSources;
+    const q = sourceFilterSearch.toLowerCase();
+    return availableSources.filter((item) => item.name.toLowerCase().includes(q));
+  }, [availableSources, sourceFilterSearch]);
+
+  const handleToggleStatus = (statusName) => {
+    setSelectedStatuses((prev) =>
+      prev.includes(statusName) ? prev.filter((s) => s !== statusName) : [...prev, statusName]
+    );
+  };
+
+  const handleToggleSource = (srcName) => {
+    setSelectedSources((prev) =>
+      prev.includes(srcName) ? prev.filter((s) => s !== srcName) : [...prev, srcName]
+    );
+  };
+
   // Check if any non-default filters are applied
   const hasActiveFilters = useMemo(() => {
     return (
       dateFilter !== 'today' ||
       dateFilterType !== 'updatedAt' ||
       selectedUsers.length > 0 ||
+      selectedStatuses.length > 0 ||
+      selectedSources.length > 0 ||
       Boolean(searchQuery.trim()) ||
       Boolean(fromDate) ||
       Boolean(toDate) ||
       showConvertedOnly ||
       showStatusChangedOnly
     );
-  }, [dateFilter, dateFilterType, selectedUsers, searchQuery, fromDate, toDate, showConvertedOnly, showStatusChangedOnly]);
+  }, [dateFilter, dateFilterType, selectedUsers, selectedStatuses, selectedSources, searchQuery, fromDate, toDate, showConvertedOnly, showStatusChangedOnly]);
 
   // Reset all filters to default state (Today, Updated At)
   const handleClearAllFilters = () => {
@@ -2016,6 +2090,8 @@ export const ImportDataPage = ({ onNavigate }) => {
     setFromDate('');
     setToDate('');
     setSelectedUsers([]);
+    setSelectedStatuses([]);
+    setSelectedSources([]);
     setSearchQuery('');
     setShowConvertedOnly(false);
     setShowStatusChangedOnly(false);
@@ -2034,6 +2110,26 @@ export const ImportDataPage = ({ onNavigate }) => {
         // Filter by Status Changes if card filter is active
         if (showStatusChangedOnly && !isStatusChangedRecord(item)) {
           return false;
+        }
+
+        // Filter by Status (multi-select)
+        if (selectedStatuses.length > 0) {
+          const itemStatus = item.isConvertedToLead
+            ? 'Converted to Lead'
+            : (item.status || item.leadStatus || 'New');
+          const matches = selectedStatuses.some(
+            (s) => s.toLowerCase() === itemStatus.toLowerCase()
+          );
+          if (!matches) return false;
+        }
+
+        // Filter by Source (multi-select)
+        if (selectedSources.length > 0) {
+          const itemSrc = (item.source || item.leadSource || '').trim().toLowerCase();
+          const matches = selectedSources.some(
+            (src) => src.toLowerCase() === itemSrc
+          );
+          if (!matches) return false;
         }
 
         if (!searchQuery.trim()) return true;
@@ -2063,12 +2159,12 @@ export const ImportDataPage = ({ onNavigate }) => {
         const dateB = getDateForSort(b);
         return sortDirection === 'desc' ? dateB - dateA : dateA - dateB;
       });
-  }, [dateFilteredRecords, searchQuery, sortDirection, showConvertedOnly, showStatusChangedOnly, dateFilterType]);
+  }, [dateFilteredRecords, searchQuery, sortDirection, showConvertedOnly, showStatusChangedOnly, dateFilterType, selectedStatuses, selectedSources]);
 
   // Reset to first page when any filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [dateFilter, dateFilterType, fromDate, toDate, selectedUsers, searchQuery, sortDirection, showConvertedOnly, showStatusChangedOnly]);
+  }, [dateFilter, dateFilterType, fromDate, toDate, selectedUsers, selectedStatuses, selectedSources, searchQuery, sortDirection, showConvertedOnly, showStatusChangedOnly]);
 
   // Pagination calculation
   const totalMatchingRecords = filteredAndSortedRecords.length;
@@ -2121,12 +2217,12 @@ export const ImportDataPage = ({ onNavigate }) => {
       const next = prev.map((r) =>
         r.id === row.id
           ? {
-              ...r,
-              status: newStatus,
-              leadStatus: newStatus,
-              updatedAt: nowIso,
-              statusHistory: [historyEntry, ...(Array.isArray(r.statusHistory) ? r.statusHistory : [])],
-            }
+            ...r,
+            status: newStatus,
+            leadStatus: newStatus,
+            updatedAt: nowIso,
+            statusHistory: [historyEntry, ...(Array.isArray(r.statusHistory) ? r.statusHistory : [])],
+          }
           : r
       );
       try {
@@ -2554,9 +2650,64 @@ export const ImportDataPage = ({ onNavigate }) => {
         dateInput = '';
       }
     }
+
+    const contacts = Array.isArray(targetRow.contacts) && targetRow.contacts.length > 0
+      ? targetRow.contacts.map((c, i) => ({
+          contactPerson: c.contactPerson || '',
+          designation: c.designation || '',
+          mobileNo: c.mobileNo || '',
+          emailId: c.emailId || '',
+          isPrimary: c.isPrimary !== undefined ? Boolean(c.isPrimary) : i === 0,
+        }))
+      : [{
+          contactPerson: targetRow.contactPerson || '',
+          designation: targetRow.designation || '',
+          mobileNo: targetRow.mobileNo || targetRow.phone || '',
+          emailId: targetRow.emailId || targetRow.email || '',
+          isPrimary: true,
+        }];
+
     setEditingRow({
       ...targetRow,
+      contacts,
       dateInput,
+    });
+  };
+
+  const handleAddEditRowContact = () => {
+    setEditingRow((prev) => ({
+      ...prev,
+      contacts: [
+        ...(prev?.contacts || []),
+        { contactPerson: '', designation: '', mobileNo: '', emailId: '', isPrimary: false },
+      ],
+    }));
+  };
+
+  const handleUpdateEditRowContact = (index, field, value) => {
+    setEditingRow((prev) => {
+      const next = [...(prev?.contacts || [])];
+      next[index] = { ...next[index], [field]: value };
+      return { ...prev, contacts: next };
+    });
+  };
+
+  const handleSetPrimaryEditRowContact = (index) => {
+    setEditingRow((prev) => ({
+      ...prev,
+      contacts: (prev?.contacts || []).map((c, i) => ({ ...c, isPrimary: i === index })),
+    }));
+  };
+
+  const handleRemoveEditRowContact = (index) => {
+    setEditingRow((prev) => {
+      const current = prev?.contacts || [];
+      if (current.length <= 1) return prev;
+      const next = current.filter((_, i) => i !== index);
+      if (next.length > 0 && !next.some((c) => c.isPrimary)) {
+        next[0].isPrimary = true;
+      }
+      return { ...prev, contacts: next };
     });
   };
 
@@ -2587,7 +2738,23 @@ export const ImportDataPage = ({ onNavigate }) => {
 
     setIsSavingEdit(true);
     try {
-      const contactName = (editingRow.contactPerson || '').trim();
+      const cleanedContacts = (editingRow.contacts || [])
+        .map((c) => ({
+          contactPerson: (c.contactPerson || '').trim(),
+          designation: (c.designation || '').trim(),
+          mobileNo: (c.mobileNo || '').trim(),
+          emailId: (c.emailId || '').trim(),
+          isPrimary: Boolean(c.isPrimary),
+        }))
+        .filter((c) => c.contactPerson || c.mobileNo || c.emailId || c.designation);
+
+      const primaryContact = cleanedContacts.find((c) => c.isPrimary) || cleanedContacts[0] || {};
+      const resolvedContactPerson = (primaryContact.contactPerson || editingRow.contactPerson || '').trim();
+      const resolvedDesignation = (primaryContact.designation || editingRow.designation || '').trim();
+      const resolvedMobile = (primaryContact.mobileNo || editingRow.mobileNo || '').trim();
+      const resolvedEmail = (primaryContact.emailId || editingRow.emailId || '').trim();
+
+      const contactName = resolvedContactPerson;
       const nameParts = contactName ? contactName.split(/\s+/) : [];
       const firstName = nameParts[0] || compName || 'Lead';
       const lastName = nameParts.slice(1).join(' ') || '';
@@ -2604,9 +2771,9 @@ export const ImportDataPage = ({ onNavigate }) => {
         firstName,
         lastName,
         companyName: compName,
-        jobTitle: (editingRow.designation || '').trim(),
-        phone: (editingRow.mobileNo || '').trim(),
-        email: (editingRow.emailId || '').trim(),
+        jobTitle: resolvedDesignation,
+        phone: resolvedMobile,
+        email: resolvedEmail,
         address: {
           street: (editingRow.address || '').trim(),
           city: '',
@@ -2640,10 +2807,18 @@ export const ImportDataPage = ({ onNavigate }) => {
         ...editingRow,
         companyName: compName,
         gstin: gstinVal,
-        contactPerson: (editingRow.contactPerson || '').trim(),
-        designation: (editingRow.designation || '').trim(),
-        mobileNo: (editingRow.mobileNo || '').trim(),
-        emailId: (editingRow.emailId || '').trim(),
+        dateOfRegistration: (editingRow.dateOfRegistration || '').trim(),
+        contactPerson: resolvedContactPerson,
+        designation: resolvedDesignation,
+        mobileNo: resolvedMobile,
+        emailId: resolvedEmail,
+        contacts: cleanedContacts.length > 0 ? cleanedContacts : (resolvedContactPerson || resolvedMobile ? [{
+          contactPerson: resolvedContactPerson,
+          designation: resolvedDesignation,
+          mobileNo: resolvedMobile,
+          emailId: resolvedEmail,
+          isPrimary: true,
+        }] : []),
         industry: (editingRow.industry || '').trim(),
         source: rowSource,
         leadSource: rowSource,
@@ -2659,6 +2834,9 @@ export const ImportDataPage = ({ onNavigate }) => {
       setRecords((prev) =>
         prev.map((r) => (r.id === editingRow.id ? { ...r, ...updatedRowData } : r))
       );
+
+      // If detail view of this company is open, update it directly
+      setSelectedDetailRecord((prev) => (prev && (prev.id === editingRow.id || prev._id === editingRow._id) ? { ...prev, ...updatedRowData } : prev));
 
       // Sync updated row to CrmImportData on server
       dataService.syncImportData([updatedRowData]).catch((err) => {
@@ -2719,7 +2897,7 @@ export const ImportDataPage = ({ onNavigate }) => {
               const next = prev.map((r) => (r.id === updated.id || r._id === updated._id ? { ...r, ...updated } : r));
               try {
                 localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-              } catch (_) {}
+              } catch (_) { }
               return next;
             });
           }}
@@ -2727,25 +2905,25 @@ export const ImportDataPage = ({ onNavigate }) => {
       ) : (
         <>
           {/* Top Header */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
-              <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2 flex-wrap">
-                <Database className="w-6 h-6 text-emerald-600 shrink-0" />
+              <h1 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight flex items-center gap-2 flex-wrap">
+                <Database className="w-5 h-5 text-emerald-600 shrink-0" />
                 <span>Database</span>
                 {canViewAll ? (
-                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
                     All Organization Records
                   </span>
                 ) : (
                   <span
-                    className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-blue-50 text-blue-700 border border-blue-200"
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-50 text-blue-700 border border-blue-200"
                     title="You have personal data visibility: you can only view records you uploaded or are assigned to."
                   >
                     Personal View (My Data Only)
                   </span>
                 )}
               </h1>
-              <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
+              <p className="text-xs text-slate-500 mt-0.5">
                 Select Excel file, preview extracted rows, import to workspace, sort/filter by date, and send to Leads.
               </p>
             </div>
@@ -2985,7 +3163,7 @@ export const ImportDataPage = ({ onNavigate }) => {
                           <th className="p-2.5 border-l border-slate-200 whitespace-nowrap w-[210px] min-w-[180px] max-w-[220px]">Company Name</th>
                           <th className="p-2.5 border-l border-slate-200 whitespace-nowrap w-[130px] min-w-[110px] max-w-[140px]">GSTIN</th>
                           <th className="p-2.5 border-l border-slate-200 whitespace-nowrap w-[130px] min-w-[110px] max-w-[140px]">Date of Reg.</th>
-                          <th className="p-2.5 border-l border-slate-200 whitespace-nowrap w-[150px] min-w-[130px] max-w-[160px]">Industry</th>
+                          <th className="p-2.5 border-l border-slate-200 whitespace-nowrap w-[110px] min-w-[90px] max-w-[120px]">Industry</th>
                           <th className="p-2.5 border-l border-slate-200 whitespace-nowrap">Address</th>
                           <th className="p-2.5 border-l border-slate-200 whitespace-nowrap">Rating</th>
                           <th className="p-2.5 border-l border-slate-200 whitespace-nowrap">Contact Person</th>
@@ -3093,7 +3271,7 @@ export const ImportDataPage = ({ onNavigate }) => {
                               </td>
                               <td className="p-2.5 border-l border-slate-200 text-slate-700 whitespace-nowrap font-mono w-[130px] min-w-[110px] max-w-[140px]">{row.gstin || '—'}</td>
                               <td className="p-2.5 border-l border-slate-200 text-slate-700 whitespace-nowrap font-mono text-xs w-[130px] min-w-[110px] max-w-[140px]">{row.dateOfRegistration || ''}</td>
-                              <td className="p-2.5 border-l border-slate-200 text-slate-700 whitespace-normal break-words w-[150px] min-w-[130px] max-w-[160px] leading-snug">{row.industry || '—'}</td>
+                              <td className="p-2.5 border-l border-slate-200 text-slate-700 whitespace-normal break-words w-[110px] min-w-[90px] max-w-[120px] leading-snug">{row.industry || '—'}</td>
                               <td className="p-2.5 text-slate-600 max-w-xs truncate">{row.address || '—'}</td>
                               <td className="p-2.5 text-slate-800 whitespace-nowrap">{row.rating || '—'}</td>
                               <td className="p-2.5 font-semibold text-slate-800 whitespace-nowrap">
@@ -3218,46 +3396,46 @@ export const ImportDataPage = ({ onNavigate }) => {
                           setFromDate('');
                           setToDate('');
                         }}
-                        className={`p-3 sm:px-4 sm:py-3 rounded-xl border shadow-2xs transition-all duration-150 cursor-pointer select-none group relative ${isTotalActive
-                            ? 'bg-indigo-50/60 border-indigo-400 ring-2 ring-indigo-500/25 shadow-xs'
-                            : 'bg-white border-slate-200/90 hover:border-indigo-300 hover:shadow-xs'
+                        className={`p-2.5 sm:px-3 sm:py-2.5 rounded-xl border shadow-2xs transition-all duration-150 cursor-pointer select-none group relative ${isTotalActive
+                          ? 'bg-indigo-50/60 border-indigo-400 ring-2 ring-indigo-500/25 shadow-xs'
+                          : 'bg-white border-slate-200/90 hover:border-indigo-300 hover:shadow-xs'
                           }`}
                         title={isTotalActive ? 'Currently showing all records' : 'Click to view all records in workspace'}
                       >
                         <div className="flex items-start justify-between">
                           <div>
                             <div className="flex items-center gap-1.5 flex-wrap">
-                              <p className={`text-[11px] font-semibold uppercase tracking-wider transition-colors ${isTotalActive ? 'text-indigo-900 font-bold' : 'text-slate-500 group-hover:text-indigo-700'
+                              <p className={`text-[10px] font-semibold uppercase tracking-wider transition-colors ${isTotalActive ? 'text-indigo-900 font-bold' : 'text-slate-500 group-hover:text-indigo-700'
                                 }`}>
                                 Total Data
                               </p>
                               {selectedUsers.length > 0 ? (
-                                <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[9px] font-bold bg-indigo-600 text-white shrink-0 shadow-2xs">
+                                <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[8.5px] font-bold bg-indigo-600 text-white shrink-0 shadow-2xs">
                                   {selectedUsers.length === 1 ? selectedUsers[0] : `${selectedUsers.length} Users`}
                                 </span>
                               ) : isTotalActive && (
-                                <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[9px] font-bold bg-indigo-600 text-white shrink-0 shadow-2xs">
+                                <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[8.5px] font-bold bg-indigo-600 text-white shrink-0 shadow-2xs">
                                   All Records
                                 </span>
                               )}
                             </div>
                             <div className="flex items-baseline gap-1.5 mt-0.5">
-                              <span className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
+                              <span className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">
                                 {totalDataCount}
                               </span>
-                              <span className="text-[11px] font-medium text-slate-400">
+                              <span className="text-[10px] font-medium text-slate-400">
                                 records
                               </span>
                             </div>
                           </div>
-                          <div className={`w-8 h-8 rounded-lg border flex items-center justify-center shrink-0 transition-colors ${isTotalActive
-                              ? 'bg-indigo-600 border-indigo-600 text-white shadow-2xs'
-                              : 'bg-indigo-50 border-indigo-100 text-indigo-600 group-hover:bg-indigo-100 group-hover:text-indigo-700'
+                          <div className={`w-7 h-7 rounded-lg border flex items-center justify-center shrink-0 transition-colors ${isTotalActive
+                            ? 'bg-indigo-600 border-indigo-600 text-white shadow-2xs'
+                            : 'bg-indigo-50 border-indigo-100 text-indigo-600 group-hover:bg-indigo-100 group-hover:text-indigo-700'
                             }`}>
-                            <Database className="w-4 h-4" />
+                            <Database className="w-3.5 h-3.5" />
                           </div>
                         </div>
-                        <div className="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
+                        <div className="mt-1.5 pt-1.5 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-500">
                           <span className="truncate">
                             {selectedUsers.length > 0
                               ? `Filtered by ${selectedUsers.join(', ')}`
@@ -3287,9 +3465,9 @@ export const ImportDataPage = ({ onNavigate }) => {
                             setToDate('');
                           }
                         }}
-                        className={`p-3 sm:px-4 sm:py-3 rounded-xl border shadow-2xs transition-all duration-150 cursor-pointer select-none group relative ${isDateFilterActive
-                            ? 'bg-blue-50/60 border-blue-400 ring-2 ring-blue-500/25 shadow-xs'
-                            : 'bg-white border-slate-200/90 hover:border-blue-300 hover:shadow-xs'
+                        className={`p-2.5 sm:px-3 sm:py-2.5 rounded-xl border shadow-2xs transition-all duration-150 cursor-pointer select-none group relative ${isDateFilterActive
+                          ? 'bg-blue-50/60 border-blue-400 ring-2 ring-blue-500/25 shadow-xs'
+                          : 'bg-white border-slate-200/90 hover:border-blue-300 hover:shadow-xs'
                           }`}
                         title={
                           isDateFilterActive
@@ -3300,34 +3478,34 @@ export const ImportDataPage = ({ onNavigate }) => {
                         <div className="flex items-start justify-between">
                           <div>
                             <div className="flex items-center gap-1.5 flex-wrap">
-                              <p className={`text-[11px] font-semibold uppercase tracking-wider transition-colors ${isDateFilterActive ? 'text-blue-900 font-bold' : 'text-slate-500 group-hover:text-blue-700'
+                              <p className={`text-[10px] font-semibold uppercase tracking-wider transition-colors ${isDateFilterActive ? 'text-blue-900 font-bold' : 'text-slate-500 group-hover:text-blue-700'
                                 }`}>
                                 {dateFilterInfo.title}
                               </p>
-                              <span className={`inline-flex items-center px-1.5 py-0.2 rounded text-[9px] font-bold shrink-0 ${isDateFilterActive
-                                  ? 'bg-blue-600 text-white shadow-2xs'
-                                  : 'bg-blue-50 text-blue-700 border border-blue-200'
+                              <span className={`inline-flex items-center px-1.5 py-0.2 rounded text-[8.5px] font-bold shrink-0 ${isDateFilterActive
+                                ? 'bg-blue-600 text-white shadow-2xs'
+                                : 'bg-blue-50 text-blue-700 border border-blue-200'
                                 }`}>
                                 {isDateFilterActive ? 'Active Filter' : dateFilterInfo.badge}
                               </span>
                             </div>
                             <div className="flex items-baseline gap-1.5 mt-0.5">
-                              <span className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
+                              <span className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">
                                 {card2Count}
                               </span>
-                              <span className="text-[11px] font-medium text-slate-400">
+                              <span className="text-[10px] font-medium text-slate-400">
                                 {dateFilter === 'today' || dateFilter === 'all' ? 'imported today' : 'matching filter'}
                               </span>
                             </div>
                           </div>
-                          <div className={`w-8 h-8 rounded-lg border flex items-center justify-center shrink-0 transition-colors ${isDateFilterActive
-                              ? 'bg-blue-600 border-blue-600 text-white shadow-2xs'
-                              : 'bg-blue-50 border-blue-100 text-blue-600 group-hover:bg-blue-100 group-hover:text-blue-700'
+                          <div className={`w-7 h-7 rounded-lg border flex items-center justify-center shrink-0 transition-colors ${isDateFilterActive
+                            ? 'bg-blue-600 border-blue-600 text-white shadow-2xs'
+                            : 'bg-blue-50 border-blue-100 text-blue-600 group-hover:bg-blue-100 group-hover:text-blue-700'
                             }`}>
-                            <Calendar className="w-4 h-4" />
+                            <Calendar className="w-3.5 h-3.5" />
                           </div>
                         </div>
-                        <div className="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
+                        <div className="mt-1.5 pt-1.5 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-500">
                           <span className="truncate">
                             {isDateFilterActive
                               ? (dateFilter === 'today'
@@ -3344,31 +3522,31 @@ export const ImportDataPage = ({ onNavigate }) => {
                       {/* Card 3: Converted to Lead (Clickable: filters table & provides link to CRM Leads) */}
                       <div
                         onClick={() => setShowConvertedOnly((prev) => !prev)}
-                        className={`p-3 sm:px-4 sm:py-3 rounded-xl border shadow-2xs transition-all duration-150 cursor-pointer select-none group relative ${isConvertedActive
-                            ? 'bg-emerald-50/60 border-emerald-400 ring-2 ring-emerald-500/25 shadow-xs'
-                            : 'bg-white border-slate-200/90 hover:border-emerald-300 hover:shadow-xs'
+                        className={`p-2.5 sm:px-3 sm:py-2.5 rounded-xl border shadow-2xs transition-all duration-150 cursor-pointer select-none group relative ${isConvertedActive
+                          ? 'bg-emerald-50/60 border-emerald-400 ring-2 ring-emerald-500/25 shadow-xs'
+                          : 'bg-white border-slate-200/90 hover:border-emerald-300 hover:shadow-xs'
                           }`}
                         title={isConvertedActive ? 'Filtered: Showing converted leads (Click to show all)' : 'Click to filter table by Converted to Lead'}
                       >
                         <div className="flex items-start justify-between">
                           <div>
                             <div className="flex items-center gap-1.5 flex-wrap">
-                              <p className={`text-[11px] font-semibold uppercase tracking-wider transition-colors ${isConvertedActive ? 'text-emerald-900 font-bold' : 'text-slate-500 group-hover:text-emerald-700'
+                              <p className={`text-[10px] font-semibold uppercase tracking-wider transition-colors ${isConvertedActive ? 'text-emerald-900 font-bold' : 'text-slate-500 group-hover:text-emerald-700'
                                 }`}>
                                 Converted to Lead
                               </p>
-                              <span className={`inline-flex items-center px-1.5 py-0.2 rounded text-[9px] font-bold shrink-0 ${isConvertedActive
-                                  ? 'bg-emerald-600 text-white shadow-2xs'
-                                  : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                              <span className={`inline-flex items-center px-1.5 py-0.2 rounded text-[8.5px] font-bold shrink-0 ${isConvertedActive
+                                ? 'bg-emerald-600 text-white shadow-2xs'
+                                : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                                 }`}>
                                 {isConvertedActive ? 'Active Filter' : (dateFilter === 'all' ? 'All Dates' : dateFilterInfo.badge)}
                               </span>
                             </div>
                             <div className="flex items-baseline gap-1.5 mt-0.5">
-                              <span className="text-xl sm:text-2xl font-bold text-emerald-600 tracking-tight">
+                              <span className="text-lg sm:text-xl font-bold text-emerald-600 tracking-tight">
                                 {dateFilteredConvertedCount}
                               </span>
-                              <span className="text-[11px] font-medium text-slate-400">
+                              <span className="text-[10px] font-medium text-slate-400">
                                 {dateFilter === 'today' ? 'converted today' : 'leads converted'}
                               </span>
                             </div>
@@ -3387,15 +3565,15 @@ export const ImportDataPage = ({ onNavigate }) => {
                                 <ExternalLink className="w-3.5 h-3.5" />
                               </button>
                             )}
-                            <div className={`w-8 h-8 rounded-lg border flex items-center justify-center shrink-0 transition-colors ${isConvertedActive
-                                ? 'bg-emerald-600 border-emerald-600 text-white shadow-2xs'
-                                : 'bg-emerald-50 border-emerald-100 text-emerald-600 group-hover:bg-emerald-100 group-hover:text-emerald-700'
+                            <div className={`w-7 h-7 rounded-lg border flex items-center justify-center shrink-0 transition-colors ${isConvertedActive
+                              ? 'bg-emerald-600 border-emerald-600 text-white shadow-2xs'
+                              : 'bg-emerald-50 border-emerald-100 text-emerald-600 group-hover:bg-emerald-100 group-hover:text-emerald-700'
                               }`}>
-                              <CheckCircle2 className="w-4 h-4" />
+                              <CheckCircle2 className="w-3.5 h-3.5" />
                             </div>
                           </div>
                         </div>
-                        <div className="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
+                        <div className="mt-1.5 pt-1.5 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-500">
                           <span className="truncate">
                             {isConvertedActive
                               ? 'Filtered: Showing converted leads (Click to reset)'
@@ -3431,17 +3609,17 @@ export const ImportDataPage = ({ onNavigate }) => {
               />
 
               {/* Controls Bar: Date Filter + Sort Arrow + Search + Send to Leads Action */}
-              <div className="bg-white p-4 rounded-xl border border-slate-200/90 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+              <div className="bg-white p-3 rounded-xl border border-slate-200/90 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-3">
                 {/* Left Filter Options: Date Filter + Search */}
-                <div className="flex flex-wrap items-center gap-2.5">
+                <div className="flex flex-wrap items-center gap-2">
                   {/* Date Filter Dropdown Button */}
                   <div className="relative" ref={dateDropdownRef}>
                     <button
                       type="button"
                       onClick={() => setIsDateDropdownOpen((prev) => !prev)}
-                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold transition shadow-2xs cursor-pointer ${dateFilter !== 'all'
-                          ? 'border-indigo-300 bg-indigo-50/70 text-indigo-700 hover:bg-indigo-100/70'
-                          : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] font-semibold transition shadow-2xs cursor-pointer ${dateFilter !== 'all'
+                        ? 'border-indigo-300 bg-indigo-50/70 text-indigo-700 hover:bg-indigo-100/70'
+                        : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
                         }`}
                       title="Filter records by date"
                     >
@@ -3480,8 +3658,8 @@ export const ImportDataPage = ({ onNavigate }) => {
                               setIsDateDropdownOpen(false);
                             }}
                             className={`w-full flex items-center justify-between px-3 py-2 text-xs transition cursor-pointer ${dateFilter === item.id
-                                ? 'bg-indigo-50 text-indigo-700 font-bold'
-                                : 'text-slate-700 hover:bg-slate-50'
+                              ? 'bg-indigo-50 text-indigo-700 font-bold'
+                              : 'text-slate-700 hover:bg-slate-50'
                               }`}
                           >
                             <span>{item.label}</span>
@@ -3532,9 +3710,9 @@ export const ImportDataPage = ({ onNavigate }) => {
                     <button
                       type="button"
                       onClick={() => setIsDateTypeDropdownOpen((prev) => !prev)}
-                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold transition shadow-2xs cursor-pointer ${dateFilterType === 'updatedAt'
-                          ? 'border-indigo-300 bg-indigo-50/70 text-indigo-700 hover:bg-indigo-100/70'
-                          : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] font-semibold transition shadow-2xs cursor-pointer ${dateFilterType === 'updatedAt'
+                        ? 'border-indigo-300 bg-indigo-50/70 text-indigo-700 hover:bg-indigo-100/70'
+                        : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
                         }`}
                       title="Filter records based on Updated Date or Created Date"
                     >
@@ -3562,8 +3740,8 @@ export const ImportDataPage = ({ onNavigate }) => {
                               setIsDateTypeDropdownOpen(false);
                             }}
                             className={`w-full flex flex-col items-start px-3 py-2 text-xs transition cursor-pointer text-left ${dateFilterType === item.id
-                                ? 'bg-indigo-50 text-indigo-700 font-semibold'
-                                : 'text-slate-700 hover:bg-slate-50'
+                              ? 'bg-indigo-50 text-indigo-700 font-semibold'
+                              : 'text-slate-700 hover:bg-slate-50'
                               }`}
                           >
                             <div className="flex items-center justify-between w-full font-bold">
@@ -3585,7 +3763,7 @@ export const ImportDataPage = ({ onNavigate }) => {
                       <button
                         type="button"
                         onClick={() => setIsUserDropdownOpen((prev) => !prev)}
-                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold transition shadow-2xs ${selectedUsers.length > 0
+                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] font-semibold transition shadow-2xs ${selectedUsers.length > 0
                           ? 'border-indigo-300 bg-indigo-50/70 text-indigo-700 hover:bg-indigo-100/70'
                           : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
                           }`}
@@ -3739,6 +3917,283 @@ export const ImportDataPage = ({ onNavigate }) => {
                     </div>
                   )}
 
+                  {/* Company Status Filter Dropdown */}
+                  <div className="relative" ref={statusDropdownRef}>
+                    <button
+                      type="button"
+                      onClick={() => setIsStatusDropdownOpen((prev) => !prev)}
+                      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] font-semibold transition shadow-2xs cursor-pointer ${
+                        selectedStatuses.length > 0
+                          ? 'border-indigo-300 bg-indigo-50/70 text-indigo-700 hover:bg-indigo-100/70'
+                          : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                      }`}
+                      title="Filter records by company status"
+                    >
+                      <Filter className={`w-3.5 h-3.5 ${selectedStatuses.length > 0 ? 'text-indigo-600' : 'text-slate-500'}`} />
+                      <span>
+                        Status:{' '}
+                        {selectedStatuses.length === 0 ? (
+                          <span className="font-normal text-slate-500">All</span>
+                        ) : selectedStatuses.length === 1 ? (
+                          <span className="font-bold text-indigo-700">{selectedStatuses[0]}</span>
+                        ) : (
+                          <span className="font-bold text-indigo-700">{selectedStatuses.length} Selected</span>
+                        )}
+                      </span>
+                      {selectedStatuses.length > 0 && (
+                        <span
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedStatuses([]);
+                          }}
+                          className="ml-0.5 text-slate-400 hover:text-rose-600 px-0.5 rounded cursor-pointer transition font-bold"
+                          title="Clear status filter"
+                        >
+                          ✕
+                        </span>
+                      )}
+                      <ChevronDown
+                        className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-150 ${
+                          isStatusDropdownOpen ? 'rotate-180 text-indigo-600' : ''
+                        }`}
+                      />
+                    </button>
+
+                    {isStatusDropdownOpen && (
+                      <div className="absolute left-0 mt-1.5 w-64 rounded-xl border border-slate-200 bg-white shadow-xl py-2 z-50 animate-in fade-in duration-100">
+                        {/* Header */}
+                        <div className="px-3 pb-2 border-b border-slate-100 flex items-center justify-between">
+                          <div className="text-xs font-bold text-slate-800">Company Status</div>
+                          {selectedStatuses.length > 0 && (
+                            <span className="text-[10px] font-semibold bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded-full">
+                              {selectedStatuses.length} selected
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Quick action bar */}
+                        <div className="flex items-center justify-between px-3 py-1.5 border-b border-slate-100 text-[11px] bg-slate-50/60">
+                          <button
+                            type="button"
+                            onClick={() => setSelectedStatuses(allFilterableStatuses)}
+                            className="font-medium text-indigo-600 hover:text-indigo-800 transition cursor-pointer"
+                          >
+                            Select All
+                          </button>
+                          {selectedStatuses.length > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => setSelectedStatuses([])}
+                              className="font-medium text-slate-500 hover:text-rose-600 transition cursor-pointer"
+                            >
+                              Clear
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Status list */}
+                        <div className="max-h-56 overflow-y-auto py-1">
+                          {allFilterableStatuses.map((st) => {
+                            const isSelected = selectedStatuses.includes(st);
+                            const count = statusCounts[st] || 0;
+                            return (
+                              <label
+                                key={st}
+                                className={`flex items-center justify-between gap-2 px-3 py-1.5 hover:bg-slate-50 cursor-pointer select-none text-xs transition ${
+                                  isSelected ? 'bg-indigo-50/40' : ''
+                                }`}
+                              >
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <input
+                                    type="checkbox"
+                                    checked={isSelected}
+                                    onChange={() => handleToggleStatus(st)}
+                                    className="w-3.5 h-3.5 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer"
+                                  />
+                                  <span
+                                    className={`text-[10px] px-1.5 py-0.5 rounded border font-semibold truncate ${getStatusBadgeStyle(
+                                      st
+                                    )}`}
+                                  >
+                                    {st}
+                                  </span>
+                                </div>
+                                <span className="text-[10.5px] text-slate-400 font-mono shrink-0">
+                                  ({count})
+                                </span>
+                              </label>
+                            );
+                          })}
+                        </div>
+
+                        {/* Footer */}
+                        <div className="px-3 pt-2 border-t border-slate-100 flex items-center justify-end">
+                          <button
+                            type="button"
+                            onClick={() => setIsStatusDropdownOpen(false)}
+                            className="px-2.5 py-1 text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white rounded-md shadow-2xs transition cursor-pointer"
+                          >
+                            Done
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Source Filter Dropdown */}
+                  {availableSources.length > 0 && (
+                    <div className="relative" ref={sourceDropdownRef}>
+                      <button
+                        type="button"
+                        onClick={() => setIsSourceDropdownOpen((prev) => !prev)}
+                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] font-semibold transition shadow-2xs cursor-pointer ${
+                          selectedSources.length > 0
+                            ? 'border-indigo-300 bg-indigo-50/70 text-indigo-700 hover:bg-indigo-100/70'
+                            : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                        }`}
+                        title="Filter records by source"
+                      >
+                        <Globe className={`w-3.5 h-3.5 ${selectedSources.length > 0 ? 'text-indigo-600' : 'text-slate-500'}`} />
+                        <span>
+                          Source:{' '}
+                          {selectedSources.length === 0 ? (
+                            <span className="font-normal text-slate-500">All</span>
+                          ) : selectedSources.length === 1 ? (
+                            <span className="font-bold text-indigo-700 truncate max-w-[110px] inline-block align-bottom">
+                              {selectedSources[0]}
+                            </span>
+                          ) : (
+                            <span className="font-bold text-indigo-700">{selectedSources.length} Selected</span>
+                          )}
+                        </span>
+                        {selectedSources.length > 0 && (
+                          <span
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedSources([]);
+                            }}
+                            className="ml-0.5 text-slate-400 hover:text-rose-600 px-0.5 rounded cursor-pointer transition font-bold"
+                            title="Clear source filter"
+                          >
+                            ✕
+                          </span>
+                        )}
+                        <ChevronDown
+                          className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-150 ${
+                            isSourceDropdownOpen ? 'rotate-180 text-indigo-600' : ''
+                          }`}
+                        />
+                      </button>
+
+                      {isSourceDropdownOpen && (
+                        <div className="absolute left-0 mt-1.5 w-64 rounded-xl border border-slate-200 bg-white shadow-xl py-2 z-50 animate-in fade-in duration-100">
+                          {/* Header */}
+                          <div className="px-3 pb-2 border-b border-slate-100 flex items-center justify-between">
+                            <div className="text-xs font-bold text-slate-800">Lead / Import Source</div>
+                            {selectedSources.length > 0 && (
+                              <span className="text-[10px] font-semibold bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded-full">
+                                {selectedSources.length} selected
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Search */}
+                          {availableSources.length > 5 && (
+                            <div className="p-2 border-b border-slate-100">
+                              <div className="relative">
+                                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                                <input
+                                  type="text"
+                                  placeholder="Search source..."
+                                  value={sourceFilterSearch}
+                                  onChange={(e) => setSourceFilterSearch(e.target.value)}
+                                  className="w-full pl-8 pr-6 py-1.5 text-xs rounded-md border border-slate-200 bg-slate-50/50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 placeholder:text-slate-400"
+                                  autoFocus
+                                />
+                                {sourceFilterSearch && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setSourceFilterSearch('')}
+                                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs"
+                                  >
+                                    ✕
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Quick action bar */}
+                          <div className="flex items-center justify-between px-3 py-1.5 border-b border-slate-100 text-[11px] bg-slate-50/60">
+                            <button
+                              type="button"
+                              onClick={() => setSelectedSources(availableSources.map((s) => s.name))}
+                              className="font-medium text-indigo-600 hover:text-indigo-800 transition cursor-pointer"
+                            >
+                              Select All ({availableSources.length})
+                            </button>
+                            {selectedSources.length > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => setSelectedSources([])}
+                                className="font-medium text-slate-500 hover:text-rose-600 transition cursor-pointer"
+                              >
+                                Clear
+                              </button>
+                            )}
+                          </div>
+
+                          {/* List */}
+                          <div className="max-h-52 overflow-y-auto py-1">
+                            {filteredSourceOptions.length === 0 ? (
+                              <div className="px-4 py-3 text-center text-xs text-slate-400">
+                                {sourceFilterSearch ? 'No matching sources' : 'No sources available'}
+                              </div>
+                            ) : (
+                              filteredSourceOptions.map((opt) => {
+                                const isSelected = selectedSources.includes(opt.name);
+                                return (
+                                  <label
+                                    key={opt.name}
+                                    className={`flex items-center justify-between gap-2 px-3 py-1.5 hover:bg-slate-50 cursor-pointer select-none text-xs transition ${
+                                      isSelected ? 'bg-indigo-50/40' : ''
+                                    }`}
+                                  >
+                                    <div className="flex items-center gap-2 min-w-0">
+                                      <input
+                                        type="checkbox"
+                                        checked={isSelected}
+                                        onChange={() => handleToggleSource(opt.name)}
+                                        className="w-3.5 h-3.5 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer"
+                                      />
+                                      <span className="font-medium text-slate-800 truncate" title={opt.name}>
+                                        {opt.name}
+                                      </span>
+                                    </div>
+                                    <span className="text-[10px] text-slate-400 font-mono shrink-0">
+                                      ({opt.count})
+                                    </span>
+                                  </label>
+                                );
+                              })
+                            )}
+                          </div>
+
+                          {/* Footer */}
+                          <div className="px-3 pt-2 border-t border-slate-100 flex items-center justify-end">
+                            <button
+                              type="button"
+                              onClick={() => setIsSourceDropdownOpen(false)}
+                              className="px-2.5 py-1 text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white rounded-md shadow-2xs transition cursor-pointer"
+                            >
+                              Done
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   {/* Search Bar */}
                   <div className="relative min-w-[200px]">
                     <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
@@ -3747,7 +4202,7 @@ export const ImportDataPage = ({ onNavigate }) => {
                       placeholder="Search company, person..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      className="w-full pl-8 pr-7 py-1 text-xs rounded-lg border border-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                      className="w-full pl-8 pr-7 py-1 text-[11px] rounded-lg border border-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                     />
                     {searchQuery && (
                       <button
@@ -3766,7 +4221,7 @@ export const ImportDataPage = ({ onNavigate }) => {
                     <button
                       type="button"
                       onClick={handleClearAllFilters}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-rose-200 bg-rose-50/80 hover:bg-rose-100 text-rose-700 text-xs font-semibold shadow-2xs transition cursor-pointer shrink-0 animate-in fade-in duration-150"
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-rose-200 bg-rose-50/80 hover:bg-rose-100 text-rose-700 text-[11px] font-semibold shadow-2xs transition cursor-pointer shrink-0 animate-in fade-in duration-150"
                       title="Reset all filters to default (Today, Updated At)"
                     >
                       <X className="w-3.5 h-3.5 text-rose-600" />
@@ -3776,14 +4231,14 @@ export const ImportDataPage = ({ onNavigate }) => {
                 </div>
 
                 {/* Right Action: Delete Selected + Send to Leads */}
-                <div className="flex items-center gap-2.5">
+                <div className="flex items-center gap-2">
                   {records.some((r) => r.isDuplicate) && (
                     <Button
                       size="sm"
                       variant="outline"
                       icon={CheckCircle2}
                       onClick={handleSelectOnlyNew}
-                      className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 text-xs"
+                      className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 text-[11px]"
                       title="Select only unique non-duplicate records"
                     >
                       Select Only New ({nonDuplicateIds.length})
@@ -3797,7 +4252,7 @@ export const ImportDataPage = ({ onNavigate }) => {
                         <button
                           type="button"
                           onClick={() => setIsBulkMenuOpen((prev) => !prev)}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-indigo-200 bg-indigo-50/80 hover:bg-indigo-100 text-indigo-700 shadow-2xs transition cursor-pointer select-none"
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold border border-indigo-200 bg-indigo-50/80 hover:bg-indigo-100 text-indigo-700 shadow-2xs transition cursor-pointer select-none"
                           title="Bulk Actions Menu"
                         >
                           <Menu className="w-3.5 h-3.5 text-indigo-600" />
@@ -3892,9 +4347,9 @@ export const ImportDataPage = ({ onNavigate }) => {
               </div>
 
               {/* Status & Pagination Toolbar (Row Just Below Filters) */}
-              <div className="flex flex-wrap items-center justify-between gap-3 px-3.5 py-2 bg-white rounded-xl border border-slate-200/90 shadow-2xs">
+              <div className="flex flex-wrap items-center justify-between gap-3 px-3 py-1.5 bg-white rounded-xl border border-slate-200/90 shadow-2xs">
                 {/* Left: Showing X of Y | Selected: Z */}
-                <div className="flex items-center gap-2.5 text-xs text-slate-600">
+                <div className="flex items-center gap-2 text-[11px] text-slate-600">
                   <span className="font-medium text-slate-500">
                     Showing{' '}
                     {totalMatchingRecords === 0 ? (
@@ -3918,7 +4373,7 @@ export const ImportDataPage = ({ onNavigate }) => {
                   </span>
 
                   {showConvertedOnly && (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200 ml-1">
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200 ml-1">
                       <CheckCircle2 className="w-3 h-3 text-emerald-600" />
                       Converted Only
                       <button
@@ -3933,7 +4388,7 @@ export const ImportDataPage = ({ onNavigate }) => {
                   )}
 
                   {showStatusChangedOnly && (
-                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-indigo-100 text-indigo-800 border border-indigo-200 ml-1">
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-100 text-indigo-800 border border-indigo-200 ml-1">
                       <History className="w-3 h-3 text-indigo-600" />
                       Status Changed Only ({totalMatchingRecords})
                       <button
@@ -3947,11 +4402,41 @@ export const ImportDataPage = ({ onNavigate }) => {
                     </span>
                   )}
 
+                  {selectedStatuses.length > 0 && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 ml-1">
+                      <Filter className="w-3 h-3 text-indigo-600" />
+                      Status: {selectedStatuses.join(', ')}
+                      <button
+                        type="button"
+                        onClick={() => setSelectedStatuses([])}
+                        className="ml-1 text-indigo-700 hover:text-indigo-950 hover:bg-indigo-200 rounded-full w-3.5 h-3.5 flex items-center justify-center font-bold"
+                        title="Clear status filter"
+                      >
+                        ✕
+                      </button>
+                    </span>
+                  )}
+
+                  {selectedSources.length > 0 && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200 ml-1">
+                      <Globe className="w-3 h-3 text-blue-500" />
+                      Source: {selectedSources.join(', ')}
+                      <button
+                        type="button"
+                        onClick={() => setSelectedSources([])}
+                        className="ml-1 text-blue-700 hover:text-blue-950 hover:bg-blue-200 rounded-full w-3.5 h-3.5 flex items-center justify-center font-bold"
+                        title="Clear source filter"
+                      >
+                        ✕
+                      </button>
+                    </span>
+                  )}
+
                   {selectedIds.length > 0 && (
                     <button
                       type="button"
                       onClick={() => setSelectedIds([])}
-                      className="text-[11px] text-slate-400 hover:text-slate-700 underline font-medium ml-1"
+                      className="text-[10px] text-slate-400 hover:text-slate-700 underline font-medium ml-1"
                     >
                       Clear selection
                     </button>
@@ -3959,17 +4444,17 @@ export const ImportDataPage = ({ onNavigate }) => {
                 </div>
 
                 {/* Right: Page Size Selector & Pagination */}
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2.5">
                   {/* Entries per page options: 50 (default), 80, 100 */}
-                  <div className="flex items-center gap-1.5 text-xs text-slate-600">
-                    <span className="text-[11px] font-medium text-slate-500">Show:</span>
+                  <div className="flex items-center gap-1 text-[11px] text-slate-600">
+                    <span className="text-[10.5px] font-medium text-slate-500">Show:</span>
                     <div className="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-0.5 shadow-2xs">
                       {[50, 80, 100].map((size) => (
                         <button
                           key={size}
                           type="button"
                           onClick={() => handlePageSizeChange(size)}
-                          className={`px-2.5 py-0.5 rounded-md text-xs font-semibold transition ${pageSize === size
+                          className={`px-2 py-0.5 rounded-md text-[10.5px] font-semibold transition ${pageSize === size
                             ? 'bg-indigo-600 text-white shadow-2xs'
                             : 'text-slate-600 hover:text-slate-900 hover:bg-white'
                             }`}
@@ -3978,12 +4463,12 @@ export const ImportDataPage = ({ onNavigate }) => {
                         </button>
                       ))}
                     </div>
-                    <span className="text-[11px] text-slate-400">entries</span>
+                    <span className="text-[10.5px] text-slate-400">entries</span>
                   </div>
 
                   {/* Pagination Page Controls */}
                   {totalPages > 1 && (
-                    <div className="flex items-center gap-1.5 border-l border-slate-200 pl-3">
+                    <div className="flex items-center gap-1 border-l border-slate-200 pl-2.5">
                       <button
                         type="button"
                         disabled={validCurrentPage <= 1}
@@ -3994,7 +4479,7 @@ export const ImportDataPage = ({ onNavigate }) => {
                         <ChevronLeft className="w-3.5 h-3.5" />
                       </button>
 
-                      <span className="text-xs text-slate-600 font-medium px-1">
+                      <span className="text-[11px] text-slate-600 font-medium px-1">
                         Page <strong className="text-indigo-600">{validCurrentPage}</strong> of{' '}
                         <strong className="text-slate-800">{totalPages}</strong>
                       </span>
@@ -4016,11 +4501,22 @@ export const ImportDataPage = ({ onNavigate }) => {
               {/* Main Table */}
               <div className="bg-white rounded-xl border border-slate-200/90 shadow-xs">
                 <div className="overflow-x-auto max-h-[600px] min-h-[260px]">
-                  <table className="w-full min-w-[1410px] text-left border-collapse text-xs">
+                  <table className="w-full min-w-[1174px] table-fixed text-left border-collapse text-[11px]">
+                    <colgroup>
+                      <col style={{ width: '44px' }} />
+                      <col style={{ width: '56px' }} />
+                      <col style={{ width: '260px' }} />
+                      <col style={{ width: '125px' }} />
+                      <col style={{ width: '160px' }} />
+                      <col style={{ width: '185px' }} />
+                      <col style={{ width: '130px' }} />
+                      <col style={{ width: '150px' }} />
+                      <col style={{ width: '64px' }} />
+                    </colgroup>
                     {/* Grey Table Header */}
-                    <thead className="bg-slate-100 text-slate-700 font-bold uppercase tracking-wider sticky top-0 z-10 border-b border-slate-200">
+                    <thead className="bg-slate-100 text-slate-700 font-bold uppercase tracking-wider sticky top-0 z-10 border-b border-slate-200 text-[10px]">
                       <tr>
-                        <th className="p-3 w-10 min-w-[40px] max-w-[40px] text-center">
+                        <th className="py-2.5 px-2 w-[44px] min-w-[44px] max-w-[44px] text-center">
                           <input
                             type="checkbox"
                             checked={isAllSelected}
@@ -4029,15 +4525,13 @@ export const ImportDataPage = ({ onNavigate }) => {
                             title="Select/Deselect All Visible"
                           />
                         </th>
-                        <th className="p-3 border-l border-slate-200 text-center w-14 min-w-[56px] whitespace-nowrap">S.NO</th>
-                        <th className="p-3 border-l border-slate-200 whitespace-nowrap w-[240px] min-w-[210px]">Company Name</th>
-                        <th className="p-3 border-l border-slate-200 whitespace-nowrap w-[130px] min-w-[120px]">GSTIN</th>
-                        <th className="p-3 border-l border-slate-200 whitespace-nowrap w-[130px] min-w-[120px]">Date of Reg.</th>
-                        <th className="p-3 border-l border-slate-200 whitespace-nowrap w-[130px] min-w-[120px] max-w-[140px]">Industry</th>
-                        <th className="p-3 border-l border-slate-200 whitespace-nowrap w-[160px] min-w-[140px]">Source</th>
-                        <th className="p-3 border-l border-slate-200 whitespace-nowrap w-[180px] min-w-[170px]">Status</th>
+                        <th className="py-1.5 px-1 border-l border-slate-200 text-center w-[40px] min-w-[40px] max-w-[40px] whitespace-nowrap">S.NO</th>
+                        <th className="py-2.5 px-2.5 border-l border-slate-200 whitespace-nowrap w-[260px] min-w-[260px] max-w-[260px]">Company Name</th>
+                        <th className="py-2.5 px-2 border-l border-slate-200 whitespace-nowrap w-[125px] min-w-[125px] max-w-[125px]">Industry</th>
+                        <th className="py-2.5 px-2.5 border-l border-slate-200 whitespace-nowrap w-[160px] min-w-[160px] max-w-[160px]">Source</th>
+                        <th className="py-2.5 px-2.5 border-l border-slate-200 whitespace-nowrap w-[185px] min-w-[185px] max-w-[185px]">Status</th>
                         <th
-                          className="p-3 border-l border-slate-200 whitespace-nowrap cursor-pointer select-none hover:bg-slate-200 transition-colors w-[140px] min-w-[130px]"
+                          className="py-2.5 px-2 border-l border-slate-200 whitespace-nowrap cursor-pointer select-none hover:bg-slate-200 transition-colors w-[130px] min-w-[130px] max-w-[130px]"
                           onClick={() => setSortDirection((prev) => (prev === 'desc' ? 'asc' : 'desc'))}
                           title="Click to toggle Date Sort Ascending/Descending"
                         >
@@ -4050,15 +4544,15 @@ export const ImportDataPage = ({ onNavigate }) => {
                             )}
                           </div>
                         </th>
-                        <th className="p-3 border-l border-slate-200 whitespace-nowrap w-[160px] min-w-[140px]">Imported By</th>
-                        <th className="p-3 border-l border-slate-200 text-center w-16 min-w-[64px] whitespace-nowrap">Actions</th>
+                        <th className="py-2.5 px-2.5 border-l border-slate-200 whitespace-nowrap w-[150px] min-w-[150px] max-w-[150px]">Imported By</th>
+                        <th className="py-2.5 px-2 border-l border-slate-200 text-center w-[64px] min-w-[64px] max-w-[64px] whitespace-nowrap">Actions</th>
                       </tr>
                     </thead>
 
                     <tbody className="divide-y divide-slate-100">
                       {totalMatchingRecords === 0 ? (
                         <tr>
-                          <td colSpan={11} className="py-12 text-center text-slate-400">
+                          <td colSpan={9} className="py-12 text-center text-slate-400">
                             <div className="flex flex-col items-center justify-center">
                               <AlertCircle className="w-8 h-8 text-slate-300 mb-2" />
                               <p className="font-semibold text-slate-600">
@@ -4083,29 +4577,29 @@ export const ImportDataPage = ({ onNavigate }) => {
                               className={`hover:bg-slate-50/80 transition-colors cursor-pointer group ${isSelected ? 'bg-indigo-50/40' : ''}`}
                               onClick={() => setSelectedDetailRecord(row)}
                             >
-                              <td className="p-3 text-center w-10 min-w-[40px] max-w-[40px]" onClick={(e) => e.stopPropagation()}>
+                              <td className="py-2.5 px-2 text-center align-top w-[44px] min-w-[44px] max-w-[44px]" onClick={(e) => e.stopPropagation()}>
                                 <input
                                   type="checkbox"
                                   checked={isSelected}
                                   onChange={() => handleToggleRow(row.id)}
-                                  className="rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer w-4 h-4"
+                                  className="rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer w-3.5 h-3.5"
                                 />
                               </td>
-                              <td className="p-3 border-l border-slate-200 text-center font-semibold text-slate-500 whitespace-nowrap w-14 min-w-[56px]">
+                              <td className="py-2.5 px-2 border-l border-slate-200 text-center font-semibold text-slate-500 whitespace-nowrap align-top w-[56px] min-w-[56px] max-w-[56px] text-[10.5px]">
                                 {startEntry + idx}
                               </td>
-                              <td className="p-3 border-l border-slate-200 font-bold text-slate-900 w-[240px] min-w-[210px]">
-                                <div className="w-full flex flex-col gap-1.5 py-0.5">
-                                  <div className="flex items-start gap-1.5">
-                                    <Building2 className="w-4 h-4 text-slate-400 group-hover:text-indigo-600 transition-colors shrink-0 mt-0.5" />
-                                    <span className="font-bold text-slate-900 group-hover:text-indigo-600 transition-colors whitespace-normal break-words leading-snug">
+                              <td className="py-2.5 px-2.5 border-l border-slate-200 font-bold text-slate-900 align-top w-[260px] min-w-[260px] max-w-[260px] overflow-hidden">
+                                <div className="w-full flex flex-col gap-1 py-0.5 overflow-hidden">
+                                  <div className="flex items-start gap-1.5 overflow-hidden">
+                                    <Building2 className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-600 transition-colors shrink-0 mt-0.5" />
+                                    <span className="font-bold text-slate-900 group-hover:text-indigo-600 transition-colors whitespace-normal [overflow-wrap:anywhere] break-words leading-snug text-[11px] min-w-0">
                                       {row.companyName || '—'}
                                     </span>
                                   </div>
                                   {row.contacts && row.contacts.length > 1 && (
-                                    <div className="pl-[22px]">
+                                    <div className="pl-[20px]">
                                       <span
-                                        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-violet-50 text-violet-700 border border-violet-200 shrink-0"
+                                        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9.5px] font-semibold bg-violet-50 text-violet-700 border border-violet-200 shrink-0"
                                         title={row.contacts.map((c) => `${c.contactPerson || 'Contact'} (${c.designation || '—'}) • ${c.mobileNo || 'No phone'} • ${c.emailId || 'No email'}`).join('\n')}
                                       >
                                         <Users className="w-3 h-3 text-violet-600" />
@@ -4115,38 +4609,32 @@ export const ImportDataPage = ({ onNavigate }) => {
                                   )}
                                 </div>
                               </td>
-                              <td className="p-3 border-l border-slate-200 text-slate-700 whitespace-nowrap font-mono w-[130px] min-w-[120px]">
-                                {row.gstin || '—'}
-                              </td>
-                              <td className="p-3 border-l border-slate-200 text-slate-700 whitespace-nowrap font-mono text-xs w-[130px] min-w-[120px]">
-                                {row.dateOfRegistration || ''}
-                              </td>
-                              <td className="p-3 border-l border-slate-200 text-slate-700 w-[130px] min-w-[120px] max-w-[140px]">
-                                <div className="w-full">
-                                  <span className="text-slate-800 font-medium whitespace-normal break-words leading-snug block text-xs">
+                              <td className="py-2.5 px-2 border-l border-slate-200 text-slate-700 align-top w-[125px] min-w-[125px] max-w-[125px] overflow-hidden">
+                                <div className="w-full overflow-hidden">
+                                  <span className="text-slate-800 font-medium whitespace-normal [overflow-wrap:anywhere] break-words leading-snug block text-[10.5px]">
                                     {row.industry || '—'}
                                   </span>
                                 </div>
                               </td>
-                              <td className="p-3 border-l border-slate-200 text-slate-700 font-medium w-[160px] min-w-[140px]">
-                                <div className="w-full">
-                                  <span className="whitespace-normal break-words leading-relaxed block text-xs">
+                              <td className="py-2.5 px-2.5 border-l border-slate-200 text-slate-700 font-medium align-top w-[160px] min-w-[160px] max-w-[160px] overflow-hidden">
+                                <div className="w-full overflow-hidden">
+                                  <span className="whitespace-normal [overflow-wrap:anywhere] break-words leading-relaxed block text-[10.5px]">
                                     {row.source || row.leadSource || ''}
                                   </span>
                                 </div>
                               </td>
-                              <td className="p-3 border-l border-slate-200 w-[180px] min-w-[170px] whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                              <td className="py-2.5 px-2.5 border-l border-slate-200 align-top w-[185px] min-w-[185px] max-w-[185px] overflow-hidden" onClick={(e) => e.stopPropagation()}>
                                 {row.isDuplicate ? (
                                   <span
-                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200"
+                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200"
                                     title={row.duplicateReason || 'Duplicate found'}
                                   >
                                     <AlertTriangle className="w-3 h-3 text-rose-500" />
                                     <span>Duplicate</span>
                                   </span>
                                 ) : row.isConvertedToLead ? (
-                                  <div className="relative inline-flex items-center gap-1.5">
-                                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-teal-50 text-teal-700 border border-teal-300">
+                                  <div className="relative inline-flex items-center gap-1.5 flex-wrap">
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-teal-50 text-teal-700 border border-teal-300">
                                       <CheckCircle2 className="w-3 h-3 text-teal-600" />
                                       <span>Converted to Lead</span>
                                     </span>
@@ -4163,12 +4651,12 @@ export const ImportDataPage = ({ onNavigate }) => {
                                     </button>
                                   </div>
                                 ) : (
-                                  <div className="relative inline-flex items-center gap-1.5 flex-nowrap">
-                                    <div className="relative inline-flex items-center">
+                                  <div className="relative inline-flex items-center gap-1.5 flex-nowrap max-w-full">
+                                    <div className="relative inline-flex items-center max-w-[130px]">
                                       <select
                                         value={row.status || row.leadStatus || 'New'}
                                         onChange={(e) => handleStatusChange(row, e.target.value)}
-                                        className={`appearance-none inline-flex items-center pl-2.5 pr-6 py-1 rounded-full text-[11px] font-semibold border cursor-pointer transition focus:outline-none focus:ring-2 focus:ring-offset-1 shadow-2xs ${getStatusBadgeStyle(
+                                        className={`appearance-none inline-flex items-center pl-2 pr-5 py-0.5 rounded-full text-[10px] font-semibold border cursor-pointer transition focus:outline-none focus:ring-2 focus:ring-offset-1 shadow-2xs max-w-[130px] truncate ${getStatusBadgeStyle(
                                           row.status || row.leadStatus || 'New'
                                         )}`}
                                       >
@@ -4178,7 +4666,7 @@ export const ImportDataPage = ({ onNavigate }) => {
                                           </option>
                                         ))}
                                       </select>
-                                      <ChevronDown className="w-3 h-3 absolute right-2 pointer-events-none opacity-60" />
+                                      <ChevronDown className="w-3 h-3 absolute right-1.5 pointer-events-none opacity-60" />
                                     </div>
                                     {row.statusHistory && row.statusHistory.length > 0 && (
                                       <button
@@ -4187,7 +4675,7 @@ export const ImportDataPage = ({ onNavigate }) => {
                                           e.stopPropagation();
                                           handleOpenHistory(row);
                                         }}
-                                        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100 transition shrink-0"
+                                        className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-full text-[9.5px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100 transition shrink-0"
                                         title={`Status changed ${row.statusHistory.length} time(s). Latest: from "${row.statusHistory[0]?.previousStatus || 'New'}" to "${row.statusHistory[0]?.status}". Click to view company history.`}
                                       >
                                         <History className="w-3 h-3 text-indigo-600" />
@@ -4197,7 +4685,7 @@ export const ImportDataPage = ({ onNavigate }) => {
                                   </div>
                                 )}
                               </td>
-                              <td className="p-3 border-l border-slate-200 text-slate-600 whitespace-nowrap font-medium w-[140px] min-w-[130px]">
+                              <td className="py-2.5 px-2 border-l border-slate-200 text-slate-600 whitespace-nowrap font-medium align-top w-[130px] min-w-[130px] max-w-[130px] text-[10.5px] overflow-hidden">
                                 {(() => {
                                   const targetDate = dateFilterType === 'createdAt'
                                     ? (row.createdAt || row.date)
@@ -4209,7 +4697,7 @@ export const ImportDataPage = ({ onNavigate }) => {
                                     <div className="flex flex-col">
                                       <span>{d.toLocaleDateString()}</span>
                                       {dateFilterType === 'updatedAt' && row.updatedAt && (
-                                        <span className="text-[10px] text-slate-400 font-normal">
+                                        <span className="text-[9px] text-slate-400 font-normal">
                                           {d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                         </span>
                                       )}
@@ -4217,17 +4705,17 @@ export const ImportDataPage = ({ onNavigate }) => {
                                   );
                                 })()}
                               </td>
-                              <td className="p-3 border-l border-slate-200 text-slate-700 whitespace-nowrap w-[160px] min-w-[140px]">
-                                <div className="flex items-center gap-1.5">
-                                  <div className="w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 text-[11px] font-bold flex items-center justify-center shrink-0 uppercase">
+                              <td className="py-2.5 px-2.5 border-l border-slate-200 text-slate-700 whitespace-nowrap align-top w-[150px] min-w-[150px] max-w-[150px] overflow-hidden">
+                                <div className="flex items-center gap-1.5 overflow-hidden">
+                                  <div className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-700 text-[9.5px] font-bold flex items-center justify-center shrink-0 uppercase">
                                     {(row.importedBy || 'U').charAt(0)}
                                   </div>
-                                  <span className="font-medium text-slate-800 text-xs truncate max-w-[120px]" title={row.importedBy || '—'}>
+                                  <span className="font-medium text-slate-800 text-[10.5px] truncate max-w-[110px]" title={row.importedBy || '—'}>
                                     {row.importedBy || '—'}
                                   </span>
                                 </div>
                               </td>
-                              <td className="p-3 border-l border-slate-200 text-center whitespace-nowrap w-16 min-w-[64px] relative" onClick={(e) => e.stopPropagation()}>
+                              <td className="py-2.5 px-2 border-l border-slate-200 text-center whitespace-nowrap align-top w-[64px] min-w-[64px] max-w-[64px] relative" onClick={(e) => e.stopPropagation()}>
                                 <div className="relative inline-flex items-center justify-center">
                                   <button
                                     type="button"
@@ -4235,21 +4723,21 @@ export const ImportDataPage = ({ onNavigate }) => {
                                       e.stopPropagation();
                                       setOpenActionMenuId((prev) => (prev === row.id ? null : row.id));
                                     }}
-                                    className={`p-1.5 rounded-lg transition cursor-pointer ${openActionMenuId === row.id
-                                        ? 'bg-indigo-600 text-white shadow-xs'
-                                        : 'text-slate-500 hover:text-slate-900 hover:bg-slate-200/70'
+                                    className={`p-1 rounded-md transition cursor-pointer ${openActionMenuId === row.id
+                                      ? 'bg-indigo-600 text-white shadow-xs'
+                                      : 'text-slate-500 hover:text-slate-900 hover:bg-slate-200/70'
                                       }`}
                                     title="Row Actions"
                                   >
-                                    <MoreVertical className="w-4 h-4" />
+                                    <MoreVertical className="w-3.5 h-3.5" />
                                   </button>
 
                                   {openActionMenuId === row.id && (
                                     <div
                                       ref={actionMenuRef}
                                       className={`absolute right-0 w-44 bg-white rounded-xl shadow-2xl border border-slate-200/95 py-1 z-50 text-left text-xs divide-y divide-slate-100 animate-in fade-in zoom-in-95 duration-100 ${paginatedRecords.length > 4 && idx >= paginatedRecords.length - 2
-                                          ? 'bottom-full mb-1.5'
-                                          : 'top-full mt-1.5'
+                                        ? 'bottom-full mb-1.5'
+                                        : 'top-full mt-1.5'
                                         }`}
                                       onClick={(e) => e.stopPropagation()}
                                     >
@@ -4430,41 +4918,107 @@ export const ImportDataPage = ({ onNavigate }) => {
               />
 
               <Input
-                label="Contact Person"
-                value={editingRow.contactPerson || ''}
+                label="Date of Registration"
+                value={editingRow.dateOfRegistration || ''}
                 onChange={(e) =>
-                  setEditingRow((prev) => ({ ...prev, contactPerson: e.target.value }))
+                  setEditingRow((prev) => ({ ...prev, dateOfRegistration: e.target.value }))
                 }
-                placeholder="e.g. John Doe"
+                placeholder="e.g. YYYY-MM-DD"
               />
 
-              <Input
-                label="Designation"
-                value={editingRow.designation || ''}
-                onChange={(e) =>
-                  setEditingRow((prev) => ({ ...prev, designation: e.target.value }))
-                }
-                placeholder="e.g. VP Engineering"
-              />
+              {/* Multi-Contact Persons List */}
+              <div className="sm:col-span-2 space-y-3 pt-2 border-t border-slate-100">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                    <User className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>Contact Persons ({(editingRow.contacts || []).length})</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handleAddEditRowContact}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 transition cursor-pointer shadow-2xs"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Add Contact Person</span>
+                  </button>
+                </div>
 
-              <Input
-                label="Mobile No"
-                value={editingRow.mobileNo || ''}
-                onChange={(e) =>
-                  setEditingRow((prev) => ({ ...prev, mobileNo: e.target.value }))
-                }
-                placeholder="e.g. +91 98765 43210"
-              />
+                <div className="space-y-2.5 max-h-64 overflow-y-auto pr-1">
+                  {(editingRow.contacts || []).map((contact, idx) => (
+                    <div
+                      key={idx}
+                      className={`p-3 rounded-xl border space-y-2.5 text-xs ${
+                        contact.isPrimary ? 'bg-indigo-50/40 border-indigo-200' : 'bg-slate-50 border-slate-200/90'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="w-4 h-4 rounded-full bg-indigo-100 text-indigo-700 text-[10px] font-bold flex items-center justify-center">
+                            {idx + 1}
+                          </span>
+                          <span className="text-[11px] font-bold text-slate-700">
+                            {contact.contactPerson || `Person ${idx + 1}`}
+                          </span>
+                          {contact.isPrimary ? (
+                            <span className="px-1.5 py-0.2 rounded text-[9.5px] font-semibold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                              Primary
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => handleSetPrimaryEditRowContact(idx)}
+                              className="text-[10px] font-semibold text-indigo-600 hover:underline cursor-pointer"
+                            >
+                              Make Primary
+                            </button>
+                          )}
+                        </div>
+                        {(editingRow.contacts || []).length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveEditRowContact(idx)}
+                            className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition cursor-pointer"
+                            title="Remove contact person"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
 
-              <Input
-                label="Email ID"
-                type="email"
-                value={editingRow.emailId || ''}
-                onChange={(e) =>
-                  setEditingRow((prev) => ({ ...prev, emailId: e.target.value }))
-                }
-                placeholder="e.g. contact@example.com"
-              />
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                        <Input
+                          label="Contact Person"
+                          value={contact.contactPerson || ''}
+                          onChange={(e) => handleUpdateEditRowContact(idx, 'contactPerson', e.target.value)}
+                          placeholder="e.g. Rahul Verma"
+                        />
+                        <Input
+                          label="Designation / Role"
+                          value={contact.designation || ''}
+                          onChange={(e) => handleUpdateEditRowContact(idx, 'designation', e.target.value)}
+                          placeholder="e.g. VP Sales"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                        <Input
+                          label="Mobile No"
+                          value={contact.mobileNo || ''}
+                          onChange={(e) => handleUpdateEditRowContact(idx, 'mobileNo', e.target.value)}
+                          placeholder="e.g. +91 98200 12345"
+                        />
+                        <Input
+                          label="Email ID"
+                          type="email"
+                          value={contact.emailId || ''}
+                          onChange={(e) => handleUpdateEditRowContact(idx, 'emailId', e.target.value)}
+                          placeholder="e.g. rahul@company.com"
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
 
               <Input
                 label="Industry"

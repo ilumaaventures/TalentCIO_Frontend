@@ -120,9 +120,9 @@ export const RepPerformanceCockpit = ({
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h3 className="text-sm font-bold text-white tracking-tight">Sales Outreach & Performance Cockpit</h3>
+              <h3 className="text-[13px] sm:text-sm font-bold text-white tracking-tight">Sales Outreach & Performance Cockpit</h3>
             </div>
-            <p className="text-[11px] text-slate-300 mt-0.5">
+            <p className="text-[10px] text-slate-300 mt-0.5">
               {canViewAll
                 ? 'Real-time telemetry for client calls, WhatsApps, follow-ups, and rep conversion metrics across all prospects.'
                 : 'Your personal outreach telemetry for client calls, WhatsApps, follow-ups, and conversion metrics.'}
@@ -132,7 +132,7 @@ export const RepPerformanceCockpit = ({
 
         <div className="flex items-center gap-2">
           {/* Date range picker */}
-          <div className="inline-flex rounded-lg border border-slate-700 bg-slate-800/80 p-0.5 shadow-2xs text-xs">
+          <div className="inline-flex rounded-lg border border-slate-700 bg-slate-800/80 p-0.5 shadow-2xs text-[10px]">
             {[
               { id: 'today', label: 'Today' },
               { id: 'yesterday', label: 'Yesterday' },
@@ -143,7 +143,7 @@ export const RepPerformanceCockpit = ({
                 key={d.id}
                 type="button"
                 onClick={() => setDateRange(d.id)}
-                className={`px-2 py-1 rounded-md text-[11px] font-semibold transition ${dateRange === d.id
+                className={`px-2 py-0.5 rounded-md text-[10px] font-semibold transition ${dateRange === d.id
                     ? 'bg-indigo-600 text-white shadow-xs'
                     : 'text-slate-300 hover:text-white hover:bg-slate-700/60'
                   }`}
@@ -157,7 +157,7 @@ export const RepPerformanceCockpit = ({
             type="button"
             onClick={fetchPerformance}
             disabled={isLoading}
-            className="p-1.5 rounded-lg border border-slate-700 bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700 transition"
+            className="p-1 rounded-lg border border-slate-700 bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700 transition"
             title="Refresh Metrics"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
@@ -167,7 +167,7 @@ export const RepPerformanceCockpit = ({
             <button
               type="button"
               onClick={() => onOpenLeaderboard && onOpenLeaderboard('leaderboard')}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs shadow-xs transition cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-[11px] shadow-xs transition cursor-pointer"
             >
               <Trophy className="w-3.5 h-3.5" />
               <span>Leaderboard</span>
