@@ -432,17 +432,16 @@ export const LogOutreachModal = ({
     const text = encodeURIComponent(
       `Hello ${targetName}, this is regarding TalentCIO's HRMS and Workforce Solutions for ${row.companyName || 'your organization'}.`
     );
-<<<<<<< HEAD
-    window.open(`https://wa.me/91${cleanPhone}?text=${text}`, '_blank');
+    window.open(`https://wa.me/91${cleanWhatsAppPhone}?text=${text}`, '_blank');
   };
 
   const handleSendMetaWhatsApp = async () => {
-    const targetPhone = reachedPhone || cleanPhone;
+    const targetPhone = cleanWhatsAppPhone || cleanPhone;
     if (!targetPhone) {
       toast.error('No valid phone number for this contact');
       return;
     }
-    const targetName = reachedName || currentContact?.name || row.contactPerson || 'Contact';
+    const targetName = whatsappTargetContact?.name || currentContact?.name || row.contactPerson || 'Contact';
     setIsSendingMetaWhatsApp(true);
     try {
       const res = await crmCommunicationService.sendWhatsAppMessage({
@@ -480,9 +479,6 @@ export const LogOutreachModal = ({
       return;
     }
     window.location.href = `tel:${cleanPhone}`;
-=======
-    window.open(`https://wa.me/91${cleanWhatsAppPhone}?text=${text}`, '_blank');
->>>>>>> dbedf01874d90b00201b323f123f507b7cfb932a
   };
 
   const handleAddToGoogleCalendar = () => {
@@ -885,7 +881,6 @@ export const LogOutreachModal = ({
 
             {/* Channel Form: WHATSAPP */}
             {activeType === 'whatsapp' && (
-<<<<<<< HEAD
               <div className="space-y-3 bg-white p-3.5 rounded-xl border border-slate-200 text-xs">
                 {availableContacts.length > 1 && (
                   <div>
@@ -899,8 +894,8 @@ export const LogOutreachModal = ({
                       </span>
                     </label>
                     <select
-                      value={selectedContactKey}
-                      onChange={(e) => setSelectedContactKey(e.target.value)}
+                      value={whatsappContactKey}
+                      onChange={(e) => setWhatsappContactKey(e.target.value)}
                       className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 font-medium text-xs focus:ring-1 focus:ring-emerald-500 focus:outline-none"
                     >
                       {availableContacts.map((c, idx) => {
@@ -962,7 +957,7 @@ export const LogOutreachModal = ({
 
                     <button
                       type="button"
-                      disabled={isSendingMetaWhatsApp || !cleanPhone}
+                      disabled={isSendingMetaWhatsApp || !(cleanWhatsAppPhone || cleanPhone)}
                       onClick={handleSendMetaWhatsApp}
                       className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-[11px] transition-colors shadow-2xs cursor-pointer"
                     >
@@ -974,7 +969,7 @@ export const LogOutreachModal = ({
 
                 <div className="flex items-center justify-between pt-1">
                   <span className="font-semibold text-slate-600">Alternative Options:</span>
-                  {cleanPhone && (
+                  {(cleanWhatsAppPhone || cleanPhone) && (
                     <button
                       type="button"
                       onClick={handleLaunchWhatsApp}
@@ -1011,19 +1006,6 @@ export const LogOutreachModal = ({
                   />
                 </div>
               </div>
-=======
-              <WhatsAppOutreachSection
-                availableContacts={availableContacts}
-                selectedContactKey={whatsappContactKey}
-                setSelectedContactKey={setWhatsappContactKey}
-                cleanPhone={cleanWhatsAppPhone}
-                handleLaunchWhatsApp={handleLaunchWhatsApp}
-                whatsappOutcome={whatsappOutcome}
-                setWhatsappOutcome={setWhatsappOutcome}
-                whatsappNotes={whatsappNotes}
-                setWhatsappNotes={setWhatsappNotes}
-              />
->>>>>>> dbedf01874d90b00201b323f123f507b7cfb932a
             )}
 
             {/* Channel Form: EMAIL */}
