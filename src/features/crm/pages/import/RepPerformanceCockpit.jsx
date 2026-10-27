@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Phone,
   PhoneCall,
@@ -20,7 +20,6 @@ import { dataService } from '../../services/api';
 export const RepPerformanceCockpit = ({
   canViewAll: canViewAllProp,
   onOpenLeaderboard,
-  onSelectRep,
   onOpenUserHistory,
   onOpenMetricHistory,
   onToggleConvertedFilter,
@@ -35,7 +34,7 @@ export const RepPerformanceCockpit = ({
   const [performanceData, setPerformanceData] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  const fetchPerformance = async () => {
+  const fetchPerformance = useCallback(async () => {
     setIsLoading(true);
     try {
       const res = await dataService.getRepPerformance({ dateRange });
@@ -47,11 +46,11 @@ export const RepPerformanceCockpit = ({
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [dateRange]);
 
   useEffect(() => {
     fetchPerformance();
-  }, [dateRange]);
+  }, [fetchPerformance]);
 
   const canViewAll = canViewAllProp ?? performanceData?.canViewAll ?? false;
   const summary = performanceData?.summary || {};

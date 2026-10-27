@@ -67,6 +67,26 @@ const getFileCategory = (fileName = '') => {
   return { type: 'file', label: 'File', bg: 'bg-slate-50 text-slate-600 border-slate-200' };
 };
 
+// Convert HTML templates or formatted text to clean, natural plain text for the editor
+const convertHtmlToPlainText = (html) => {
+  if (!html) return '';
+  if (!/<[a-z][\s\S]*>/i.test(html)) return html;
+  return html
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n\n')
+    .replace(/<\/div>/gi, '\n')
+    .replace(/<\/li>/gi, '\n')
+    .replace(/<li[^>]*>/gi, '• ')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+};
+
 const renderFileIcon = (file) => {
   const cat = getFileCategory(file.name);
   if (cat.type === 'photo') return <Image size={18} className="text-emerald-600" />;
@@ -287,7 +307,7 @@ export const CrmMailComposerModal = ({
 
     if (!htmlBody) {
       setHtmlBody(
-        `<p>Hi ${name || 'there'},</p>\n<p>I hope this email finds you well.</p>\n<p>We would love to share how our platform can support ${target.companyName || 'your company'}.</p>\n<br/>\n<p>Best regards,<br/><strong>${senderInfo.senderName}</strong><br/>${senderInfo.senderCompany}</p>`
+        `Hi ${name || 'there'},\n\nI hope this email finds you well.\n\nWe would love to share how our platform can support ${target.companyName || 'your company'}.\n\nBest regards,\n${senderInfo.senderName}\n${senderInfo.senderCompany}`
       );
     }
   }, [isOpen, target, initialSubject]);
@@ -305,7 +325,7 @@ export const CrmMailComposerModal = ({
     const resolvedHtml = resolveTemplate(tmpl.htmlBody, mergeContext);
 
     setSubject(resolvedSubj);
-    setHtmlBody(resolvedHtml);
+    setHtmlBody(convertHtmlToPlainText(resolvedHtml));
   };
 
   const insertPlaceholder = (field, placeholder) => {
@@ -454,6 +474,8 @@ export const CrmMailComposerModal = ({
         formData.append('htmlBody', previewHtml || formatTemplateBodyAsHtml(htmlBody));
         formData.append('plainBody', htmlBody.trim());
         formData.append('emailAccountId', selectedSenderId || 'platform');
+        if (currentSender?.fromAddress) formData.append('fromEmail', currentSender.fromAddress);
+        if (currentSender?.fromName) formData.append('fromName', currentSender.fromName || currentSender.name);
 
         const prospectId = target._id || target.id;
         if (prospectId) formData.append('prospectId', prospectId);
@@ -477,6 +499,8 @@ export const CrmMailComposerModal = ({
           htmlBody: previewHtml || formatTemplateBodyAsHtml(htmlBody),
           plainBody: htmlBody.trim(),
           emailAccountId: selectedSenderId || 'platform',
+          fromEmail: currentSender?.fromAddress || undefined,
+          fromName: currentSender?.fromName || currentSender?.name || undefined,
           prospectId: target._id || target.id,
           leadId: target.leadId || undefined,
           dealId: target.dealId || undefined,
@@ -768,7 +792,7 @@ export const CrmMailComposerModal = ({
                     required
                     value={htmlBody}
                     onChange={(e) => setHtmlBody(e.target.value)}
-                    className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-xs font-mono leading-relaxed text-slate-800 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition"
+                    className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-xs font-sans leading-relaxed text-slate-800 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition resize-y"
                     placeholder="Write your email body here. Standard paragraphs and blank lines will be preserved."
                   />
                 </div>

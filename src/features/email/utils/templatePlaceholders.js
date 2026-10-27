@@ -442,7 +442,19 @@ export const formatTemplateBodyAsHtml = (content) => {
     if (!body.trim()) return '';
     if (hasHtmlMarkup(body)) return sanitizeTemplateHtml(body);
 
-    return `<div style="white-space: pre-wrap; font-family: Arial, sans-serif; line-height: 1.6;">${escapeHtml(body)}</div>`;
+    const paragraphs = body.split(/\r?\n\r?\n/);
+    const htmlParagraphs = paragraphs.map((block) => {
+        if (!block.trim()) {
+            return '<div style="height: 16px; line-height: 16px;">&nbsp;</div>';
+        }
+        const lines = block.split(/\r?\n/).map((line) => {
+            const escaped = escapeHtml(line);
+            return escaped.replace(/ {2,}/g, (match) => '&nbsp;'.repeat(match.length));
+        });
+        return `<p style="margin: 0 0 16px 0; line-height: 1.6; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 14px; color: #1e293b;">${lines.join('<br/>')}</p>`;
+    });
+
+    return `<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 14px; line-height: 1.6; color: #1e293b;">${htmlParagraphs.join('\n')}</div>`;
 };
 
 export const renderTemplateBody = (template, data) => formatTemplateBodyAsHtml(resolveTemplateForHtml(template, data));

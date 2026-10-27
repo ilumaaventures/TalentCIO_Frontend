@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Phone,
   MessageSquare,
@@ -11,6 +11,7 @@ import {
   AlertCircle,
   Plus,
   RefreshCw,
+  Paperclip,
 } from 'lucide-react';
 import { Modal } from '../../components/ui/Modal';
 import { Button } from '../../components/ui/Button';
@@ -27,11 +28,12 @@ export const ActivityHistoryModal = ({
   const [followUps, setFollowUps] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  const fetchActivities = async () => {
-    if (!row?._id && !row?.id) return;
+  const rowId = row?._id || row?.id;
+  const fetchActivities = useCallback(async () => {
+    if (!rowId) return;
     setIsLoading(true);
     try {
-      const res = await dataService.getActivities(row._id || row.id);
+      const res = await dataService.getActivities(rowId);
       if (res?.success) {
         setActivities(res.data.activities || []);
         setFollowUps(res.data.followUps || []);
@@ -41,13 +43,13 @@ export const ActivityHistoryModal = ({
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [rowId]);
 
   useEffect(() => {
-    if (isOpen && row) {
+    if (isOpen && rowId) {
       fetchActivities();
     }
-  }, [isOpen, row]);
+  }, [isOpen, rowId, fetchActivities]);
 
   if (!isOpen || !row) return null;
 
@@ -231,10 +233,54 @@ export const ActivityHistoryModal = ({
                       </p>
                     )}
 
+                    {/* Email Attachments indicator */}
+                    {act.type === 'email' && (() => {
+                      let attList = act.attachments || act.metadata?.attachments || act.metadata?.attachmentFileNames || [];
+                      if (!attList?.length && act.description?.includes('Attachment')) {
+                        const m = act.description.match(/Attachments?(?:\s*\(\d+\))?:\s*([^\n\r]+)/i);
+                        if (m && m[1]) attList = m[1].split(',').map((s) => s.trim()).filter(Boolean);
+                      }
+                      if (!Array.isArray(attList) || attList.length === 0) return null;
+                      return (
+                        <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-sky-50 border border-sky-200 text-sky-800 text-[10px] font-bold">
+                            <Paperclip className="w-3 h-3 text-sky-600" />
+                            {attList.length} Attachment{attList.length > 1 ? 's' : ''}:
+                          </span>
+                          {attList.map((item, idx) => {
+                            const name = typeof item === 'string' ? item : item.filename || item.name || 'File';
+                            return (
+                              <span
+                                key={idx}
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-white border border-slate-200 text-slate-700 text-[10px] font-medium truncate max-w-[140px]"
+                                title={name}
+                              >
+                                {name}
+                              </span>
+                            );
+                          })}
+                        </div>
+                      );
+                    })()}
+
                     <div className="flex items-center justify-between pt-1 border-t border-slate-100 text-[11px] text-slate-400">
-                      <div className="flex items-center gap-1">
-                        <User className="w-3 h-3 text-slate-400" />
-                        <span>Logged by: <strong className="text-slate-700">{act.performedByName || 'Sales Rep'}</strong></span>
+                      <div className="flex items-center gap-1 flex-wrap">
+                        <User className="w-3 h-3 text-slate-400 shrink-0" />
+                        {act.type === 'email' && (act.metadata?.fromEmail || act.metadata?.fromAddress || act.metadata?.fromName) ? (
+                          <span>
+                            From: <strong className="text-slate-700">{act.metadata.fromName || 'Sender'}</strong>
+                            {(act.metadata.fromEmail || act.metadata.fromAddress) && (
+                              <span className="text-slate-500 ml-0.5">({act.metadata.fromEmail || act.metadata.fromAddress})</span>
+                            )}
+                            {act.performedByName && (
+                              <span className="text-slate-400 ml-1.5">
+                                • Dispatched by: <strong className="text-slate-600">{act.performedByName}</strong>
+                              </span>
+                            )}
+                          </span>
+                        ) : (
+                          <span>Logged by: <strong className="text-slate-700">{act.performedByName || 'Sales Rep'}</strong></span>
+                        )}
                       </div>
                       {act.durationMinutes > 0 && (
                         <span>Duration: <strong className="text-slate-700">{act.durationMinutes} min{act.durationMinutes > 1 ? 's' : ''}</strong></span>

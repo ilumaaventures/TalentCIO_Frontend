@@ -2,55 +2,13 @@ import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import {
   Upload,
   FileSpreadsheet,
-  ArrowUpDown,
-  ArrowUp,
-  ArrowDown,
-  Calendar,
-  Search,
-  CheckSquare,
-  Square,
-  Send,
-  Trash2,
   Download,
-  AlertCircle,
-  Building2,
-  CheckCircle2,
-  AlertTriangle,
-  Eye,
-  EyeOff,
-  X,
-  Pencil,
-  Save,
   Database,
-  RefreshCw,
-  User,
-  Plus,
-  ChevronDown,
-  ChevronLeft,
-  ChevronRight,
-  ExternalLink,
-  Phone,
-  Mail,
-  MessageSquare,
-  Clock,
-  Trophy,
-  History,
-  PhoneCall,
-  MoreVertical,
-  Menu,
-  Users,
-  Filter,
-  Globe,
 } from 'lucide-react';
-import * as XLSX from 'xlsx';
-import ExcelJS from 'exceljs';
-import { saveAs } from 'file-saver';
+import { downloadImportTemplate, exportRecordsToExcel } from './utils/excelImportExport';
+import { parseExcelFile, normalizePhone } from './utils/excelImportParser';
 import toast from 'react-hot-toast';
 import { Button } from '../../components/ui/Button';
-import { Card } from '../../components/ui/Card';
-import { Badge } from '../../components/ui/Badge';
-import { Modal } from '../../components/ui/Modal';
-import { Input } from '../../components/ui/Input';
 import { dataService, leadsService, adminService } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import { LogOutreachModal } from './LogOutreachModal';
@@ -60,16 +18,39 @@ import { RepPerformanceCockpit } from './RepPerformanceCockpit';
 import { ImportDataDetailPage } from './ImportDataDetailPage';
 import { RepOutreachHistoryModal } from './RepOutreachHistoryModal';
 import { CrmMailComposerModal } from '../../components/communication/CrmMailComposerModal';
+import { EditCompanyModal } from './components/EditCompanyModal';
+import { DeleteConfirmModal } from './components/DeleteConfirmModal';
+import { ConvertToLeadModal } from './components/ConvertToLeadModal';
+import { StagedDataPreview } from './components/StagedDataPreview';
+import { DatabaseMetricsCards } from './components/DatabaseMetricsCards';
+import { DatabaseFilterBar } from './components/DatabaseFilterBar';
+import { DatabaseProspectsTable } from './components/DatabaseProspectsTable';
 
 const STORAGE_KEY = 'crm_imported_excel_records';
 
-// Module-level helper: extract last 10 digits of a phone number for normalised comparison.
-// Defined here (not inside a handler) so all functions in this file can use it.
-const normalizePhone = (p) => {
-  if (!p) return '';
-  const digits = String(p).replace(/\D/g, '');
-  return digits.length >= 10 ? digits.slice(-10) : digits;
+// Safely persist records to localStorage with quota-guarding and graceful fallback
+const safePersistToStorage = (key, data) => {
+  if (!key) return;
+  try {
+    if (!data || (Array.isArray(data) && data.length === 0)) {
+      localStorage.removeItem(key);
+      return;
+    }
+    localStorage.setItem(key, JSON.stringify(data));
+  } catch (err) {
+    console.warn(`[safePersistToStorage] Direct write to ${key} failed (quota likely exceeded):`, err?.message || err);
+    try {
+      if (Array.isArray(data) && data.length > 1000) {
+        const trimmed = data.slice(0, 1000);
+        localStorage.setItem(key, JSON.stringify(trimmed));
+        console.info(`[safePersistToStorage] Stored trimmed list (1000 items) for ${key}`);
+      }
+    } catch {
+      // ignore
+    }
+  }
 };
+
 
 const STATUS_OPTIONS = [
   'New',
@@ -94,6 +75,57 @@ const getStatusBadgeStyle = (val) => {
   if (s === 'meeting scheduled') return 'bg-purple-50 text-purple-700 border-purple-300 focus:ring-purple-400';
   if (s === 'new') return 'bg-blue-50 text-blue-700 border-blue-300 focus:ring-blue-400';
   return 'bg-slate-50 text-slate-700 border-slate-300 focus:ring-slate-400';
+};
+
+// Format local date as YYYY-MM-DD
+const formatLocalDate = (d) => {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+// Check if an item matches the date filter
+const isRecordInDateFilter = (item, filter, from, to, type = 'updatedAt') => {
+  if (filter === 'all') return true;
+
+  let rawDate;
+  if (type === 'createdAt') {
+    rawDate = item?.createdAt || item?.date;
+  } else {
+    rawDate = item?.updatedAt || item?.lastContactedAt || item?.date || item?.createdAt;
+  }
+  if (!rawDate) return false;
+
+  try {
+    const itemDate = new Date(rawDate);
+    if (isNaN(itemDate.getTime())) return false;
+
+    const now = new Date();
+
+    if (filter === 'today') {
+      return (
+        itemDate.getFullYear() === now.getFullYear() &&
+        itemDate.getMonth() === now.getMonth() &&
+        itemDate.getDate() === now.getDate()
+      );
+    }
+
+    const diffMs = now.getTime() - itemDate.getTime();
+    const diffDays = diffMs / (1000 * 60 * 60 * 24);
+
+    if (filter === '2days') return diffDays <= 2;
+    if (filter === '5days') return diffDays <= 5;
+    if (filter === 'custom') {
+      const localDateStr = formatLocalDate(itemDate);
+      if (from && localDateStr < from) return false;
+      if (to && localDateStr > to) return false;
+      return true;
+    }
+    return true;
+  } catch {
+    return false;
+  }
 };
 
 export const ImportDataPage = ({ onNavigate }) => {
@@ -188,7 +220,6 @@ export const ImportDataPage = ({ onNavigate }) => {
     }
   }, [canViewAll, user?._id, user?.name, user?.firstName, user?.lastName]);
 
-  const [fileName, setFileName] = useState('');
   const [selectedIds, setSelectedIds] = useState([]);
   const [sortDirection, setSortDirection] = useState('desc'); // 'desc' | 'asc'
   const [dateFilter, setDateFilter] = useState('today'); // 'all' | 'today' | '2days' | '5days' | 'custom'
@@ -222,16 +253,6 @@ export const ImportDataPage = ({ onNavigate }) => {
   const [currentPage, setCurrentPage] = useState(1);
   const [showConvertedOnly, setShowConvertedOnly] = useState(false);
   const [showStatusChangedOnly, setShowStatusChangedOnly] = useState(false);
-
-  // Expanded remarks state (row ID -> boolean) to dynamically expand row height
-  const [expandedRemarks, setExpandedRemarks] = useState({});
-
-  const toggleExpandRemark = (rowId) => {
-    setExpandedRemarks((prev) => ({
-      ...prev,
-      [rowId]: !prev[rowId],
-    }));
-  };
 
   // Outreach & Performance Tracking State
   const [outreachRow, setOutreachRow] = useState(null);
@@ -439,15 +460,7 @@ export const ImportDataPage = ({ onNavigate }) => {
 
   // Persist records to localStorage (scoped per user)
   useEffect(() => {
-    try {
-      if (records.length > 0) {
-        localStorage.setItem(userStorageKey, JSON.stringify(records));
-      } else {
-        localStorage.removeItem(userStorageKey);
-      }
-    } catch (e) {
-      console.error('Failed to save imported records in localStorage', e);
-    }
+    safePersistToStorage(userStorageKey, records);
   }, [records, userStorageKey]);
 
   // Load active company users for "Imported By" filter (strictly exclude inactive users)
@@ -562,8 +575,80 @@ export const ImportDataPage = ({ onNavigate }) => {
     setSelectedUsers([]);
   };
 
+  const isSyncingRef = useRef(false);
+  const isVerifyingRef = useRef(false);
+  const lastVerifiedSignatureRef = useRef('');
+  const initialMountCheckDoneRef = useRef(false);
+  const recordsRef = useRef(records);
+
+  useEffect(() => {
+    recordsRef.current = records;
+  }, [records]);
+
+  // Helper to generate a fingerprint of records to avoid redundant duplicate checks
+  const getRecordsSignature = (recs) => {
+    if (!recs || recs.length === 0) return '';
+    const len = recs.length;
+    const firstId = recs[0]?.id || recs[0]?._id || '';
+    const lastId = recs[len - 1]?.id || recs[len - 1]?._id || '';
+    return `${len}:${firstId}:${lastId}`;
+  };
+
+  // Verify lead status against CRM database
+  const verifyLeadsStatus = useCallback(async (currentRecords, force = false) => {
+    if (!currentRecords || currentRecords.length === 0) return;
+    const signature = getRecordsSignature(currentRecords);
+    if (!force && lastVerifiedSignatureRef.current === signature) {
+      return; // Already verified this exact dataset against CRM
+    }
+    if (isVerifyingRef.current) return;
+
+    isVerifyingRef.current = true;
+    try {
+      const dupRes = await leadsService.checkDuplicatesBatch(currentRecords);
+      if (dupRes?.success && Array.isArray(dupRes.results)) {
+        lastVerifiedSignatureRef.current = signature;
+        const leadMap = new Map(dupRes.results.map((r) => [r.id, r]));
+        setRecords((prev) => {
+          let hasChanges = false;
+          const next = prev.map((row) => {
+            const res = leadMap.get(row.id);
+            if (!res) return row;
+            const inCrm = Boolean(res.existsInCrm);
+            const targetLeadId = inCrm ? (res.leadId || row.leadId) : null;
+            const targetReason = inCrm ? (row.duplicateReason || 'In CRM') : '';
+
+            if (
+              row.isConvertedToLead !== inCrm ||
+              row.leadId !== targetLeadId ||
+              row.duplicateReason !== targetReason
+            ) {
+              hasChanges = true;
+              return {
+                ...row,
+                isConvertedToLead: inCrm,
+                leadId: targetLeadId,
+                duplicateReason: targetReason,
+              };
+            }
+            return row;
+          });
+
+          // Strictly preserve array reference if no changes occurred
+          return hasChanges ? next : prev;
+        });
+      }
+    } catch (err) {
+      console.warn('Failed to verify converted leads against CRM database:', err);
+    } finally {
+      isVerifyingRef.current = false;
+    }
+  }, []);
+
   // Fetch active import data from server and reconcile with workspace
-  const syncWithServer = useCallback(async () => {
+  const syncWithServer = useCallback(async (forceVerify = false) => {
+    if (isSyncingRef.current) return;
+    isSyncingRef.current = true;
     try {
       const res = await dataService.getImportData({ all: 'true' });
       if (res?.success && Array.isArray(res.data)) {
@@ -575,11 +660,9 @@ export const ImportDataPage = ({ onNavigate }) => {
             importedByUserId: s.importedByUserId || null,
           }));
           setRecords(mappedServer);
-          try {
-            if (userStorageKey) {
-              localStorage.setItem(userStorageKey, JSON.stringify(mappedServer));
-            }
-          } catch (_) { }
+          safePersistToStorage(userStorageKey, mappedServer);
+          // Verify CRM lead status for the fresh server records once
+          verifyLeadsStatus(mappedServer, forceVerify);
         } else {
           setRecords((prev) => {
             if (canViewAll && prev.length > 0) {
@@ -592,621 +675,61 @@ export const ImportDataPage = ({ onNavigate }) => {
       }
     } catch (err) {
       console.warn('Failed to sync import data from server:', err);
+    } finally {
+      isSyncingRef.current = false;
     }
-  }, [canViewAll, currentUserName, userStorageKey]);
-
-  // Verify lead status against CRM database
-  const verifyLeadsStatus = useCallback(async (currentRecords) => {
-    if (!currentRecords || currentRecords.length === 0) return;
-    try {
-      const dupRes = await leadsService.checkDuplicatesBatch(currentRecords);
-      if (dupRes?.success && Array.isArray(dupRes.results)) {
-        const leadMap = new Map(dupRes.results.map((r) => [r.id, r]));
-        setRecords((prev) =>
-          prev.map((row) => {
-            const res = leadMap.get(row.id);
-            if (!res) return row;
-            const inCrm = Boolean(res.existsInCrm);
-            return {
-              ...row,
-              isConvertedToLead: inCrm,
-              leadId: inCrm ? (res.leadId || row.leadId) : null,
-              duplicateReason: inCrm ? (row.duplicateReason || 'In CRM') : '',
-            };
-          })
-        );
-      }
-    } catch (err) {
-      console.warn('Failed to verify converted leads against CRM database:', err);
-    }
-  }, []);
+  }, [canViewAll, currentUserName, userStorageKey, verifyLeadsStatus]);
 
   useEffect(() => {
     syncWithServer();
+
+    // If records were restored from local storage on mount before server response, verify them once
+    if (!initialMountCheckDoneRef.current && recordsRef.current && recordsRef.current.length > 0) {
+      initialMountCheckDoneRef.current = true;
+      verifyLeadsStatus(recordsRef.current);
+    }
+
+    let lastFocusTime = 0;
     const handleFocus = () => {
+      const now = Date.now();
+      // Throttle focus handler to at most once every 30 seconds
+      if (now - lastFocusTime < 30000) return;
+      lastFocusTime = now;
       syncWithServer();
-      try {
-        const saved = localStorage.getItem(STORAGE_KEY);
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          verifyLeadsStatus(parsed);
-        }
-      } catch (e) {
-        console.warn(e);
-      }
     };
+
+    const handleDataUpdated = () => {
+      syncWithServer(true);
+    };
+
     window.addEventListener('focus', handleFocus);
-    window.addEventListener('crm:import-data-updated', syncWithServer);
+    window.addEventListener('crm:import-data-updated', handleDataUpdated);
     return () => {
       window.removeEventListener('focus', handleFocus);
-      window.removeEventListener('crm:import-data-updated', syncWithServer);
+      window.removeEventListener('crm:import-data-updated', handleDataUpdated);
     };
   }, [syncWithServer, verifyLeadsStatus]);
 
-  useEffect(() => {
-    if (records && records.length > 0) {
-      verifyLeadsStatus(records);
-    }
-  }, [verifyLeadsStatus]);
-
-  // Parse excel date helper
-  const parseRowDate = (val) => {
-    if (!val) return new Date();
-    if (val instanceof Date) return val;
-    if (typeof val === 'number') {
-      return new Date(Math.round((val - 25569) * 86400 * 1000));
-    }
-    const str = String(val).trim();
-    const parsed = new Date(str);
-    if (!isNaN(parsed.getTime())) return parsed;
-
-    // Matches DD/MM/YYYY or DD-MM-YYYY
-    const match = str.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})/);
-    if (match) {
-      return new Date(parseInt(match[3], 10), parseInt(match[2], 10) - 1, parseInt(match[1], 10));
-    }
-    return new Date();
-  };
-
-  // Parse excel date of registration helper (returns empty string if missing)
-  const parseRegistrationDate = (val) => {
-    if (val === null || val === undefined || String(val).trim() === '') return '';
-    if (val instanceof Date && !isNaN(val.getTime())) {
-      return val.toISOString().split('T')[0];
-    }
-    if (typeof val === 'number') {
-      const d = new Date(Math.round((val - 25569) * 86400 * 1000));
-      return !isNaN(d.getTime()) ? d.toISOString().split('T')[0] : '';
-    }
-    const str = String(val).trim();
-    if (!str) return '';
-    const match = str.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})/);
-    if (match) {
-      const d = new Date(parseInt(match[3], 10), parseInt(match[2], 10) - 1, parseInt(match[1], 10));
-      return !isNaN(d.getTime()) ? d.toISOString().split('T')[0] : str;
-    }
-    const parsed = new Date(str);
-    if (!isNaN(parsed.getTime())) {
-      return parsed.toISOString().split('T')[0];
-    }
-    return str;
-  };
-
-  const handleFileUpload = (file) => {
+  const handleFileUpload = async (file) => {
     if (!file) return;
+    try {
+      const staged = await parseExcelFile(file, records, currentUserName, user);
+      setStagedData(staged);
+      setShowPreview(true);
+      setPreviewTab('all');
 
-    const toDataUrl = (fileBlob) =>
-      new Promise((resolve) => {
-        const r = new FileReader();
-        r.onload = () => resolve(r.result);
-        r.onerror = () => resolve('');
-        r.readAsDataURL(fileBlob);
-      });
-
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      try {
-        const fileDataUrl = await toDataUrl(file);
-        const data = new Uint8Array(e.target.result);
-        const workbook = XLSX.read(data, { type: 'array', cellDates: true });
-        const firstSheetName = workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[firstSheetName];
-
-        // Populate merged cells so rows with merged company names retain the value across all contact rows
-        if (worksheet && worksheet['!merges']) {
-          worksheet['!merges'].forEach((range) => {
-            const startCellRef = XLSX.utils.encode_cell(range.s);
-            const masterCell = worksheet[startCellRef];
-            if (masterCell && masterCell.v !== undefined) {
-              for (let R = range.s.r; R <= range.e.r; ++R) {
-                for (let C = range.s.c; C <= range.e.c; ++C) {
-                  const cellRef = XLSX.utils.encode_cell({ r: R, c: C });
-                  if (!worksheet[cellRef] || worksheet[cellRef].v === undefined || worksheet[cellRef].v === '') {
-                    worksheet[cellRef] = { ...masterCell };
-                  }
-                }
-              }
-            }
-          });
-        }
-
-        const rawJson = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
-
-        if (!rawJson || rawJson.length === 0) {
-          toast.error('The uploaded sheet is empty.');
-          return;
-        }
-
-        // Total data rows fetched from the uploaded sheet
-        const totalRowsFetched = rawJson.filter((r) =>
-          Object.values(r).some((v) => v !== null && v !== undefined && String(v).trim() !== '')
-        ).length || rawJson.length;
-
-        const parsedRows = rawJson.map((row, idx) => {
-          // Normalize row keys to match specified headers
-          const normalized = {};
-          Object.keys(row).forEach((k) => {
-            const cleanKey = k.toLowerCase().replace(/[^a-z0-9]/g, '');
-            normalized[cleanKey] = row[k];
-          });
-
-          // Match specific columns from image
-          const sNo = normalized['sno'] || normalized['srno'] || normalized['serialno'] || String(idx + 1);
-          const companyName = normalized['companyname'] || normalized['company'] || '';
-          const gstin = String(
-            normalized['gstin'] ||
-            normalized['gst'] ||
-            normalized['gstno'] ||
-            normalized['gstnumber'] ||
-            normalized['taxid'] ||
-            normalized['tin'] ||
-            ''
-          ).trim().toUpperCase();
-          const rawDateOfReg =
-            normalized['dateofregistration'] ||
-            normalized['registrationdate'] ||
-            normalized['dateofreg'] ||
-            normalized['regdate'] ||
-            normalized['incorporationdate'] ||
-            normalized['dateofincorporation'] ||
-            '';
-          const dateOfRegistration = parseRegistrationDate(rawDateOfReg);
-          const industry = normalized['industry'] || '';
-          const address = normalized['address'] || normalized['location'] || '';
-          const rating = normalized['rating'] || '';
-          const contactPerson = normalized['contactperson'] || normalized['contact'] || normalized['name'] || '';
-          const designation = normalized['designation'] || normalized['jobtitle'] || '';
-          const mobileNo = normalized['mobileno'] || normalized['mobile'] || normalized['phone'] || '';
-          const emailId = normalized['emailid'] || normalized['email'] || '';
-          const remarks = normalized['remarks'] || normalized['remark'] || normalized['notes'] || '';
-          // Comprehensive status header detection from Excel (e.g. status, lead status, call status, prospect status, disposition)
-          const rawStatus =
-            normalized['status'] ||
-            normalized['leadstatus'] ||
-            normalized['callstatus'] ||
-            normalized['prospectstatus'] ||
-            normalized['currentstatus'] ||
-            normalized['disposition'] ||
-            '';
-          const leadStatus = rawStatus ? String(rawStatus).trim() : 'New';
-          const source =
-            normalized['source'] ||
-            normalized['leadsource'] ||
-            normalized['origin'] ||
-            normalized['datasource'] ||
-            normalized['channel'] ||
-            '';
-
-          // Look for date in row
-          let dateVal = normalized['date'] || normalized['createddate'] || normalized['entrydate'] || normalized['importdate'];
-          const dateObj = parseRowDate(dateVal);
-
-          // FIX #3: Build a deterministic stable ID from content so the same company
-          // always gets the same rowId across separate imports. This allows
-          // syncImportData (server-side upsert) to find and update the existing DB
-          // document rather than always inserting a new one.
-          const stableKey = [
-            String(companyName).trim().toLowerCase(),
-            String(gstin).trim().toUpperCase(),
-            String(mobileNo).trim().replace(/\D/g, '').slice(-10),
-            String(emailId).trim().toLowerCase(),
-          ].join('|');
-          // btoa may not be available in all environments; use a simple hash fallback
-          let stableId;
-          try {
-            stableId = btoa(unescape(encodeURIComponent(stableKey))).replace(/[+/=]/g, '_');
-          } catch {
-            stableId = `${Date.now()}_${idx}`;
-          }
-
-          return {
-            id: `row_${stableId}`,
-            sNo: String(sNo),
-            companyName: String(companyName).trim(),
-            gstin,
-            dateOfRegistration,
-            industry: String(industry).trim(),
-            address: String(address).trim(),
-            rating: String(rating).trim(),
-            contactPerson: String(contactPerson).trim(),
-            designation: String(designation).trim(),
-            mobileNo: String(mobileNo).trim(),
-            emailId: String(emailId).trim(),
-            remarks: String(remarks).trim(),
-            status: String(leadStatus).trim() || 'New',
-            leadStatus: String(leadStatus).trim() || 'New',
-            source: String(source).trim(),
-            leadSource: String(source).trim(),
-            date: dateObj.toISOString(),
-            createdAt: dateObj.toISOString(),
-            updatedAt: new Date().toISOString(),
-            importedBy: currentUserName,
-            importedByUserId: user?._id || null,
-          };
-        });
-
-        // Filter out empty rows where companyName, contactPerson, mobileNo, and emailId are missing
-        const validRows = parsedRows.filter((r) => r.companyName || r.contactPerson || r.mobileNo || r.emailId);
-
-        if (validRows.length === 0) {
-          toast.error('No valid company or contact data found in the file.');
-          return;
-        }
-
-        // 1. Consolidate rows by Company Name within the uploaded sheet
-        // If company name is identical, combine contact person details into one single entry for that company
-        const consolidatedRows = [];
-        const compIndexMap = new Map();
-
-        validRows.forEach((r) => {
-          const compKey = (r.companyName || '').trim().toLowerCase();
-          const contactObj = {
-            contactPerson: (r.contactPerson || '').trim(),
-            designation: (r.designation || '').trim(),
-            mobileNo: (r.mobileNo || '').trim(),
-            emailId: (r.emailId || '').trim(),
-            isPrimary: false,
-          };
-          const hasContact = Boolean(contactObj.contactPerson || contactObj.mobileNo || contactObj.emailId);
-
-          if (compKey) {
-            if (compIndexMap.has(compKey)) {
-              // Same company in this sheet: append contact details to that company entry
-              const existingCompEntry = consolidatedRows[compIndexMap.get(compKey)];
-              if (hasContact) {
-                const rPhone = normalizePhone(contactObj.mobileNo);
-                const rEmail = (contactObj.emailId || '').toLowerCase();
-                const rName = (contactObj.contactPerson || '').toLowerCase();
-
-                const isContactAlreadyPresent = (existingCompEntry.contacts || []).some((c) => {
-                  const cPhone = normalizePhone(c.mobileNo);
-                  const cEmail = (c.emailId || '').toLowerCase();
-                  const cName = (c.contactPerson || '').toLowerCase();
-                  if (rPhone && cPhone && rPhone === cPhone) return true;
-                  if (rEmail && cEmail && rEmail === cEmail) return true;
-                  if (rName && cName && rName === cName && (!rPhone || !cPhone)) return true;
-                  return false;
-                });
-
-                if (!isContactAlreadyPresent) {
-                  existingCompEntry.contacts.push(contactObj);
-                }
-              }
-
-              // Supplement any empty company metadata from subsequent row
-              if (!existingCompEntry.gstin && r.gstin) existingCompEntry.gstin = r.gstin;
-              if (!existingCompEntry.dateOfRegistration && r.dateOfRegistration) existingCompEntry.dateOfRegistration = r.dateOfRegistration;
-              if (!existingCompEntry.industry && r.industry) existingCompEntry.industry = r.industry;
-              if (!existingCompEntry.address && r.address) existingCompEntry.address = r.address;
-              if (!existingCompEntry.rating && r.rating) existingCompEntry.rating = r.rating;
-              if (!existingCompEntry.remarks && r.remarks) existingCompEntry.remarks = r.remarks;
-            } else {
-              // First occurrence of this company in the uploaded sheet
-              const initialContacts = hasContact ? [{ ...contactObj, isPrimary: true }] : [];
-              const entry = {
-                ...r,
-                contacts: initialContacts,
-              };
-              compIndexMap.set(compKey, consolidatedRows.length);
-              consolidatedRows.push(entry);
-            }
-          } else {
-            // Row has no company name (individual prospect)
-            const initialContacts = hasContact ? [{ ...contactObj, isPrimary: true }] : [];
-            consolidatedRows.push({
-              ...r,
-              contacts: initialContacts,
-            });
-          }
-        });
-
-        // 2. Intra-sheet duplicate detection with Unique GSTIN enforcement
-        const seenStandalonePhones = new Set();
-        const seenStandaloneEmails = new Set();
-        const seenGstins = new Map(); // gstin -> companyName
-        let sheetGstinDuplicatesCount = 0;
-
-        const initialEnrichedRows = consolidatedRows.map((row) => {
-          const comp = row.companyName ? row.companyName.trim() : '';
-          const compLower = comp.toLowerCase();
-          const phone = row.mobileNo ? normalizePhone(row.mobileNo) : '';
-          const email = row.emailId ? row.emailId.toLowerCase() : '';
-          const gstin = (row.gstin || '').trim().toUpperCase();
-
-          let isSheetDup = false;
-          const reasons = [];
-
-          // Unique GSTIN check: GSTIN must be unique for each company
-          if (gstin) {
-            if (seenGstins.has(gstin)) {
-              const previousCompany = seenGstins.get(gstin);
-              if (previousCompany && comp && previousCompany.toLowerCase() !== compLower) {
-                isSheetDup = true;
-                sheetGstinDuplicatesCount++;
-                reasons.push(`Duplicate GSTIN: "${gstin}" is already assigned to "${previousCompany}" in this sheet`);
-              }
-            } else {
-              seenGstins.set(gstin, comp || row.contactPerson || 'Another Entry');
-            }
-          }
-
-          if (!compLower) {
-            if (phone && seenStandalonePhones.has(phone)) {
-              isSheetDup = true;
-              reasons.push('Duplicate Mobile in sheet');
-            }
-            if (email && seenStandaloneEmails.has(email)) {
-              isSheetDup = true;
-              reasons.push('Duplicate Email in sheet');
-            }
-          }
-
-          if (phone) seenStandalonePhones.add(phone);
-          if (email) seenStandaloneEmails.add(email);
-
-          return {
-            ...row,
-            isSheetDup,
-            duplicateReason: reasons.join(', '),
-          };
-        });
-
-        // 3. Build index of existing workspace records (including GSTIN index)
-        const existingCompMap = new Map();
-        const existingPhoneMap = new Map();
-        const existingEmailMap = new Map();
-        const existingGstinMap = new Map();
-
-        (records || []).forEach((r) => {
-          const comp = (r.companyName || '').trim().toLowerCase();
-          const phone = normalizePhone(r.mobileNo);
-          const email = (r.emailId || '').trim().toLowerCase();
-          const gstin = (r.gstin || '').trim().toUpperCase();
-          if (comp && !existingCompMap.has(comp)) existingCompMap.set(comp, r);
-          if (phone && !existingPhoneMap.has(phone)) existingPhoneMap.set(phone, r);
-          if (email && !existingEmailMap.has(email)) existingEmailMap.set(email, r);
-          if (gstin && !existingGstinMap.has(gstin)) existingGstinMap.set(gstin, r);
-        });
-
-        // 4. Check against existing CRM leads database in batch & classify rows
-        let finalRows = initialEnrichedRows;
-        try {
-          const dupRes = await leadsService.checkDuplicatesBatch(consolidatedRows);
-          const crmResultMap = (dupRes?.success && Array.isArray(dupRes.results))
-            ? new Map(dupRes.results.map((r) => [r.id, r]))
-            : new Map();
-
-          finalRows = initialEnrichedRows.map((row) => {
-            const comp = row.companyName ? row.companyName.toLowerCase() : '';
-            const phone = row.mobileNo ? normalizePhone(row.mobileNo) : '';
-            const email = row.emailId ? row.emailId.toLowerCase() : '';
-            const gstin = (row.gstin || '').trim().toUpperCase();
-
-            // Case A: Duplicate within uploaded Excel sheet
-            if (row.isSheetDup) {
-              return {
-                ...row,
-                rowType: 'duplicate',
-                isDuplicate: true,
-                isUpdate: false,
-                isNew: false,
-                isConvertedToLead: false,
-                leadId: null,
-              };
-            }
-
-            // Case B: Cross-database GSTIN conflict (same GSTIN used for a different company)
-            const matchedByGstin = gstin ? existingGstinMap.get(gstin) : null;
-            if (matchedByGstin) {
-              const existingCompLower = (matchedByGstin.companyName || '').trim().toLowerCase();
-              if (comp && existingCompLower && comp !== existingCompLower) {
-                return {
-                  ...row,
-                  rowType: 'duplicate',
-                  isDuplicate: true,
-                  isUpdate: false,
-                  isNew: false,
-                  isConvertedToLead: false,
-                  leadId: null,
-                  duplicateReason: `Duplicate GSTIN: "${gstin}" already belongs to existing company "${matchedByGstin.companyName}" in database`,
-                };
-              }
-            }
-
-            // Case C: Existing record in CRM or in workspace (Update)
-            const crmRes = crmResultMap.get(row.id);
-            const inCrm = Boolean(crmRes?.existsInCrm || crmRes?.reason?.toLowerCase().includes('in crm'));
-            const matchedWorkspaceRec =
-              (comp && existingCompMap.get(comp)) ||
-              (gstin && matchedByGstin) ||
-              (phone && existingPhoneMap.get(phone)) ||
-              (email && existingEmailMap.get(email)) ||
-              null;
-
-            if (inCrm || matchedWorkspaceRec) {
-              const leadId = crmRes?.leadId || matchedWorkspaceRec?.leadId || null;
-              const isConverted = inCrm || Boolean(matchedWorkspaceRec?.isConvertedToLead);
-
-              // Check if incoming upload brings a new contact person for this existing company
-              let hasNewContact = false;
-              if (matchedWorkspaceRec) {
-                const exContacts = Array.isArray(matchedWorkspaceRec.contacts) && matchedWorkspaceRec.contacts.length > 0
-                  ? matchedWorkspaceRec.contacts
-                  : ((matchedWorkspaceRec.contactPerson || matchedWorkspaceRec.mobileNo || matchedWorkspaceRec.emailId)
-                    ? [{
-                      contactPerson: matchedWorkspaceRec.contactPerson || '',
-                      designation: matchedWorkspaceRec.designation || '',
-                      mobileNo: matchedWorkspaceRec.mobileNo || '',
-                      emailId: matchedWorkspaceRec.emailId || '',
-                    }]
-                    : []);
-
-                hasNewContact = (row.contacts || []).some((newC) => {
-                  const nPhone = normalizePhone(newC.mobileNo);
-                  const nEmail = (newC.emailId || '').toLowerCase();
-                  const nName = (newC.contactPerson || '').toLowerCase();
-                  return !exContacts.some((oldC) => {
-                    const oPhone = normalizePhone(oldC.mobileNo);
-                    const oEmail = (oldC.emailId || '').toLowerCase();
-                    const oName = (oldC.contactPerson || '').toLowerCase();
-                    return (nPhone && oPhone && nPhone === oPhone) ||
-                      (nEmail && oEmail && nEmail === oEmail) ||
-                      (nName && oName && nName === oName);
-                  });
-                });
-              }
-
-              const updateReason = hasNewContact
-                ? 'Adds new contact person to existing company'
-                : inCrm
-                  ? 'Matches existing Lead in CRM'
-                  : 'Matches existing record in workspace';
-
-              return {
-                ...row,
-                rowType: 'update',
-                isDuplicate: false,
-                // FIX #5: explicitly carry isUpdate:true so the backend importData
-                // handler knows to run the update path instead of silently skipping.
-                isUpdate: true,
-                isNew: false,
-                duplicateReason: '',
-                updateReason,
-                isConvertedToLead: isConverted,
-                leadId,
-                existingRecordId: matchedWorkspaceRec?.id || null,
-              };
-            }
-
-            // Case C: New unique row
-            return {
-              ...row,
-              rowType: 'new',
-              isDuplicate: false,
-              isUpdate: false,
-              isNew: true,
-              duplicateReason: '',
-              updateReason: '',
-              isConvertedToLead: false,
-              leadId: null,
-              existingRecordId: null,
-            };
-          });
-        } catch (dupErr) {
-          console.warn('Batch duplicate check against CRM DB failed, using sheet deduplication:', dupErr);
-          finalRows = initialEnrichedRows.map((row) => {
-            if (row.isSheetDup) {
-              return {
-                ...row,
-                rowType: 'duplicate',
-                isDuplicate: true,
-                isUpdate: false,
-                isNew: false,
-              };
-            }
-            const comp = row.companyName ? row.companyName.toLowerCase() : '';
-            const phone = row.mobileNo ? normalizePhone(row.mobileNo) : '';
-            const email = row.emailId ? row.emailId.toLowerCase() : '';
-            const matchedWorkspaceRec =
-              (comp && existingCompMap.get(comp)) ||
-              (phone && existingPhoneMap.get(phone)) ||
-              (email && existingEmailMap.get(email)) ||
-              null;
-            if (matchedWorkspaceRec) {
-              const exContacts = Array.isArray(matchedWorkspaceRec.contacts) && matchedWorkspaceRec.contacts.length > 0
-                ? matchedWorkspaceRec.contacts
-                : [];
-              const hasNewContact = (row.contacts || []).some((newC) => {
-                const nPhone = normalizePhone(newC.mobileNo);
-                const nEmail = (newC.emailId || '').toLowerCase();
-                const nName = (newC.contactPerson || '').toLowerCase();
-                return !exContacts.some((oldC) => {
-                  const oPhone = normalizePhone(oldC.mobileNo);
-                  const oEmail = (oldC.emailId || '').toLowerCase();
-                  const oName = (oldC.contactPerson || '').toLowerCase();
-                  return (nPhone && oPhone && nPhone === oPhone) ||
-                    (nEmail && oEmail && nEmail === oEmail) ||
-                    (nName && oName && nName === oName);
-                });
-              });
-
-              return {
-                ...row,
-                rowType: 'update',
-                isDuplicate: false,
-                isUpdate: true,
-                isNew: false,
-                isConvertedToLead: Boolean(matchedWorkspaceRec.isConvertedToLead),
-                leadId: matchedWorkspaceRec.leadId || null,
-                existingRecordId: matchedWorkspaceRec.id || null,
-                updateReason: hasNewContact
-                  ? 'Adds new contact person to existing company'
-                  : 'Matches existing record in workspace',
-              };
-            }
-            return {
-              ...row,
-              rowType: 'new',
-              isDuplicate: false,
-              isUpdate: false,
-              isNew: true,
-            };
-          });
-        }
-
-        const newCount = finalRows.filter((r) => r.rowType === 'new').length;
-        const updateCount = finalRows.filter((r) => r.rowType === 'update').length;
-        const dupCount = finalRows.filter((r) => r.rowType === 'duplicate').length;
-
-        // Store into staging area for preview before actual import
-        setStagedData({
-          fileName: file.name,
-          fileSize: `${(file.size / 1024).toFixed(1)} KB`,
-          fileSizeBytes: file.size,
-          fileData: fileDataUrl || '',
-          totalRowsFetched,
-          rows: finalRows,
-          newCount,
-          updateCount,
-          duplicateCount: dupCount,
-        });
-        setShowPreview(true);
-        setPreviewTab('all');
-
-        if (dupCount > 0 || updateCount > 0) {
-          toast(
-            `Excel parsed: ${totalRowsFetched} rows fetched (${newCount} new, ${updateCount} to update${dupCount > 0 ? `, ${dupCount} duplicate(s) in sheet skipped` : ''}).`,
-            { icon: 'ℹ️', duration: 4000 }
-          );
-        } else {
-          toast.success(`File ready: ${totalRowsFetched} rows fetched (${newCount} new)!`);
-        }
-      } catch (err) {
-        console.error('Failed to parse Excel file:', err);
-        toast.error('Failed to parse Excel file. Please ensure it is a valid .xlsx or .xls file.');
+      if (staged.duplicateCount > 0 || staged.updateCount > 0) {
+        toast(
+          `Excel parsed: ${staged.totalRowsFetched} rows fetched (${staged.newCount} new, ${staged.updateCount} to update${staged.duplicateCount > 0 ? `, ${staged.duplicateCount} duplicate(s) in sheet skipped` : ''}).`,
+          { icon: 'ℹ️', duration: 4000 }
+        );
+      } else {
+        toast.success(`File ready: ${staged.totalRowsFetched} rows fetched (${staged.newCount} new)!`);
       }
-    };
-    reader.readAsArrayBuffer(file);
+    } catch (err) {
+      console.error('Failed to parse Excel file:', err);
+      toast.error('Failed to parse Excel file. Please ensure it is a valid .xlsx or .xls file.');
+    }
   };
 
 
@@ -1453,7 +976,6 @@ export const ImportDataPage = ({ onNavigate }) => {
         });
     }
 
-    setFileName(stagedData.fileName);
     setSelectedIds([]);
     setStagedData(null);
 
@@ -1472,151 +994,14 @@ export const ImportDataPage = ({ onNavigate }) => {
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  // Download Sample Template — includes Status dropdown, Source and Date columns
-  const handleDownloadTemplate = async () => {
-    try {
-      const today = new Date().toISOString().split('T')[0];
-      const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+  // Download Sample Template
+  const handleDownloadTemplate = () => downloadImportTemplate();
 
-      const workbook = new ExcelJS.Workbook();
-      workbook.creator = 'Talentcio CRM';
-      workbook.created = new Date();
-
-      const worksheet = workbook.addWorksheet('CRM Import Template', {
-        views: [{ showGridLines: true }],
-      });
-
-      // ── Define Columns & Widths ──────────────────────────────────────────
-      worksheet.columns = [
-        { header: 'S No', key: 'sNo', width: 8 },
-        { header: 'Company Name', key: 'companyName', width: 32 },
-        { header: 'GSTIN', key: 'gstin', width: 22 },
-        { header: 'Date of Registration', key: 'dateOfRegistration', width: 22 },
-        { header: 'Industry', key: 'industry', width: 24 },
-        { header: 'Address', key: 'address', width: 36 },
-        { header: 'Rating', key: 'rating', width: 10 },
-        { header: 'Contact Person', key: 'contactPerson', width: 24 },
-        { header: 'Designation', key: 'designation', width: 24 },
-        { header: 'Mobile No', key: 'mobileNo', width: 20 },
-        { header: 'Email ID', key: 'emailId', width: 30 },
-        { header: 'Remarks', key: 'remarks', width: 36 },
-        { header: 'Date', key: 'date', width: 16 },
-        { header: 'Status', key: 'status', width: 22 },
-        { header: 'Source', key: 'source', width: 22 },
-      ];
-
-      // ── Header Styling (Yellow background for columns with headers) ───────
-      const headerRow = worksheet.getRow(1);
-      headerRow.height = 28;
-      headerRow.font = { bold: true, color: { argb: 'FF000000' }, size: 10 };
-      headerRow.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
-      headerRow.eachCell((cell) => {
-        cell.fill = {
-          type: 'pattern',
-          pattern: 'solid',
-          fgColor: { argb: 'FFFFEB3B' }, // Yellow header
-        };
-        cell.border = {
-          top: { style: 'thin', color: { argb: 'FFD1D5DB' } },
-          bottom: { style: 'medium', color: { argb: 'FF9CA3AF' } },
-          left: { style: 'thin', color: { argb: 'FFD1D5DB' } },
-          right: { style: 'thin', color: { argb: 'FFD1D5DB' } },
-        };
-      });
-
-      // ── Sample Rows ──────────────────────────────────────────────────────
-      const sampleRows = [
-        {
-          sNo: 1,
-          companyName: 'Infosys Limited',
-          gstin: '29AABCI1234A1Z5',
-          dateOfRegistration: '1981-07-02',
-          industry: 'Information Technology',
-          address: 'Electronics City, Hosur Road, Bangalore',
-          rating: '4.5',
-          contactPerson: 'Rahul Sharma',
-          designation: 'VP Engineering',
-          mobileNo: '+91 98765 43210',
-          emailId: 'rahul.sharma@infosys.example',
-          remarks: 'Interested in enterprise talent pipeline',
-          date: today,
-          status: 'Connected',
-          source: 'LinkedIn',
-        },
-        {
-          sNo: 2,
-          companyName: 'Tata Consultancy Services',
-          gstin: '27AABCT5678B1Z2',
-          dateOfRegistration: '',
-          industry: 'Consulting & IT',
-          address: 'TCS House, Raveline Street, Fort, Mumbai',
-          rating: '4.8',
-          contactPerson: 'Priya Nair',
-          designation: 'Head of Talent Acquisition',
-          mobileNo: '+91 98111 22334',
-          emailId: 'priya.nair@tcs.example',
-          remarks: 'Needs executive search services',
-          date: yesterday,
-          status: 'New',
-          source: '',
-        },
-      ];
-
-      sampleRows.forEach((rowData) => {
-        const row = worksheet.addRow(rowData);
-        row.height = 22;
-        row.alignment = { vertical: 'middle' };
-        row.eachCell((cell) => {
-          cell.border = {
-            top: { style: 'thin', color: { argb: 'FFE2E8F0' } },
-            bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } },
-            left: { style: 'thin', color: { argb: 'FFE2E8F0' } },
-            right: { style: 'thin', color: { argb: 'FFE2E8F0' } },
-          };
-        });
-      });
-
-      // ── Status Dropdown Data Validation on Column N (rows 2–1000) ─────────
-      // Column N corresponds to "Status" (Col 14)
-      const statusOptions = ['New', 'Connected', 'Interested', 'Not Interested', 'Callback Requested', 'Not picking', 'Did not turn up', 'Meeting Scheduled', 'Lost', 'Other'];
-      const statusFormula = `"${statusOptions.join(',')}"`;
-
-      for (let r = 2; r <= 1000; r++) {
-        // Column N: Status dropdown
-        worksheet.getCell(`N${r}`).dataValidation = {
-          type: 'list',
-          allowBlank: true,
-          showErrorMessage: true,
-          errorStyle: 'stop',
-          errorTitle: 'Invalid Status',
-          error: `Please choose one of the options: ${statusOptions.join(', ')}`,
-          formulae: [statusFormula],
-        };
-      }
-
-      // ── Generate & Download ──────────────────────────────────────────────
-      const buffer = await workbook.xlsx.writeBuffer();
-      const blob = new Blob([buffer], {
-        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      });
-      saveAs(blob, 'CRM_Import_Template.xlsx');
-      toast.success('Template downloaded! Fill columns and re-upload.');
-    } catch (err) {
-      console.error('Error generating template:', err);
-      toast.error('Failed to download template. Please try again.');
-    }
-  };
-
-  // Export Database records to Excel (.xlsx) with styled yellow header
+  // Export Database records to Excel (.xlsx)
   const handleExportData = async () => {
-    // Always start from the date-filtered + search-filtered set so the
-    // active date filter (All / Today / Last 2 Days / Last 5 Days / Custom)
-    // is always respected.
     const dateFiltered = filteredAndSortedRecords;
-
     let rowsToExport = [];
     if (selectedIds.length > 0) {
-      // Intersect selection with the currently visible (date-filtered) rows
       rowsToExport = dateFiltered.filter((r) => selectedIds.includes(r.id));
       if (rowsToExport.length === 0) {
         toast.error('None of the selected records match the active date filter.');
@@ -1625,201 +1010,7 @@ export const ImportDataPage = ({ onNavigate }) => {
     } else {
       rowsToExport = dateFiltered;
     }
-
-    if (!rowsToExport || rowsToExport.length === 0) {
-      const filterLabel =
-        dateFilter === 'today' ? 'Today' :
-          dateFilter === '2days' ? 'Last 2 Days' :
-            dateFilter === '5days' ? 'Last 5 Days' :
-              dateFilter === 'custom' ? 'Custom date range' :
-                'the selected filters';
-      toast.error(`No records found for ${filterLabel}.`);
-      return;
-    }
-
-
-    try {
-      const workbook = new ExcelJS.Workbook();
-      workbook.creator = 'Talentcio CRM';
-      workbook.created = new Date();
-
-      const worksheet = workbook.addWorksheet('CRM Database Export', {
-        views: [{ showGridLines: true }],
-      });
-
-      worksheet.columns = [
-        { header: 'S No', key: 'sNo', width: 8 },
-        { header: 'Company Name', key: 'companyName', width: 32 },
-        { header: 'GSTIN', key: 'gstin', width: 22 },
-        { header: 'Date of Registration', key: 'dateOfRegistration', width: 22 },
-        { header: 'Industry', key: 'industry', width: 24 },
-        { header: 'Address', key: 'address', width: 36 },
-        { header: 'Rating', key: 'rating', width: 10 },
-        { header: 'Contact Person', key: 'contactPerson', width: 24 },
-        { header: 'Designation', key: 'designation', width: 24 },
-        { header: 'Mobile No', key: 'mobileNo', width: 20 },
-        { header: 'Email ID', key: 'emailId', width: 30 },
-        { header: 'Remarks', key: 'remarks', width: 36 },
-        { header: 'Date', key: 'date', width: 16 },
-        { header: 'Status', key: 'status', width: 22 },
-        { header: 'Source', key: 'source', width: 20 },
-        { header: 'Imported By', key: 'importedBy', width: 22 },
-      ];
-
-      // ── Header Styling (Yellow background up to header columns) ─────────
-      const headerRow = worksheet.getRow(1);
-      headerRow.height = 28;
-      headerRow.font = { bold: true, color: { argb: 'FF000000' }, size: 10 };
-      headerRow.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
-      headerRow.eachCell((cell) => {
-        cell.fill = {
-          type: 'pattern',
-          pattern: 'solid',
-          fgColor: { argb: 'FFFFEB3B' }, // Yellow header
-        };
-        cell.border = {
-          top: { style: 'thin', color: { argb: 'FFD1D5DB' } },
-          bottom: { style: 'medium', color: { argb: 'FF9CA3AF' } },
-          left: { style: 'thin', color: { argb: 'FFD1D5DB' } },
-          right: { style: 'thin', color: { argb: 'FFD1D5DB' } },
-        };
-      });
-
-      // ── Add Data Rows (multi-contact expansion) ─────────────────────────
-      let exportedRowCount = 0;
-      let companySNo = 0;
-      rowsToExport.forEach((row) => {
-        companySNo++;
-        const rowContacts = Array.isArray(row.contacts) && row.contacts.length > 0
-          ? row.contacts
-          : ((row.contactPerson || row.mobileNo || row.emailId)
-            ? [{
-              contactPerson: row.contactPerson || '',
-              designation: row.designation || '',
-              mobileNo: row.mobileNo || '',
-              emailId: row.emailId || '',
-            }]
-            : [{
-              contactPerson: '',
-              designation: '',
-              mobileNo: '',
-              emailId: '',
-            }]);
-
-        const startRowIndex = worksheet.rowCount + 1;
-
-        rowContacts.forEach((contact, contactIdx) => {
-          exportedRowCount++;
-          // For a company with multiple contact persons, show company-level attributes (S.No, Company Name, GSTIN, Remarks, Date, Status, Source, Imported By, etc.) once on the first contact row
-          const isFirstContact = contactIdx === 0;
-
-          const rowData = {
-            sNo: isFirstContact ? companySNo : '',
-            companyName: isFirstContact ? (row.companyName || '') : '',
-            gstin: isFirstContact ? (row.gstin || '') : '',
-            dateOfRegistration: isFirstContact ? (row.dateOfRegistration || '') : '',
-            industry: isFirstContact ? (row.industry || '') : '',
-            address: isFirstContact ? (row.address || '') : '',
-            rating: isFirstContact ? (row.rating || '') : '',
-            contactPerson: contact.contactPerson || '',
-            designation: contact.designation || '',
-            mobileNo: contact.mobileNo || '',
-            emailId: contact.emailId || '',
-            remarks: isFirstContact ? (row.remarks || '') : '',
-            date: isFirstContact ? (row.date ? new Date(row.date).toISOString().split('T')[0] : '') : '',
-            status: isFirstContact ? (row.status || row.leadStatus || (row.isConvertedToLead ? 'Converted to Lead' : row.isDuplicate ? 'Duplicate' : 'New')) : '',
-            source: isFirstContact ? (row.leadSource || row.source || '') : '',
-            importedBy: isFirstContact ? (row.importedBy || '') : '',
-          };
-
-          const addedRow = worksheet.addRow(rowData);
-          addedRow.height = 22;
-          addedRow.alignment = { vertical: 'middle' };
-          addedRow.getCell(1).alignment = { vertical: 'middle', horizontal: 'center' };
-          addedRow.eachCell((cell) => {
-            cell.border = {
-              top: { style: 'thin', color: { argb: 'FFE2E8F0' } },
-              bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } },
-              left: { style: 'thin', color: { argb: 'FFE2E8F0' } },
-              right: { style: 'thin', color: { argb: 'FFE2E8F0' } },
-            };
-          });
-        });
-
-        const endRowIndex = worksheet.rowCount;
-        // If there are multiple contact persons for this company, merge company-level cells vertically
-        // so S.No, Company Name, GSTIN, Industry, Address, Rating, Remarks, Date, Status, Source, and Imported By
-        // are neatly displayed once per company across all contact person rows.
-        if (rowContacts.length > 1 && endRowIndex >= startRowIndex) {
-          const companyColsToMerge = [
-            { col: 1, align: { vertical: 'middle', horizontal: 'center' } }, // S No
-            { col: 2, align: { vertical: 'middle', horizontal: 'left', wrapText: true } }, // Company Name
-            { col: 3, align: { vertical: 'middle', horizontal: 'center' } }, // GSTIN
-            { col: 4, align: { vertical: 'middle', horizontal: 'left' } }, // Industry
-            { col: 5, align: { vertical: 'middle', horizontal: 'left', wrapText: true } }, // Address
-            { col: 6, align: { vertical: 'middle', horizontal: 'center' } }, // Rating
-            { col: 11, align: { vertical: 'middle', horizontal: 'left', wrapText: true } }, // Remarks
-            { col: 12, align: { vertical: 'middle', horizontal: 'center' } }, // Date
-            { col: 13, align: { vertical: 'middle', horizontal: 'center' } }, // Status
-            { col: 14, align: { vertical: 'middle', horizontal: 'left' } }, // Source
-            { col: 15, align: { vertical: 'middle', horizontal: 'left' } }, // Imported By
-          ];
-
-          companyColsToMerge.forEach(({ col, align }) => {
-            worksheet.mergeCells(startRowIndex, col, endRowIndex, col);
-            worksheet.getCell(startRowIndex, col).alignment = align;
-          });
-        }
-      });
-
-      // ── Status dropdown on every data row (column M = col 13) ──────────
-      const exportStatusOptions = [
-        'New', 'Interested', 'Not Interested', 'Callback Requested',
-        'Did not turn up', 'Not picking', 'Meeting Scheduled',
-        'Converted to Lead', 'Lost', 'Other',
-      ];
-      const exportStatusFormula = `"${exportStatusOptions.join(',')}"`;
-      for (let r = 2; r <= exportedRowCount + 1; r++) {
-        worksheet.getCell(`M${r}`).dataValidation = {
-          type: 'list',
-          allowBlank: true,
-          showDropDown: false, // false = always show the arrow in Excel
-          showErrorMessage: true,
-          errorStyle: 'warning',
-          errorTitle: 'Invalid Status',
-          error: `Choose: ${exportStatusOptions.join(', ')}`,
-          formulae: [exportStatusFormula],
-        };
-      }
-
-      const buffer = await workbook.xlsx.writeBuffer();
-      const blob = new Blob([buffer], {
-        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      });
-      const timestamp = new Date().toISOString().slice(0, 10);
-      const filterSuffix =
-        dateFilter === 'today' ? '_Today' :
-          dateFilter === '2days' ? '_Last2Days' :
-            dateFilter === '5days' ? '_Last5Days' :
-              dateFilter === 'custom' ? '_Custom' :
-                '_All';
-      const filename = `CRM_Export${filterSuffix}_${timestamp}.xlsx`;
-      saveAs(blob, filename);
-      const filterLabel =
-        dateFilter === 'today' ? 'Today' :
-          dateFilter === '2days' ? 'Last 2 Days' :
-            dateFilter === '5days' ? 'Last 5 Days' :
-              dateFilter === 'custom' ? 'Custom range' :
-                'All';
-      toast.success(
-        exportedRowCount === rowsToExport.length
-          ? `Exported ${exportedRowCount} record${exportedRowCount === 1 ? '' : 's'} (Filter: ${filterLabel}).`
-          : `Exported ${exportedRowCount} rows across ${rowsToExport.length} companies (Filter: ${filterLabel}).`
-      );
-    } catch (err) {
-      console.error('Export error:', err);
-      toast.error('Failed to export database records. Please try again.');
-    }
+    await exportRecordsToExcel({ rowsToExport, dateFilter });
   };
 
   // Helper to check if a row is converted to lead in CRM
@@ -1844,58 +1035,7 @@ export const ImportDataPage = ({ onNavigate }) => {
     });
   };
 
-  // Format local date as YYYY-MM-DD
-  const formatLocalDate = (d) => {
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  };
 
-  // Check if an item matches the date filter
-  const isRecordInDateFilter = (item, filter, from, to, type = dateFilterType) => {
-    if (filter === 'all') return true;
-
-    // Resolve date to filter against based on dateFilterType
-    let rawDate;
-    if (type === 'createdAt') {
-      rawDate = item?.createdAt || item?.date;
-    } else {
-      // 'updatedAt' (default)
-      rawDate = item?.updatedAt || item?.lastContactedAt || item?.date || item?.createdAt;
-    }
-    if (!rawDate) return false;
-
-    try {
-      const itemDate = new Date(rawDate);
-      if (isNaN(itemDate.getTime())) return false;
-
-      const now = new Date();
-
-      if (filter === 'today') {
-        return (
-          itemDate.getFullYear() === now.getFullYear() &&
-          itemDate.getMonth() === now.getMonth() &&
-          itemDate.getDate() === now.getDate()
-        );
-      }
-
-      const diffMs = now.getTime() - itemDate.getTime();
-      const diffDays = diffMs / (1000 * 60 * 60 * 24);
-
-      if (filter === '2days') return diffDays <= 2;
-      if (filter === '5days') return diffDays <= 5;
-      if (filter === 'custom') {
-        const localDateStr = formatLocalDate(itemDate);
-        if (from && localDateStr < from) return false;
-        if (to && localDateStr > to) return false;
-        return true;
-      }
-      return true;
-    } catch {
-      return false;
-    }
-  };
 
   // Dynamic label & info for the active date filter
   const dateFilterInfo = useMemo(() => {
@@ -2000,12 +1140,7 @@ export const ImportDataPage = ({ onNavigate }) => {
 
   // Card metric values (dynamically reflecting active Imported By and Date filters)
   const totalDataCount = userFilteredRecords.length;
-  const uniqueDataCount = useMemo(() => userFilteredRecords.filter((r) => !r.isDuplicate).length, [userFilteredRecords]);
   const dateFilteredCount = dateFilteredRecords.length;
-
-  const totalConvertedCount = useMemo(() => {
-    return userFilteredRecords.filter(isConvertedLead).length;
-  }, [userFilteredRecords]);
 
   const dateFilteredConvertedCount = useMemo(() => {
     return dateFilteredRecords.filter(isConvertedLead).length;
@@ -2145,8 +1280,8 @@ export const ImportDataPage = ({ onNavigate }) => {
       })
       .sort((a, b) => {
         // Converted-to-lead rows always go to the bottom
-        const aConverted = Boolean(a.isConvertedToLead) ? 1 : 0;
-        const bConverted = Boolean(b.isConvertedToLead) ? 1 : 0;
+        const aConverted = a.isConvertedToLead ? 1 : 0;
+        const bConverted = b.isConvertedToLead ? 1 : 0;
         if (aConverted !== bConverted) return aConverted - bConverted;
         // Within each group keep the user's chosen date sort respecting date basis
         const getDateForSort = (rec) => {
@@ -2225,11 +1360,7 @@ export const ImportDataPage = ({ onNavigate }) => {
           }
           : r
       );
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-      } catch (err) {
-        console.warn('Failed to persist status to localStorage:', err);
-      }
+      safePersistToStorage(userStorageKey, next);
       return next;
     });
 
@@ -2244,9 +1375,7 @@ export const ImportDataPage = ({ onNavigate }) => {
         const reverted = prev.map((r) =>
           r.id === row.id ? { ...r, status: oldStatus, leadStatus: oldStatus } : r
         );
-        try {
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(reverted));
-        } catch (_) { }
+        safePersistToStorage(userStorageKey, reverted);
         return reverted;
       });
     }
@@ -2337,7 +1466,7 @@ export const ImportDataPage = ({ onNavigate }) => {
         }
         return r;
       });
-      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)); } catch (_) { }
+      safePersistToStorage(userStorageKey, next);
       return next;
     });
     try {
@@ -2357,7 +1486,7 @@ export const ImportDataPage = ({ onNavigate }) => {
             ? { ...r, status: oldStatuses[r.id], leadStatus: oldStatuses[r.id] }
             : r
         );
-        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(reverted)); } catch (_) { }
+        safePersistToStorage(userStorageKey, reverted);
         return reverted;
       });
     } finally {
@@ -2674,43 +1803,6 @@ export const ImportDataPage = ({ onNavigate }) => {
     });
   };
 
-  const handleAddEditRowContact = () => {
-    setEditingRow((prev) => ({
-      ...prev,
-      contacts: [
-        ...(prev?.contacts || []),
-        { contactPerson: '', designation: '', mobileNo: '', emailId: '', isPrimary: false },
-      ],
-    }));
-  };
-
-  const handleUpdateEditRowContact = (index, field, value) => {
-    setEditingRow((prev) => {
-      const next = [...(prev?.contacts || [])];
-      next[index] = { ...next[index], [field]: value };
-      return { ...prev, contacts: next };
-    });
-  };
-
-  const handleSetPrimaryEditRowContact = (index) => {
-    setEditingRow((prev) => ({
-      ...prev,
-      contacts: (prev?.contacts || []).map((c, i) => ({ ...c, isPrimary: i === index })),
-    }));
-  };
-
-  const handleRemoveEditRowContact = (index) => {
-    setEditingRow((prev) => {
-      const current = prev?.contacts || [];
-      if (current.length <= 1) return prev;
-      const next = current.filter((_, i) => i !== index);
-      if (next.length > 0 && !next.some((c) => c.isPrimary)) {
-        next[0].isPrimary = true;
-      }
-      return { ...prev, contacts: next };
-    });
-  };
-
   const handleSaveEdit = async (e) => {
     if (e) e.preventDefault();
     if (!editingRow) return;
@@ -2895,9 +1987,7 @@ export const ImportDataPage = ({ onNavigate }) => {
             if (!updated) return;
             setRecords((prev) => {
               const next = prev.map((r) => (r.id === updated.id || r._id === updated._id ? { ...r, ...updated } : r));
-              try {
-                localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-              } catch (_) { }
+              safePersistToStorage(userStorageKey, next);
               return next;
             });
           }}
@@ -2955,641 +2045,61 @@ export const ImportDataPage = ({ onNavigate }) => {
               <Button
                 size="sm"
                 variant="outline"
+                icon={FileSpreadsheet}
+                onClick={handleDownloadTemplate}
+                title="Download formatted sample Excel template"
+              >
+                Template
+              </Button>
+
+              <Button
+                size="sm"
+                variant="outline"
                 icon={Download}
                 onClick={handleExportData}
                 title={selectedIds.length > 0 ? `Export ${selectedIds.length} selected records to Excel` : "Export database records to Excel"}
               >
                 Export{selectedIds.length > 0 ? ` (${selectedIds.length})` : ''}
               </Button>
-
-              <Button
-                size="sm"
-                variant="outline"
-                icon={FileSpreadsheet}
-                onClick={handleDownloadTemplate}
-                title="Download sample Excel file with exact header structure"
-              >
-                Sample Template
-              </Button>
             </div>
           </div>
 
-
-
           {/* 2. File Selected - PREVIEW STAGE & IMPORT CONFIRMATION */}
-          {stagedData && (
-            <div className="bg-white rounded-2xl border border-indigo-200 shadow-sm overflow-hidden p-6 space-y-5 animate-in fade-in duration-200">
-              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-slate-100">
-                <div className="flex items-start sm:items-center gap-3 min-w-0 flex-1">
-                  <div className="w-11 h-11 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 shrink-0">
-                    <FileSpreadsheet className="w-5 h-5" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-                      <h3 className="text-sm sm:text-base font-bold text-slate-900 truncate max-w-xs sm:max-w-md" title={stagedData.fileName}>
-                        {stagedData.fileName}
-                      </h3>
-                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200 whitespace-nowrap">
-                        <FileSpreadsheet className="w-3.5 h-3.5 text-indigo-600" />
-                        {stagedData.totalRowsFetched || stagedData.rows.length} rows fetched
-                      </span>
-                      <Badge variant="blue" size="sm" className="whitespace-nowrap">
-                        {stagedData.rows.length} {stagedData.rows.length === 1 ? 'company' : 'companies'} ({stagedData.rows.length} total)
-                      </Badge>
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 whitespace-nowrap">
-                        <CheckCircle2 className="w-3 h-3" />
-                        {stagedData.newCount} new
-                      </span>
-                      {stagedData.updateCount > 0 && (
-                        <span
-                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200 whitespace-nowrap"
-                          title="Existing records in CRM or workspace to update"
-                        >
-                          <RefreshCw className="w-3 h-3 text-amber-600" />
-                          {stagedData.updateCount} update
-                        </span>
-                      )}
-                      {stagedData.duplicateCount > 0 && (
-                        <span
-                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-200 whitespace-nowrap"
-                          title="Duplicate company name, mobile, or email within sheet"
-                        >
-                          <AlertTriangle className="w-3 h-3 text-rose-500" />
-                          {stagedData.duplicateCount} duplicate(s) skipped
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-xs text-slate-500 mt-1">
-                      File Size: {stagedData.fileSize} • {stagedData.totalRowsFetched || stagedData.rows.length} total rows fetched from sheet • Duplicates in sheet are skipped. New data will upload, and existing records will be updated.
-                    </p>
-                  </div>
-                </div>
-
-                {/* Right Button Toolbar - Sleek, Unified, Single-Row Aligned */}
-                <div className="flex items-center gap-2 shrink-0 flex-wrap sm:flex-nowrap pt-1 lg:pt-0">
-                  <button
-                    type="button"
-                    onClick={() => setShowPreview((prev) => !prev)}
-                    className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold border border-slate-200 bg-white hover:bg-slate-50 active:bg-slate-100 text-slate-700 shadow-2xs transition-all cursor-pointer whitespace-nowrap focus:outline-none focus:ring-2 focus:ring-slate-300"
-                  >
-                    {showPreview ? <EyeOff className="w-3.5 h-3.5 text-slate-500" /> : <Eye className="w-3.5 h-3.5 text-slate-500" />}
-                    {showPreview ? 'Hide Preview' : 'Show Preview'}
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={handleCancelStaged}
-                    className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold border border-slate-200 bg-white hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200 active:bg-rose-100 text-slate-600 shadow-2xs transition-all cursor-pointer whitespace-nowrap focus:outline-none focus:ring-2 focus:ring-rose-200"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                    Cancel
-                  </button>
-
-                  {stagedData.updateCount > 0 && stagedData.newCount > 0 ? (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => handleConfirmImport('new')}
-                        className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold border border-emerald-300 bg-emerald-50/80 hover:bg-emerald-100 active:bg-emerald-200 text-emerald-800 shadow-2xs transition-all cursor-pointer whitespace-nowrap focus:outline-none focus:ring-2 focus:ring-emerald-400"
-                        title="Import only new rows"
-                      >
-                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                        Import New Only ({stagedData.newCount})
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleConfirmImport('all')}
-                        className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white shadow-sm shadow-indigo-600/25 transition-all cursor-pointer whitespace-nowrap focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-1"
-                        title="Import new rows and update existing records"
-                      >
-                        <RefreshCw className="w-3.5 h-3.5" />
-                        Import & Update All ({stagedData.newCount + stagedData.updateCount} rows)
-                      </button>
-                    </>
-                  ) : stagedData.updateCount > 0 ? (
-                    <button
-                      type="button"
-                      onClick={() => handleConfirmImport('update')}
-                      className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-amber-600 hover:bg-amber-700 active:bg-amber-800 text-white shadow-sm shadow-amber-600/25 transition-all cursor-pointer whitespace-nowrap focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-1"
-                    >
-                      <RefreshCw className="w-3.5 h-3.5" />
-                      Update Existing ({stagedData.updateCount} rows)
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      disabled={stagedData.newCount === 0}
-                      onClick={() => handleConfirmImport('new')}
-                      className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white shadow-sm shadow-indigo-600/25 transition-all cursor-pointer whitespace-nowrap focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-1 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      <CheckCircle2 className="w-3.5 h-3.5" />
-                      {stagedData.newCount > 0
-                        ? `Import New Data (${stagedData.newCount} rows)`
-                        : 'No New Data (All Duplicates)'}
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              {/* Preview Table */}
-              {showPreview && (
-                <div className="space-y-3">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-xs font-bold text-slate-700 uppercase tracking-wide flex items-center gap-1.5">
-                        <Eye className="w-3.5 h-3.5 text-indigo-600" />
-                        Excel Preview ({visibleStagedRows.length} rows{stagedData.totalRowsFetched && stagedData.totalRowsFetched !== visibleStagedRows.length ? ` / ${stagedData.totalRowsFetched} fetched` : ''})
-                      </span>
-
-                      {/* Filter tabs inside preview: All, New, Update, Duplicates */}
-                      <div className="inline-flex rounded-lg border border-slate-200 bg-slate-100 p-0.5 text-xs">
-                        <button
-                          type="button"
-                          onClick={() => setPreviewTab('all')}
-                          className={`px-2.5 py-0.5 rounded-md text-[11px] font-semibold transition cursor-pointer ${previewTab === 'all'
-                            ? 'bg-white text-indigo-700 shadow-2xs font-bold'
-                            : 'text-slate-600 hover:text-slate-900'
-                            }`}
-                        >
-                          All ({stagedData.rows.length})
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setPreviewTab('new')}
-                          className={`px-2.5 py-0.5 rounded-md text-[11px] font-semibold transition cursor-pointer ${previewTab === 'new'
-                            ? 'bg-emerald-600 text-white shadow-2xs font-bold'
-                            : 'text-emerald-700 hover:text-emerald-900'
-                            }`}
-                        >
-                          New ({stagedData.newCount})
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setPreviewTab('update')}
-                          className={`px-2.5 py-0.5 rounded-md text-[11px] font-semibold transition cursor-pointer ${previewTab === 'update'
-                            ? 'bg-amber-600 text-white shadow-2xs font-bold'
-                            : 'text-amber-700 hover:text-amber-900'
-                            }`}
-                        >
-                          Update ({stagedData.updateCount})
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setPreviewTab('duplicates')}
-                          className={`px-2.5 py-0.5 rounded-md text-[11px] font-semibold transition cursor-pointer ${previewTab === 'duplicates'
-                            ? 'bg-rose-600 text-white shadow-2xs font-bold'
-                            : 'text-rose-700 hover:text-rose-900'
-                            }`}
-                        >
-                          Duplicates ({stagedData.duplicateCount})
-                        </button>
-                      </div>
-                    </div>
-
-                    <span className="text-[11px] text-slate-500 font-medium">
-                      {stagedData.duplicateCount > 0
-                        ? `⚠️ ${stagedData.duplicateCount} duplicate(s) in sheet will NOT be imported.`
-                        : stagedData.updateCount > 0
-                          ? `🔄 ${stagedData.updateCount} existing record(s) will be updated, ${stagedData.newCount} new record(s) will upload.`
-                          : 'All records are new and ready to upload.'}
-                    </span>
-                  </div>
-
-                  <div className="overflow-x-auto rounded-xl border border-slate-200/90 max-h-[350px]">
-                    <table className="w-full text-left border-collapse text-xs">
-                      <thead className="bg-slate-100 text-slate-700 font-bold uppercase tracking-wider sticky top-0 z-10 border-b border-slate-200">
-                        <tr>
-                          <th className="p-2.5 text-center w-12 whitespace-nowrap">#</th>
-                          <th className="p-2.5 border-l border-slate-200 whitespace-nowrap w-[210px] min-w-[180px] max-w-[220px]">Company Name</th>
-                          <th className="p-2.5 border-l border-slate-200 whitespace-nowrap w-[130px] min-w-[110px] max-w-[140px]">GSTIN</th>
-                          <th className="p-2.5 border-l border-slate-200 whitespace-nowrap w-[130px] min-w-[110px] max-w-[140px]">Date of Reg.</th>
-                          <th className="p-2.5 border-l border-slate-200 whitespace-nowrap w-[110px] min-w-[90px] max-w-[120px]">Industry</th>
-                          <th className="p-2.5 border-l border-slate-200 whitespace-nowrap">Address</th>
-                          <th className="p-2.5 border-l border-slate-200 whitespace-nowrap">Rating</th>
-                          <th className="p-2.5 border-l border-slate-200 whitespace-nowrap">Contact Person</th>
-                          <th className="p-2.5 border-l border-slate-200 whitespace-nowrap">Designation</th>
-                          <th className="p-2.5 border-l border-slate-200 whitespace-nowrap">Mobile No</th>
-                          <th className="p-2.5 border-l border-slate-200 whitespace-nowrap">Email ID</th>
-                          <th className="p-2.5 border-l border-slate-200 whitespace-nowrap">Remarks</th>
-                          <th className="p-2.5 border-l border-slate-200 whitespace-nowrap">Date</th>
-                          <th className="p-2.5 border-l border-slate-200 whitespace-nowrap">Status</th>
-                          <th className="p-2.5 border-l border-slate-200 whitespace-nowrap w-[140px] min-w-[120px] max-w-[150px]">Source</th>
-                          <th className="p-2.5 border-l border-slate-200 whitespace-nowrap">Imported By</th>
-                          <th className="p-2.5 border-l border-slate-200 whitespace-nowrap text-center">Action</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        {visibleStagedRows.length === 0 ? (
-                          <tr>
-                            <td colSpan={17} className="py-8 text-center text-slate-400">
-                              No {previewTab} records to display in this sheet.
-                            </td>
-                          </tr>
-                        ) : (
-                          visibleStagedRows.map((row, idx) => (
-                            <tr
-                              key={idx}
-                              className={`transition-colors ${row.rowType === 'duplicate'
-                                ? 'bg-rose-50/40 hover:bg-rose-50/70'
-                                : row.rowType === 'update'
-                                  ? 'bg-amber-50/20 hover:bg-amber-50/50'
-                                  : 'hover:bg-slate-50'
-                                }`}
-                            >
-                              <td className="p-2.5 text-center font-semibold text-slate-500 whitespace-nowrap">
-                                {idx + 1}
-                              </td>
-                              <td className="p-2.5 border-l border-slate-200 font-bold text-slate-900 w-[210px] min-w-[180px] max-w-[220px]">
-                                <div className="w-full max-w-[210px] flex flex-col gap-1 py-0.5">
-                                  <div className="flex items-start gap-1.5">
-                                    <span className="font-semibold text-slate-900 whitespace-normal break-words leading-snug">{row.companyName || '—'}</span>
-                                  </div>
-
-                                  <div className="flex items-center gap-1 flex-wrap">
-                                    {/* Badges */}
-                                    {row.rowType === 'update' && (
-                                      <span
-                                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 shrink-0 shadow-2xs"
-                                        title={row.updateReason || 'Matches existing record'}
-                                      >
-                                        <RefreshCw className="w-3 h-3 text-amber-600" />
-                                        Update
-                                      </span>
-                                    )}
-
-                                    {row.isConvertedToLead && (
-                                      <span
-                                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0 shadow-2xs"
-                                        title="Converted to Lead in CRM"
-                                      >
-                                        <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                                        Converted to Lead
-                                      </span>
-                                    )}
-
-                                    {row.rowType === 'duplicate' && (
-                                      <span
-                                        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200 shrink-0"
-                                        title={row.duplicateReason || 'Duplicate in sheet'}
-                                      >
-                                        <AlertTriangle className="w-3 h-3 text-rose-500" />
-                                        Duplicate in Sheet
-                                      </span>
-                                    )}
-
-                                    {row.rowType === 'new' && (
-                                      <span
-                                        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0"
-                                      >
-                                        <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                                        New
-                                      </span>
-                                    )}
-
-                                    {row.contacts && row.contacts.length > 1 && (
-                                      <span
-                                        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-violet-50 text-violet-700 border border-violet-200 shrink-0"
-                                        title={row.contacts.map((c) => `${c.contactPerson || 'Contact'} (${c.designation || '—'}) • ${c.mobileNo || 'No phone'} • ${c.emailId || 'No email'}`).join('\n')}
-                                      >
-                                        <Users className="w-3 h-3 text-violet-600" />
-                                        {row.contacts.length} Contacts
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-
-                                {row.rowType === 'duplicate' && row.duplicateReason && (
-                                  <div className="text-[10px] text-rose-600 font-normal mt-0.5 break-words whitespace-normal">
-                                    {row.duplicateReason}
-                                  </div>
-                                )}
-                                {row.rowType === 'update' && row.updateReason && !row.isConvertedToLead && (
-                                  <div className="text-[10px] text-amber-600 font-normal mt-0.5 break-words whitespace-normal">
-                                    {row.updateReason}
-                                  </div>
-                                )}
-                              </td>
-                              <td className="p-2.5 border-l border-slate-200 text-slate-700 whitespace-nowrap font-mono w-[130px] min-w-[110px] max-w-[140px]">{row.gstin || '—'}</td>
-                              <td className="p-2.5 border-l border-slate-200 text-slate-700 whitespace-nowrap font-mono text-xs w-[130px] min-w-[110px] max-w-[140px]">{row.dateOfRegistration || ''}</td>
-                              <td className="p-2.5 border-l border-slate-200 text-slate-700 whitespace-normal break-words w-[110px] min-w-[90px] max-w-[120px] leading-snug">{row.industry || '—'}</td>
-                              <td className="p-2.5 text-slate-600 max-w-xs truncate">{row.address || '—'}</td>
-                              <td className="p-2.5 text-slate-800 whitespace-nowrap">{row.rating || '—'}</td>
-                              <td className="p-2.5 font-semibold text-slate-800 whitespace-nowrap">
-                                <div className="flex items-center gap-1.5">
-                                  <span>{row.contactPerson || '—'}</span>
-                                  {row.contacts && row.contacts.length > 1 && (
-                                    <span className="text-[10px] font-normal text-violet-600 bg-violet-50 px-1 rounded border border-violet-100">
-                                      +{row.contacts.length - 1} more
-                                    </span>
-                                  )}
-                                </div>
-                              </td>
-                              <td className="p-2.5 text-slate-600 whitespace-nowrap">{row.designation || '—'}</td>
-                              <td className="p-2.5 text-slate-700 whitespace-nowrap font-mono">{row.mobileNo || '—'}</td>
-                              <td className="p-2.5 text-slate-700 whitespace-nowrap font-mono">{row.emailId || '—'}</td>
-                              <td className="p-2.5 text-slate-500 max-w-xs truncate">{row.remarks || '—'}</td>
-                              <td className="p-2.5 text-slate-600 whitespace-nowrap font-medium">
-                                {row.date ? new Date(row.date).toLocaleDateString() : '—'}
-                              </td>
-                              <td className="p-2.5 border-l border-slate-200 whitespace-nowrap">
-                                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${getStatusBadgeStyle(row.status || row.leadStatus || 'New')}`}>
-                                  {row.status || row.leadStatus || 'New'}
-                                </span>
-                              </td>
-                              <td className="p-2.5 border-l border-slate-200 text-slate-700 font-medium w-[140px] min-w-[120px] max-w-[150px]">
-                                <div className="w-full max-w-[135px]">
-                                  <span className="whitespace-normal break-words leading-snug block">{row.source || row.leadSource || ''}</span>
-                                </div>
-                              </td>
-                              <td className="p-2.5 border-l border-slate-200 text-slate-700 whitespace-nowrap">
-                                <div className="flex items-center gap-1.5">
-                                  <div className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-700 text-[10px] font-bold flex items-center justify-center shrink-0">
-                                    {(row.importedBy || 'U').charAt(0).toUpperCase()}
-                                  </div>
-                                  <span className="font-medium text-slate-800 text-xs truncate max-w-[120px]" title={row.importedBy || '—'}>
-                                    {row.importedBy || '—'}
-                                  </span>
-                                </div>
-                              </td>
-                              <td className="p-2.5 border-l border-slate-200 whitespace-nowrap text-center" onClick={(e) => e.stopPropagation()}>
-                                <button
-                                  type="button"
-                                  onClick={() => handleOpenEdit(row)}
-                                  className="p-1 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition cursor-pointer"
-                                  title="Edit all fields & Save"
-                                >
-                                  <Pencil className="w-3.5 h-3.5" />
-                                </button>
-                              </td>
-                            </tr>
-                          ))
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  <div className="flex justify-end items-center gap-2 pt-2">
-                    {stagedData.updateCount > 0 && stagedData.newCount > 0 ? (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() => handleConfirmImport('new')}
-                          className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold border border-emerald-300 bg-emerald-50/80 hover:bg-emerald-100 active:bg-emerald-200 text-emerald-800 shadow-2xs transition-all cursor-pointer whitespace-nowrap"
-                        >
-                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                          Import New Only ({stagedData.newCount} rows)
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleConfirmImport('all')}
-                          className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white shadow-sm shadow-indigo-600/25 transition-all cursor-pointer whitespace-nowrap"
-                        >
-                          <RefreshCw className="w-3.5 h-3.5" />
-                          Confirm & Import All ({stagedData.newCount + stagedData.updateCount} rows)
-                        </button>
-                      </>
-                    ) : stagedData.updateCount > 0 ? (
-                      <button
-                        type="button"
-                        onClick={() => handleConfirmImport('update')}
-                        className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-amber-600 hover:bg-amber-700 active:bg-amber-800 text-white shadow-sm shadow-amber-600/25 transition-all cursor-pointer whitespace-nowrap"
-                      >
-                        <RefreshCw className="w-3.5 h-3.5" />
-                        Confirm & Update ({stagedData.updateCount} rows)
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        disabled={stagedData.newCount === 0}
-                        onClick={() => handleConfirmImport('new')}
-                        className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white shadow-sm shadow-indigo-600/25 transition-all cursor-pointer whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        <CheckCircle2 className="w-3.5 h-3.5" />
-                        Confirm & Import New Data ({stagedData.newCount} rows)
-                      </button>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
+          <StagedDataPreview
+            stagedData={stagedData}
+            showPreview={showPreview}
+            setShowPreview={setShowPreview}
+            previewTab={previewTab}
+            setPreviewTab={setPreviewTab}
+            visibleStagedRows={visibleStagedRows}
+            onCancel={handleCancelStaged}
+            onConfirmImport={handleConfirmImport}
+            onEditRow={handleOpenEdit}
+            getStatusBadgeStyle={getStatusBadgeStyle}
+          />
 
           {/* 3. ACTIVE IMPORTED WORKSPACE (Once imported or ready) */}
           {(!stagedData || records.length > 0) && (
             <div className="space-y-4">
               {/* Summary Stat Cards: Total Data, Date Filter Imports, Converted to Leads */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                {/* Card 1: Total Data (Clickable: resets filters and shows all records) */}
-                {(() => {
-                  const isTotalActive = !showConvertedOnly && dateFilter === 'all' && !fromDate && !toDate;
-                  const isDateFilterActive = !showConvertedOnly && dateFilter !== 'all';
-                  const isConvertedActive = showConvertedOnly;
-                  const card2Count = dateFilter === 'all' ? todayFilteredCount : dateFilteredCount;
-                  const card2Percentage = totalDataCount > 0 ? Math.round((card2Count / totalDataCount) * 100) : 0;
-
-                  return (
-                    <>
-                      <div
-                        onClick={() => {
-                          setShowConvertedOnly(false);
-                          setDateFilter('all');
-                          setFromDate('');
-                          setToDate('');
-                        }}
-                        className={`p-2.5 sm:px-3 sm:py-2.5 rounded-xl border shadow-2xs transition-all duration-150 cursor-pointer select-none group relative ${isTotalActive
-                          ? 'bg-indigo-50/60 border-indigo-400 ring-2 ring-indigo-500/25 shadow-xs'
-                          : 'bg-white border-slate-200/90 hover:border-indigo-300 hover:shadow-xs'
-                          }`}
-                        title={isTotalActive ? 'Currently showing all records' : 'Click to view all records in workspace'}
-                      >
-                        <div className="flex items-start justify-between">
-                          <div>
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <p className={`text-[10px] font-semibold uppercase tracking-wider transition-colors ${isTotalActive ? 'text-indigo-900 font-bold' : 'text-slate-500 group-hover:text-indigo-700'
-                                }`}>
-                                Total Data
-                              </p>
-                              {selectedUsers.length > 0 ? (
-                                <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[8.5px] font-bold bg-indigo-600 text-white shrink-0 shadow-2xs">
-                                  {selectedUsers.length === 1 ? selectedUsers[0] : `${selectedUsers.length} Users`}
-                                </span>
-                              ) : isTotalActive && (
-                                <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[8.5px] font-bold bg-indigo-600 text-white shrink-0 shadow-2xs">
-                                  All Records
-                                </span>
-                              )}
-                            </div>
-                            <div className="flex items-baseline gap-1.5 mt-0.5">
-                              <span className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">
-                                {totalDataCount}
-                              </span>
-                              <span className="text-[10px] font-medium text-slate-400">
-                                records
-                              </span>
-                            </div>
-                          </div>
-                          <div className={`w-7 h-7 rounded-lg border flex items-center justify-center shrink-0 transition-colors ${isTotalActive
-                            ? 'bg-indigo-600 border-indigo-600 text-white shadow-2xs'
-                            : 'bg-indigo-50 border-indigo-100 text-indigo-600 group-hover:bg-indigo-100 group-hover:text-indigo-700'
-                            }`}>
-                            <Database className="w-3.5 h-3.5" />
-                          </div>
-                        </div>
-                        <div className="mt-1.5 pt-1.5 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-500">
-                          <span className="truncate">
-                            {selectedUsers.length > 0
-                              ? `Filtered by ${selectedUsers.join(', ')}`
-                              : isTotalActive
-                                ? 'Showing all records in workspace'
-                                : 'Click to show all records'}
-                          </span>
-                          <span className={`font-semibold shrink-0 ${isTotalActive ? 'text-indigo-600' : 'text-slate-400 group-hover:text-indigo-600'}`}>
-                            {scopedRecords.length > 0
-                              ? selectedUsers.length > 0
-                                ? `${Math.round((totalDataCount / scopedRecords.length) * 100)}% of total`
-                                : '100%'
-                              : '0%'}
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Card 2: Date Filter (Today, Last 2 Days, Last 5 Days, Custom - Never All-time) */}
-                      <div
-                        onClick={() => {
-                          if (isDateFilterActive) {
-                            setDateFilter('all');
-                          } else {
-                            setShowConvertedOnly(false);
-                            setDateFilter('today');
-                            setFromDate('');
-                            setToDate('');
-                          }
-                        }}
-                        className={`p-2.5 sm:px-3 sm:py-2.5 rounded-xl border shadow-2xs transition-all duration-150 cursor-pointer select-none group relative ${isDateFilterActive
-                          ? 'bg-blue-50/60 border-blue-400 ring-2 ring-blue-500/25 shadow-xs'
-                          : 'bg-white border-slate-200/90 hover:border-blue-300 hover:shadow-xs'
-                          }`}
-                        title={
-                          isDateFilterActive
-                            ? `${dateFilterInfo.title} (Click to reset to all)`
-                            : 'Click to filter records imported today'
-                        }
-                      >
-                        <div className="flex items-start justify-between">
-                          <div>
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <p className={`text-[10px] font-semibold uppercase tracking-wider transition-colors ${isDateFilterActive ? 'text-blue-900 font-bold' : 'text-slate-500 group-hover:text-blue-700'
-                                }`}>
-                                {dateFilterInfo.title}
-                              </p>
-                              <span className={`inline-flex items-center px-1.5 py-0.2 rounded text-[8.5px] font-bold shrink-0 ${isDateFilterActive
-                                ? 'bg-blue-600 text-white shadow-2xs'
-                                : 'bg-blue-50 text-blue-700 border border-blue-200'
-                                }`}>
-                                {isDateFilterActive ? 'Active Filter' : dateFilterInfo.badge}
-                              </span>
-                            </div>
-                            <div className="flex items-baseline gap-1.5 mt-0.5">
-                              <span className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">
-                                {card2Count}
-                              </span>
-                              <span className="text-[10px] font-medium text-slate-400">
-                                {dateFilter === 'today' || dateFilter === 'all' ? 'imported today' : 'matching filter'}
-                              </span>
-                            </div>
-                          </div>
-                          <div className={`w-7 h-7 rounded-lg border flex items-center justify-center shrink-0 transition-colors ${isDateFilterActive
-                            ? 'bg-blue-600 border-blue-600 text-white shadow-2xs'
-                            : 'bg-blue-50 border-blue-100 text-blue-600 group-hover:bg-blue-100 group-hover:text-blue-700'
-                            }`}>
-                            <Calendar className="w-3.5 h-3.5" />
-                          </div>
-                        </div>
-                        <div className="mt-1.5 pt-1.5 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-500">
-                          <span className="truncate">
-                            {isDateFilterActive
-                              ? (dateFilter === 'today'
-                                ? 'Filtered by today (Click to show all)'
-                                : `${dateFilterInfo.description} (Click to show all)`)
-                              : 'Click to filter today’s records'}
-                          </span>
-                          <span className="font-semibold text-blue-600 shrink-0">
-                            {card2Percentage}% of total
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Card 3: Converted to Lead (Clickable: filters table & provides link to CRM Leads) */}
-                      <div
-                        onClick={() => setShowConvertedOnly((prev) => !prev)}
-                        className={`p-2.5 sm:px-3 sm:py-2.5 rounded-xl border shadow-2xs transition-all duration-150 cursor-pointer select-none group relative ${isConvertedActive
-                          ? 'bg-emerald-50/60 border-emerald-400 ring-2 ring-emerald-500/25 shadow-xs'
-                          : 'bg-white border-slate-200/90 hover:border-emerald-300 hover:shadow-xs'
-                          }`}
-                        title={isConvertedActive ? 'Filtered: Showing converted leads (Click to show all)' : 'Click to filter table by Converted to Lead'}
-                      >
-                        <div className="flex items-start justify-between">
-                          <div>
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <p className={`text-[10px] font-semibold uppercase tracking-wider transition-colors ${isConvertedActive ? 'text-emerald-900 font-bold' : 'text-slate-500 group-hover:text-emerald-700'
-                                }`}>
-                                Converted to Lead
-                              </p>
-                              <span className={`inline-flex items-center px-1.5 py-0.2 rounded text-[8.5px] font-bold shrink-0 ${isConvertedActive
-                                ? 'bg-emerald-600 text-white shadow-2xs'
-                                : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                                }`}>
-                                {isConvertedActive ? 'Active Filter' : (dateFilter === 'all' ? 'All Dates' : dateFilterInfo.badge)}
-                              </span>
-                            </div>
-                            <div className="flex items-baseline gap-1.5 mt-0.5">
-                              <span className="text-lg sm:text-xl font-bold text-emerald-600 tracking-tight">
-                                {dateFilteredConvertedCount}
-                              </span>
-                              <span className="text-[10px] font-medium text-slate-400">
-                                {dateFilter === 'today' ? 'converted today' : 'leads converted'}
-                              </span>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            {onNavigate && (
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  onNavigate('leads');
-                                }}
-                                className="p-1.5 rounded-lg text-slate-400 hover:text-emerald-600 hover:bg-emerald-100/50 transition cursor-pointer"
-                                title="Open CRM Leads page"
-                              >
-                                <ExternalLink className="w-3.5 h-3.5" />
-                              </button>
-                            )}
-                            <div className={`w-7 h-7 rounded-lg border flex items-center justify-center shrink-0 transition-colors ${isConvertedActive
-                              ? 'bg-emerald-600 border-emerald-600 text-white shadow-2xs'
-                              : 'bg-emerald-50 border-emerald-100 text-emerald-600 group-hover:bg-emerald-100 group-hover:text-emerald-700'
-                              }`}>
-                              <CheckCircle2 className="w-3.5 h-3.5" />
-                            </div>
-                          </div>
-                        </div>
-                        <div className="mt-1.5 pt-1.5 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-500">
-                          <span className="truncate">
-                            {isConvertedActive
-                              ? 'Filtered: Showing converted leads (Click to reset)'
-                              : 'Click to filter converted leads'}
-                          </span>
-                          <span className="inline-flex items-center gap-1 font-semibold text-emerald-700 shrink-0">
-                            {dateFilteredCount > 0
-                              ? `${Math.round((dateFilteredConvertedCount / dateFilteredCount) * 100)}% converted`
-                              : '0% converted'}
-                          </span>
-                        </div>
-                      </div>
-                    </>
-                  );
-                })()}
-              </div>
+              <DatabaseMetricsCards
+                showConvertedOnly={showConvertedOnly}
+                setShowConvertedOnly={setShowConvertedOnly}
+                dateFilter={dateFilter}
+                setDateFilter={setDateFilter}
+                fromDate={fromDate}
+                setFromDate={setFromDate}
+                toDate={toDate}
+                setToDate={setToDate}
+                selectedUsers={selectedUsers}
+                totalDataCount={totalDataCount}
+                todayFilteredCount={todayFilteredCount}
+                dateFilteredCount={dateFilteredCount}
+                dateFilteredConvertedCount={dateFilteredConvertedCount}
+                scopedRecords={scopedRecords}
+                dateFilterInfo={dateFilterInfo}
+                onNavigate={onNavigate}
+              />
 
               {/* Real-time Outreach & Rep Performance Cockpit */}
               <RepPerformanceCockpit
@@ -3598,7 +2108,6 @@ export const ImportDataPage = ({ onNavigate }) => {
                   setLeaderboardInitialTab(tab);
                   setIsLeaderboardOpen(true);
                 }}
-                onSelectRep={handleSelectRepFromLeaderboard}
                 onOpenUserHistory={handleOpenUserHistory}
                 onOpenMetricHistory={handleOpenMetricHistory}
                 onToggleConvertedFilter={handleToggleConvertedFilter}
@@ -3608,1696 +2117,151 @@ export const ImportDataPage = ({ onNavigate }) => {
                 statusChangesCount={dateFilteredStatusChangedCount}
               />
 
-              {/* Controls Bar: Date Filter + Sort Arrow + Search + Send to Leads Action */}
-              <div className="bg-white p-3 rounded-xl border border-slate-200/90 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-                {/* Left Filter Options: Date Filter + Search */}
-                <div className="flex flex-wrap items-center gap-2">
-                  {/* Date Filter Dropdown Button */}
-                  <div className="relative" ref={dateDropdownRef}>
-                    <button
-                      type="button"
-                      onClick={() => setIsDateDropdownOpen((prev) => !prev)}
-                      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] font-semibold transition shadow-2xs cursor-pointer ${dateFilter !== 'all'
-                        ? 'border-indigo-300 bg-indigo-50/70 text-indigo-700 hover:bg-indigo-100/70'
-                        : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
-                        }`}
-                      title="Filter records by date"
-                    >
-                      <Calendar className={`w-3.5 h-3.5 ${dateFilter !== 'all' ? 'text-indigo-600' : 'text-slate-500'}`} />
-                      <span>
-                        Date Filter:{' '}
-                        <span className="font-bold text-indigo-700">
-                          {dateFilter === 'today'
-                            ? 'Today'
-                            : dateFilter === '2days'
-                              ? 'Last 2 Days'
-                              : dateFilter === '5days'
-                                ? 'Last 5 Days'
-                                : dateFilter === 'custom'
-                                  ? 'Custom'
-                                  : 'All'}
-                        </span>
-                      </span>
-                      <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-150 ${isDateDropdownOpen ? 'rotate-180 text-indigo-600' : 'text-slate-400'}`} />
-                    </button>
+              {/* Controls Bar: Filters, Search, Batch Actions */}
+              <DatabaseFilterBar
+                dateDropdownRef={dateDropdownRef}
+                isDateDropdownOpen={isDateDropdownOpen}
+                setIsDateDropdownOpen={setIsDateDropdownOpen}
+                dateFilter={dateFilter}
+                setDateFilter={setDateFilter}
+                fromDate={fromDate}
+                setFromDate={setFromDate}
+                toDate={toDate}
+                setToDate={setToDate}
+                dateTypeDropdownRef={dateTypeDropdownRef}
+                isDateTypeDropdownOpen={isDateTypeDropdownOpen}
+                setIsDateTypeDropdownOpen={setIsDateTypeDropdownOpen}
+                dateFilterType={dateFilterType}
+                setDateFilterType={setDateFilterType}
+                canViewAll={canViewAll}
+                userDropdownRef={userDropdownRef}
+                isUserDropdownOpen={isUserDropdownOpen}
+                setIsUserDropdownOpen={setIsUserDropdownOpen}
+                selectedUsers={selectedUsers}
+                activeUserOptions={activeUserOptions}
+                userFilterSearch={userFilterSearch}
+                setUserFilterSearch={setUserFilterSearch}
+                filteredUserOptions={filteredUserOptions}
+                currentUserName={currentUserName}
+                handleToggleUser={handleToggleUser}
+                handleSelectAllUsers={handleSelectAllUsers}
+                handleClearUsers={handleClearUsers}
+                statusDropdownRef={statusDropdownRef}
+                isStatusDropdownOpen={isStatusDropdownOpen}
+                setIsStatusDropdownOpen={setIsStatusDropdownOpen}
+                selectedStatuses={selectedStatuses}
+                setSelectedStatuses={setSelectedStatuses}
+                allFilterableStatuses={allFilterableStatuses}
+                statusCounts={statusCounts}
+                handleToggleStatus={handleToggleStatus}
+                getStatusBadgeStyle={getStatusBadgeStyle}
+                availableSources={availableSources}
+                sourceDropdownRef={sourceDropdownRef}
+                isSourceDropdownOpen={isSourceDropdownOpen}
+                setIsSourceDropdownOpen={setIsSourceDropdownOpen}
+                selectedSources={selectedSources}
+                setSelectedSources={setSelectedSources}
+                sourceFilterSearch={sourceFilterSearch}
+                setSourceFilterSearch={setSourceFilterSearch}
+                filteredSourceOptions={filteredSourceOptions}
+                handleToggleSource={handleToggleSource}
+                searchQuery={searchQuery}
+                setSearchQuery={setSearchQuery}
+                hasActiveFilters={hasActiveFilters}
+                handleClearAllFilters={handleClearAllFilters}
+                records={records}
+                handleSelectOnlyNew={handleSelectOnlyNew}
+                nonDuplicateIds={nonDuplicateIds}
+                selectedIds={selectedIds}
+                setSelectedIds={setSelectedIds}
+                bulkMenuRef={bulkMenuRef}
+                isBulkMenuOpen={isBulkMenuOpen}
+                setIsBulkMenuOpen={setIsBulkMenuOpen}
+                STATUS_OPTIONS={STATUS_OPTIONS}
+                isBulkStatusLoading={isBulkStatusLoading}
+                handleBulkStatusChange={handleBulkStatusChange}
+                handleOpenDeleteSelected={handleOpenDeleteSelected}
+                isSubmitting={isSubmitting}
+                handleOpenConvertBulk={handleOpenConvertBulk}
+              />
 
-                    {isDateDropdownOpen && (
-                      <div className="absolute left-0 mt-1.5 w-44 bg-white rounded-xl shadow-lg border border-slate-200 py-1 z-30 animate-in fade-in-50 zoom-in-95 duration-100">
-                        {[
-                          { id: 'today', label: 'Today' },
-                          { id: 'all', label: 'All' },
-                          { id: '2days', label: 'Last 2 Days' },
-                          { id: '5days', label: 'Last 5 Days' },
-                          { id: 'custom', label: 'Custom' },
-                        ].map((item) => (
-                          <button
-                            key={item.id}
-                            type="button"
-                            onClick={() => {
-                              setDateFilter(item.id);
-                              setIsDateDropdownOpen(false);
-                            }}
-                            className={`w-full flex items-center justify-between px-3 py-2 text-xs transition cursor-pointer ${dateFilter === item.id
-                              ? 'bg-indigo-50 text-indigo-700 font-bold'
-                              : 'text-slate-700 hover:bg-slate-50'
-                              }`}
-                          >
-                            <span>{item.label}</span>
-                            {dateFilter === item.id && (
-                              <span className="w-1.5 h-1.5 rounded-full bg-indigo-600" />
-                            )}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  {dateFilter === 'custom' && (
-                    <div className="flex items-center gap-1.5 bg-slate-50 px-2 py-1 rounded-lg border border-slate-200 text-xs">
-                      <span className="text-[11px] font-medium text-slate-500">From:</span>
-                      <input
-                        type="date"
-                        value={fromDate}
-                        onChange={(e) => setFromDate(e.target.value)}
-                        className="text-xs px-2 py-0.5 rounded border border-slate-300 bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                      />
-                      <span className="text-[11px] font-medium text-slate-500">To:</span>
-                      <input
-                        type="date"
-                        value={toDate}
-                        min={fromDate || undefined}
-                        onChange={(e) => setToDate(e.target.value)}
-                        className="text-xs px-2 py-0.5 rounded border border-slate-300 bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                      />
-                      {(fromDate || toDate) && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setFromDate('');
-                            setToDate('');
-                          }}
-                          className="text-[11px] text-slate-400 hover:text-slate-700 px-1 font-semibold"
-                          title="Clear date range"
-                        >
-                          ✕
-                        </button>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Date Basis Dropdown Button (Updated At vs Created At) */}
-                  <div className="relative" ref={dateTypeDropdownRef}>
-                    <button
-                      type="button"
-                      onClick={() => setIsDateTypeDropdownOpen((prev) => !prev)}
-                      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] font-semibold transition shadow-2xs cursor-pointer ${dateFilterType === 'updatedAt'
-                        ? 'border-indigo-300 bg-indigo-50/70 text-indigo-700 hover:bg-indigo-100/70'
-                        : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
-                        }`}
-                      title="Filter records based on Updated Date or Created Date"
-                    >
-                      <Clock className={`w-3.5 h-3.5 ${dateFilterType === 'updatedAt' ? 'text-indigo-600' : 'text-slate-500'}`} />
-                      <span>
-                        Basis:{' '}
-                        <span className="font-bold text-indigo-700">
-                          {dateFilterType === 'updatedAt' ? 'Updated At' : 'Created At'}
-                        </span>
-                      </span>
-                      <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-150 ${isDateTypeDropdownOpen ? 'rotate-180 text-indigo-600' : 'text-slate-400'}`} />
-                    </button>
-
-                    {isDateTypeDropdownOpen && (
-                      <div className="absolute left-0 mt-1.5 w-52 bg-white rounded-xl shadow-lg border border-slate-200 py-1 z-30 animate-in fade-in-50 zoom-in-95 duration-100">
-                        {[
-                          { id: 'updatedAt', label: 'Updated At (Default)' },
-                          { id: 'createdAt', label: 'Created At' },
-                        ].map((item) => (
-                          <button
-                            key={item.id}
-                            type="button"
-                            onClick={() => {
-                              setDateFilterType(item.id);
-                              setIsDateTypeDropdownOpen(false);
-                            }}
-                            className={`w-full flex flex-col items-start px-3 py-2 text-xs transition cursor-pointer text-left ${dateFilterType === item.id
-                              ? 'bg-indigo-50 text-indigo-700 font-semibold'
-                              : 'text-slate-700 hover:bg-slate-50'
-                              }`}
-                          >
-                            <div className="flex items-center justify-between w-full font-bold">
-                              <span>{item.label}</span>
-                              {dateFilterType === item.id && (
-                                <span className="w-1.5 h-1.5 rounded-full bg-indigo-600" />
-                              )}
-                            </div>
-                            <span className="text-[10px] text-slate-400 font-normal mt-0.5">{item.desc}</span>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Imported By User Filter Dropdown — only for users with full org view */}
-                  {canViewAll && (
-                    <div className="relative" ref={userDropdownRef}>
-                      <button
-                        type="button"
-                        onClick={() => setIsUserDropdownOpen((prev) => !prev)}
-                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] font-semibold transition shadow-2xs ${selectedUsers.length > 0
-                          ? 'border-indigo-300 bg-indigo-50/70 text-indigo-700 hover:bg-indigo-100/70'
-                          : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
-                          }`}
-                        title="Filter records by imported user"
-                      >
-                        <User className={`w-3.5 h-3.5 ${selectedUsers.length > 0 ? 'text-indigo-600' : 'text-slate-500'}`} />
-                        <span>
-                          Imported By:{' '}
-                          {selectedUsers.length === 0 ? (
-                            <span className="font-normal text-slate-500">All</span>
-                          ) : selectedUsers.length === 1 ? (
-                            <span className="font-bold text-indigo-700">{selectedUsers[0]}</span>
-                          ) : (
-                            <span className="font-bold text-indigo-700">{selectedUsers.length} Users</span>
-                          )}
-                        </span>
-                        {selectedUsers.length > 0 && (
-                          <span
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleClearUsers();
-                            }}
-                            className="ml-0.5 text-slate-400 hover:text-rose-600 px-0.5 rounded cursor-pointer transition"
-                            title="Clear user filter"
-                          >
-                            ✕
-                          </span>
-                        )}
-                        <ChevronDown
-                          className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-150 ${isUserDropdownOpen ? 'rotate-180 text-indigo-600' : ''
-                            }`}
-                        />
-                      </button>
-
-                      {/* Dropdown Menu */}
-                      {isUserDropdownOpen && (
-                        <div className="absolute left-0 mt-1.5 w-64 rounded-xl border border-slate-200 bg-white shadow-xl py-2 z-50 animate-in fade-in duration-100">
-                          {/* Header */}
-                          <div className="px-3 pb-2 border-b border-slate-100 flex items-center justify-between">
-                            <div className="text-xs font-bold text-slate-800">Imported By (Active Users)</div>
-                            {selectedUsers.length > 0 && (
-                              <span className="text-[10px] font-semibold bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded-full">
-                                {selectedUsers.length} selected
-                              </span>
-                            )}
-                          </div>
-
-                          {/* Search active users */}
-                          <div className="p-2 border-b border-slate-100">
-                            <div className="relative">
-                              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                              <input
-                                type="text"
-                                placeholder="Search active users..."
-                                value={userFilterSearch}
-                                onChange={(e) => setUserFilterSearch(e.target.value)}
-                                className="w-full pl-8 pr-6 py-1.5 text-xs rounded-md border border-slate-200 bg-slate-50/50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 placeholder:text-slate-400"
-                                autoFocus
-                              />
-                              {userFilterSearch && (
-                                <button
-                                  type="button"
-                                  onClick={() => setUserFilterSearch('')}
-                                  className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs"
-                                >
-                                  ✕
-                                </button>
-                              )}
-                            </div>
-                          </div>
-
-                          {/* Quick action bar: Select All / Clear */}
-                          <div className="flex items-center justify-between px-3 py-1.5 border-b border-slate-100 text-[11px] bg-slate-50/60">
-                            <button
-                              type="button"
-                              onClick={handleSelectAllUsers}
-                              className="font-medium text-indigo-600 hover:text-indigo-800 transition"
-                            >
-                              Select All ({activeUserOptions.length})
-                            </button>
-                            {selectedUsers.length > 0 && (
-                              <button
-                                type="button"
-                                onClick={handleClearUsers}
-                                className="font-medium text-slate-500 hover:text-rose-600 transition"
-                              >
-                                Clear
-                              </button>
-                            )}
-                          </div>
-
-                          {/* Scrollable list of active users */}
-                          <div className="max-h-52 overflow-y-auto py-1">
-                            {filteredUserOptions.length === 0 ? (
-                              <div className="px-4 py-3 text-center text-xs text-slate-400">
-                                {userFilterSearch ? 'No active users found' : 'No active users available'}
-                              </div>
-                            ) : (
-                              filteredUserOptions.map((opt) => {
-                                const isSelected = selectedUsers.includes(opt.name);
-                                const isMe = currentUserName && opt.name.toLowerCase() === currentUserName.toLowerCase();
-                                return (
-                                  <label
-                                    key={opt.id || opt.name}
-                                    className={`flex items-center gap-2.5 px-3 py-1.5 hover:bg-slate-50 cursor-pointer select-none text-xs transition ${isSelected ? 'bg-indigo-50/40' : ''
-                                      }`}
-                                  >
-                                    <input
-                                      type="checkbox"
-                                      checked={isSelected}
-                                      onChange={() => handleToggleUser(opt.name)}
-                                      className="w-3.5 h-3.5 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer"
-                                    />
-                                    <div className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-[10px] shrink-0 uppercase">
-                                      {opt.name.charAt(0) || 'U'}
-                                    </div>
-                                    <div className="min-w-0 flex-1">
-                                      <div className="font-medium text-slate-800 truncate flex items-center gap-1.5">
-                                        <span className="truncate">{opt.name}</span>
-                                        {isMe && (
-                                          <span className="text-[10px] text-indigo-600 font-semibold bg-indigo-50 border border-indigo-200/60 px-1 rounded shrink-0">
-                                            You
-                                          </span>
-                                        )}
-                                      </div>
-                                      {opt.email && (
-                                        <div className="text-[10px] text-slate-400 truncate">{opt.email}</div>
-                                      )}
-                                    </div>
-                                  </label>
-                                );
-                              })
-                            )}
-                          </div>
-
-                          {/* Footer */}
-                          <div className="px-3 pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
-                            <span className="text-[11px] text-slate-400">
-                              {selectedUsers.length} of {activeUserOptions.length} active
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => setIsUserDropdownOpen(false)}
-                              className="px-2.5 py-1 text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white rounded-md shadow-2xs transition"
-                            >
-                              Apply
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Company Status Filter Dropdown */}
-                  <div className="relative" ref={statusDropdownRef}>
-                    <button
-                      type="button"
-                      onClick={() => setIsStatusDropdownOpen((prev) => !prev)}
-                      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] font-semibold transition shadow-2xs cursor-pointer ${
-                        selectedStatuses.length > 0
-                          ? 'border-indigo-300 bg-indigo-50/70 text-indigo-700 hover:bg-indigo-100/70'
-                          : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
-                      }`}
-                      title="Filter records by company status"
-                    >
-                      <Filter className={`w-3.5 h-3.5 ${selectedStatuses.length > 0 ? 'text-indigo-600' : 'text-slate-500'}`} />
-                      <span>
-                        Status:{' '}
-                        {selectedStatuses.length === 0 ? (
-                          <span className="font-normal text-slate-500">All</span>
-                        ) : selectedStatuses.length === 1 ? (
-                          <span className="font-bold text-indigo-700">{selectedStatuses[0]}</span>
-                        ) : (
-                          <span className="font-bold text-indigo-700">{selectedStatuses.length} Selected</span>
-                        )}
-                      </span>
-                      {selectedStatuses.length > 0 && (
-                        <span
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSelectedStatuses([]);
-                          }}
-                          className="ml-0.5 text-slate-400 hover:text-rose-600 px-0.5 rounded cursor-pointer transition font-bold"
-                          title="Clear status filter"
-                        >
-                          ✕
-                        </span>
-                      )}
-                      <ChevronDown
-                        className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-150 ${
-                          isStatusDropdownOpen ? 'rotate-180 text-indigo-600' : ''
-                        }`}
-                      />
-                    </button>
-
-                    {isStatusDropdownOpen && (
-                      <div className="absolute left-0 mt-1.5 w-64 rounded-xl border border-slate-200 bg-white shadow-xl py-2 z-50 animate-in fade-in duration-100">
-                        {/* Header */}
-                        <div className="px-3 pb-2 border-b border-slate-100 flex items-center justify-between">
-                          <div className="text-xs font-bold text-slate-800">Company Status</div>
-                          {selectedStatuses.length > 0 && (
-                            <span className="text-[10px] font-semibold bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded-full">
-                              {selectedStatuses.length} selected
-                            </span>
-                          )}
-                        </div>
-
-                        {/* Quick action bar */}
-                        <div className="flex items-center justify-between px-3 py-1.5 border-b border-slate-100 text-[11px] bg-slate-50/60">
-                          <button
-                            type="button"
-                            onClick={() => setSelectedStatuses(allFilterableStatuses)}
-                            className="font-medium text-indigo-600 hover:text-indigo-800 transition cursor-pointer"
-                          >
-                            Select All
-                          </button>
-                          {selectedStatuses.length > 0 && (
-                            <button
-                              type="button"
-                              onClick={() => setSelectedStatuses([])}
-                              className="font-medium text-slate-500 hover:text-rose-600 transition cursor-pointer"
-                            >
-                              Clear
-                            </button>
-                          )}
-                        </div>
-
-                        {/* Status list */}
-                        <div className="max-h-56 overflow-y-auto py-1">
-                          {allFilterableStatuses.map((st) => {
-                            const isSelected = selectedStatuses.includes(st);
-                            const count = statusCounts[st] || 0;
-                            return (
-                              <label
-                                key={st}
-                                className={`flex items-center justify-between gap-2 px-3 py-1.5 hover:bg-slate-50 cursor-pointer select-none text-xs transition ${
-                                  isSelected ? 'bg-indigo-50/40' : ''
-                                }`}
-                              >
-                                <div className="flex items-center gap-2 min-w-0">
-                                  <input
-                                    type="checkbox"
-                                    checked={isSelected}
-                                    onChange={() => handleToggleStatus(st)}
-                                    className="w-3.5 h-3.5 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer"
-                                  />
-                                  <span
-                                    className={`text-[10px] px-1.5 py-0.5 rounded border font-semibold truncate ${getStatusBadgeStyle(
-                                      st
-                                    )}`}
-                                  >
-                                    {st}
-                                  </span>
-                                </div>
-                                <span className="text-[10.5px] text-slate-400 font-mono shrink-0">
-                                  ({count})
-                                </span>
-                              </label>
-                            );
-                          })}
-                        </div>
-
-                        {/* Footer */}
-                        <div className="px-3 pt-2 border-t border-slate-100 flex items-center justify-end">
-                          <button
-                            type="button"
-                            onClick={() => setIsStatusDropdownOpen(false)}
-                            className="px-2.5 py-1 text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white rounded-md shadow-2xs transition cursor-pointer"
-                          >
-                            Done
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Source Filter Dropdown */}
-                  {availableSources.length > 0 && (
-                    <div className="relative" ref={sourceDropdownRef}>
-                      <button
-                        type="button"
-                        onClick={() => setIsSourceDropdownOpen((prev) => !prev)}
-                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] font-semibold transition shadow-2xs cursor-pointer ${
-                          selectedSources.length > 0
-                            ? 'border-indigo-300 bg-indigo-50/70 text-indigo-700 hover:bg-indigo-100/70'
-                            : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
-                        }`}
-                        title="Filter records by source"
-                      >
-                        <Globe className={`w-3.5 h-3.5 ${selectedSources.length > 0 ? 'text-indigo-600' : 'text-slate-500'}`} />
-                        <span>
-                          Source:{' '}
-                          {selectedSources.length === 0 ? (
-                            <span className="font-normal text-slate-500">All</span>
-                          ) : selectedSources.length === 1 ? (
-                            <span className="font-bold text-indigo-700 truncate max-w-[110px] inline-block align-bottom">
-                              {selectedSources[0]}
-                            </span>
-                          ) : (
-                            <span className="font-bold text-indigo-700">{selectedSources.length} Selected</span>
-                          )}
-                        </span>
-                        {selectedSources.length > 0 && (
-                          <span
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSelectedSources([]);
-                            }}
-                            className="ml-0.5 text-slate-400 hover:text-rose-600 px-0.5 rounded cursor-pointer transition font-bold"
-                            title="Clear source filter"
-                          >
-                            ✕
-                          </span>
-                        )}
-                        <ChevronDown
-                          className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-150 ${
-                            isSourceDropdownOpen ? 'rotate-180 text-indigo-600' : ''
-                          }`}
-                        />
-                      </button>
-
-                      {isSourceDropdownOpen && (
-                        <div className="absolute left-0 mt-1.5 w-64 rounded-xl border border-slate-200 bg-white shadow-xl py-2 z-50 animate-in fade-in duration-100">
-                          {/* Header */}
-                          <div className="px-3 pb-2 border-b border-slate-100 flex items-center justify-between">
-                            <div className="text-xs font-bold text-slate-800">Lead / Import Source</div>
-                            {selectedSources.length > 0 && (
-                              <span className="text-[10px] font-semibold bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded-full">
-                                {selectedSources.length} selected
-                              </span>
-                            )}
-                          </div>
-
-                          {/* Search */}
-                          {availableSources.length > 5 && (
-                            <div className="p-2 border-b border-slate-100">
-                              <div className="relative">
-                                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                                <input
-                                  type="text"
-                                  placeholder="Search source..."
-                                  value={sourceFilterSearch}
-                                  onChange={(e) => setSourceFilterSearch(e.target.value)}
-                                  className="w-full pl-8 pr-6 py-1.5 text-xs rounded-md border border-slate-200 bg-slate-50/50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 placeholder:text-slate-400"
-                                  autoFocus
-                                />
-                                {sourceFilterSearch && (
-                                  <button
-                                    type="button"
-                                    onClick={() => setSourceFilterSearch('')}
-                                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs"
-                                  >
-                                    ✕
-                                  </button>
-                                )}
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Quick action bar */}
-                          <div className="flex items-center justify-between px-3 py-1.5 border-b border-slate-100 text-[11px] bg-slate-50/60">
-                            <button
-                              type="button"
-                              onClick={() => setSelectedSources(availableSources.map((s) => s.name))}
-                              className="font-medium text-indigo-600 hover:text-indigo-800 transition cursor-pointer"
-                            >
-                              Select All ({availableSources.length})
-                            </button>
-                            {selectedSources.length > 0 && (
-                              <button
-                                type="button"
-                                onClick={() => setSelectedSources([])}
-                                className="font-medium text-slate-500 hover:text-rose-600 transition cursor-pointer"
-                              >
-                                Clear
-                              </button>
-                            )}
-                          </div>
-
-                          {/* List */}
-                          <div className="max-h-52 overflow-y-auto py-1">
-                            {filteredSourceOptions.length === 0 ? (
-                              <div className="px-4 py-3 text-center text-xs text-slate-400">
-                                {sourceFilterSearch ? 'No matching sources' : 'No sources available'}
-                              </div>
-                            ) : (
-                              filteredSourceOptions.map((opt) => {
-                                const isSelected = selectedSources.includes(opt.name);
-                                return (
-                                  <label
-                                    key={opt.name}
-                                    className={`flex items-center justify-between gap-2 px-3 py-1.5 hover:bg-slate-50 cursor-pointer select-none text-xs transition ${
-                                      isSelected ? 'bg-indigo-50/40' : ''
-                                    }`}
-                                  >
-                                    <div className="flex items-center gap-2 min-w-0">
-                                      <input
-                                        type="checkbox"
-                                        checked={isSelected}
-                                        onChange={() => handleToggleSource(opt.name)}
-                                        className="w-3.5 h-3.5 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer"
-                                      />
-                                      <span className="font-medium text-slate-800 truncate" title={opt.name}>
-                                        {opt.name}
-                                      </span>
-                                    </div>
-                                    <span className="text-[10px] text-slate-400 font-mono shrink-0">
-                                      ({opt.count})
-                                    </span>
-                                  </label>
-                                );
-                              })
-                            )}
-                          </div>
-
-                          {/* Footer */}
-                          <div className="px-3 pt-2 border-t border-slate-100 flex items-center justify-end">
-                            <button
-                              type="button"
-                              onClick={() => setIsSourceDropdownOpen(false)}
-                              className="px-2.5 py-1 text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white rounded-md shadow-2xs transition cursor-pointer"
-                            >
-                              Done
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Search Bar */}
-                  <div className="relative min-w-[200px]">
-                    <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
-                    <input
-                      type="text"
-                      placeholder="Search company, person..."
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      className="w-full pl-8 pr-7 py-1 text-[11px] rounded-lg border border-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                    />
-                    {searchQuery && (
-                      <button
-                        type="button"
-                        onClick={() => setSearchQuery('')}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs cursor-pointer"
-                        title="Clear search"
-                      >
-                        ✕
-                      </button>
-                    )}
-                  </div>
-
-                  {/* Clear Filters Button */}
-                  {hasActiveFilters && (
-                    <button
-                      type="button"
-                      onClick={handleClearAllFilters}
-                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-rose-200 bg-rose-50/80 hover:bg-rose-100 text-rose-700 text-[11px] font-semibold shadow-2xs transition cursor-pointer shrink-0 animate-in fade-in duration-150"
-                      title="Reset all filters to default (Today, Updated At)"
-                    >
-                      <X className="w-3.5 h-3.5 text-rose-600" />
-                      <span>Clear Filters</span>
-                    </button>
-                  )}
-                </div>
-
-                {/* Right Action: Delete Selected + Send to Leads */}
-                <div className="flex items-center gap-2">
-                  {records.some((r) => r.isDuplicate) && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      icon={CheckCircle2}
-                      onClick={handleSelectOnlyNew}
-                      className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 text-[11px]"
-                      title="Select only unique non-duplicate records"
-                    >
-                      Select Only New ({nonDuplicateIds.length})
-                    </Button>
-                  )}
-
-                  {selectedIds.length > 0 && (
-                    <>
-                      {/* ── Sleek Bulk Actions Burger Menu ── */}
-                      <div className="relative inline-block" ref={bulkMenuRef}>
-                        <button
-                          type="button"
-                          onClick={() => setIsBulkMenuOpen((prev) => !prev)}
-                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold border border-indigo-200 bg-indigo-50/80 hover:bg-indigo-100 text-indigo-700 shadow-2xs transition cursor-pointer select-none"
-                          title="Bulk Actions Menu"
-                        >
-                          <Menu className="w-3.5 h-3.5 text-indigo-600" />
-                          <span>Actions ({selectedIds.length})</span>
-                          <ChevronDown
-                            className={`w-3 h-3 text-indigo-400 transition-transform duration-200 ${isBulkMenuOpen ? 'rotate-180' : ''
-                              }`}
-                          />
-                        </button>
-
-                        {isBulkMenuOpen && (
-                          <div className="absolute right-0 mt-1.5 w-64 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-50 animate-in fade-in slide-in-from-top-1">
-                            {/* Header */}
-                            <div className="px-3 py-1.5 text-[11px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100 flex items-center justify-between">
-                              <span>Selected: {selectedIds.length}</span>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setSelectedIds([]);
-                                  setIsBulkMenuOpen(false);
-                                }}
-                                className="text-indigo-600 hover:text-indigo-800 font-medium normal-case hover:underline text-[11px]"
-                              >
-                                Clear Selection
-                              </button>
-                            </div>
-
-                            {/* Change Status Section */}
-                            <div className="px-3 pt-2 pb-1 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                              Change Status:
-                            </div>
-                            <div className="max-h-52 overflow-y-auto px-1.5 py-0.5 space-y-0.5 custom-scrollbar">
-                              {STATUS_OPTIONS.map((status) => (
-                                <button
-                                  key={status}
-                                  type="button"
-                                  disabled={isBulkStatusLoading}
-                                  onClick={() => {
-                                    handleBulkStatusChange(status);
-                                    setIsBulkMenuOpen(false);
-                                  }}
-                                  className="w-full flex items-center justify-between px-2.5 py-1.5 text-xs text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 rounded-lg transition text-left cursor-pointer group"
-                                >
-                                  <span className="font-medium group-hover:translate-x-0.5 transition-transform">
-                                    {status}
-                                  </span>
-                                  <span
-                                    className={`text-[10px] px-1.5 py-0.5 rounded border font-semibold ${getStatusBadgeStyle(
-                                      status
-                                    )}`}
-                                  >
-                                    Set
-                                  </span>
-                                </button>
-                              ))}
-                            </div>
-
-                            <div className="my-1.5 border-t border-slate-100" />
-
-                            {/* Delete Action */}
-                            <div className="px-1.5">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setIsBulkMenuOpen(false);
-                                  handleOpenDeleteSelected();
-                                }}
-                                className="w-full flex items-center gap-2 px-2.5 py-1.5 text-xs text-rose-600 hover:bg-rose-50 rounded-lg transition font-semibold text-left cursor-pointer"
-                              >
-                                <Trash2 className="w-3.5 h-3.5 text-rose-500" />
-                                <span>Delete Selected ({selectedIds.length})</span>
-                              </button>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </>
-                  )}
-
-                  <Button
-                    size="sm"
-                    variant="primary"
-                    icon={Send}
-                    disabled={selectedIds.length === 0}
-                    isLoading={isSubmitting}
-                    onClick={handleOpenConvertBulk}
-                    className="shadow-sm whitespace-nowrap"
-                  >
-                    Send to Leads ({selectedIds.length})
-                  </Button>
-                </div>
-              </div>
-
-              {/* Status & Pagination Toolbar (Row Just Below Filters) */}
-              <div className="flex flex-wrap items-center justify-between gap-3 px-3 py-1.5 bg-white rounded-xl border border-slate-200/90 shadow-2xs">
-                {/* Left: Showing X of Y | Selected: Z */}
-                <div className="flex items-center gap-2 text-[11px] text-slate-600">
-                  <span className="font-medium text-slate-500">
-                    Showing{' '}
-                    {totalMatchingRecords === 0 ? (
-                      <strong className="text-slate-800 font-bold">0</strong>
-                    ) : totalMatchingRecords <= pageSize ? (
-                      <strong className="text-slate-800 font-bold">{totalMatchingRecords}</strong>
-                    ) : (
-                      <>
-                        <strong className="text-slate-800 font-bold">{startEntry}</strong>–
-                        <strong className="text-slate-800 font-bold">{endEntry}</strong>
-                      </>
-                    )}{' '}
-                    of <strong className="text-slate-800 font-bold">{totalDataCount}</strong>
-                    {totalMatchingRecords !== totalDataCount && totalMatchingRecords > 0 && (
-                      <span className="text-slate-400 font-normal ml-1">
-                        ({totalMatchingRecords} matching filter)
-                      </span>
-                    )}
-                    <span className="mx-2 text-slate-300">|</span>
-                    Selected: <strong className="text-indigo-600 font-bold">{selectedIds.length}</strong>
-                  </span>
-
-                  {showConvertedOnly && (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200 ml-1">
-                      <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                      Converted Only
-                      <button
-                        type="button"
-                        onClick={() => setShowConvertedOnly(false)}
-                        className="ml-1 text-emerald-700 hover:text-emerald-950 hover:bg-emerald-200 rounded-full w-3.5 h-3.5 flex items-center justify-center font-bold"
-                        title="Clear converted filter and show all"
-                      >
-                        ✕
-                      </button>
-                    </span>
-                  )}
-
-                  {showStatusChangedOnly && (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-100 text-indigo-800 border border-indigo-200 ml-1">
-                      <History className="w-3 h-3 text-indigo-600" />
-                      Status Changed Only ({totalMatchingRecords})
-                      <button
-                        type="button"
-                        onClick={() => setShowStatusChangedOnly(false)}
-                        className="ml-1 text-indigo-700 hover:text-indigo-950 hover:bg-indigo-200 rounded-full w-3.5 h-3.5 flex items-center justify-center font-bold"
-                        title="Clear status changed filter and show all"
-                      >
-                        ✕
-                      </button>
-                    </span>
-                  )}
-
-                  {selectedStatuses.length > 0 && (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 ml-1">
-                      <Filter className="w-3 h-3 text-indigo-600" />
-                      Status: {selectedStatuses.join(', ')}
-                      <button
-                        type="button"
-                        onClick={() => setSelectedStatuses([])}
-                        className="ml-1 text-indigo-700 hover:text-indigo-950 hover:bg-indigo-200 rounded-full w-3.5 h-3.5 flex items-center justify-center font-bold"
-                        title="Clear status filter"
-                      >
-                        ✕
-                      </button>
-                    </span>
-                  )}
-
-                  {selectedSources.length > 0 && (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200 ml-1">
-                      <Globe className="w-3 h-3 text-blue-500" />
-                      Source: {selectedSources.join(', ')}
-                      <button
-                        type="button"
-                        onClick={() => setSelectedSources([])}
-                        className="ml-1 text-blue-700 hover:text-blue-950 hover:bg-blue-200 rounded-full w-3.5 h-3.5 flex items-center justify-center font-bold"
-                        title="Clear source filter"
-                      >
-                        ✕
-                      </button>
-                    </span>
-                  )}
-
-                  {selectedIds.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => setSelectedIds([])}
-                      className="text-[10px] text-slate-400 hover:text-slate-700 underline font-medium ml-1"
-                    >
-                      Clear selection
-                    </button>
-                  )}
-                </div>
-
-                {/* Right: Page Size Selector & Pagination */}
-                <div className="flex items-center gap-2.5">
-                  {/* Entries per page options: 50 (default), 80, 100 */}
-                  <div className="flex items-center gap-1 text-[11px] text-slate-600">
-                    <span className="text-[10.5px] font-medium text-slate-500">Show:</span>
-                    <div className="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-0.5 shadow-2xs">
-                      {[50, 80, 100].map((size) => (
-                        <button
-                          key={size}
-                          type="button"
-                          onClick={() => handlePageSizeChange(size)}
-                          className={`px-2 py-0.5 rounded-md text-[10.5px] font-semibold transition ${pageSize === size
-                            ? 'bg-indigo-600 text-white shadow-2xs'
-                            : 'text-slate-600 hover:text-slate-900 hover:bg-white'
-                            }`}
-                        >
-                          {size}
-                        </button>
-                      ))}
-                    </div>
-                    <span className="text-[10.5px] text-slate-400">entries</span>
-                  </div>
-
-                  {/* Pagination Page Controls */}
-                  {totalPages > 1 && (
-                    <div className="flex items-center gap-1 border-l border-slate-200 pl-2.5">
-                      <button
-                        type="button"
-                        disabled={validCurrentPage <= 1}
-                        onClick={() => handlePageChange(validCurrentPage - 1)}
-                        className="p-1 rounded-md border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed text-slate-600 shadow-2xs transition"
-                        title="Previous page"
-                      >
-                        <ChevronLeft className="w-3.5 h-3.5" />
-                      </button>
-
-                      <span className="text-[11px] text-slate-600 font-medium px-1">
-                        Page <strong className="text-indigo-600">{validCurrentPage}</strong> of{' '}
-                        <strong className="text-slate-800">{totalPages}</strong>
-                      </span>
-
-                      <button
-                        type="button"
-                        disabled={validCurrentPage >= totalPages}
-                        onClick={() => handlePageChange(validCurrentPage + 1)}
-                        className="p-1 rounded-md border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed text-slate-600 shadow-2xs transition"
-                        title="Next page"
-                      >
-                        <ChevronRight className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Main Table */}
-              <div className="bg-white rounded-xl border border-slate-200/90 shadow-xs">
-                <div className="overflow-x-auto max-h-[600px] min-h-[260px]">
-                  <table className="w-full min-w-[1174px] table-fixed text-left border-collapse text-[11px]">
-                    <colgroup>
-                      <col style={{ width: '44px' }} />
-                      <col style={{ width: '56px' }} />
-                      <col style={{ width: '260px' }} />
-                      <col style={{ width: '125px' }} />
-                      <col style={{ width: '160px' }} />
-                      <col style={{ width: '185px' }} />
-                      <col style={{ width: '130px' }} />
-                      <col style={{ width: '150px' }} />
-                      <col style={{ width: '64px' }} />
-                    </colgroup>
-                    {/* Grey Table Header */}
-                    <thead className="bg-slate-100 text-slate-700 font-bold uppercase tracking-wider sticky top-0 z-10 border-b border-slate-200 text-[10px]">
-                      <tr>
-                        <th className="py-2.5 px-2 w-[44px] min-w-[44px] max-w-[44px] text-center">
-                          <input
-                            type="checkbox"
-                            checked={isAllSelected}
-                            onChange={handleSelectAll}
-                            className="rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer w-4 h-4"
-                            title="Select/Deselect All Visible"
-                          />
-                        </th>
-                        <th className="py-1.5 px-1 border-l border-slate-200 text-center w-[40px] min-w-[40px] max-w-[40px] whitespace-nowrap">S.NO</th>
-                        <th className="py-2.5 px-2.5 border-l border-slate-200 whitespace-nowrap w-[260px] min-w-[260px] max-w-[260px]">Company Name</th>
-                        <th className="py-2.5 px-2 border-l border-slate-200 whitespace-nowrap w-[125px] min-w-[125px] max-w-[125px]">Industry</th>
-                        <th className="py-2.5 px-2.5 border-l border-slate-200 whitespace-nowrap w-[160px] min-w-[160px] max-w-[160px]">Source</th>
-                        <th className="py-2.5 px-2.5 border-l border-slate-200 whitespace-nowrap w-[185px] min-w-[185px] max-w-[185px]">Status</th>
-                        <th
-                          className="py-2.5 px-2 border-l border-slate-200 whitespace-nowrap cursor-pointer select-none hover:bg-slate-200 transition-colors w-[130px] min-w-[130px] max-w-[130px]"
-                          onClick={() => setSortDirection((prev) => (prev === 'desc' ? 'asc' : 'desc'))}
-                          title="Click to toggle Date Sort Ascending/Descending"
-                        >
-                          <div className="flex items-center gap-1.5">
-                            <span>{dateFilterType === 'createdAt' ? 'Created Date' : 'Updated Date'}</span>
-                            {sortDirection === 'desc' ? (
-                              <ArrowDown className="w-3.5 h-3.5 text-slate-700 font-bold" />
-                            ) : (
-                              <ArrowUp className="w-3.5 h-3.5 text-slate-700 font-bold" />
-                            )}
-                          </div>
-                        </th>
-                        <th className="py-2.5 px-2.5 border-l border-slate-200 whitespace-nowrap w-[150px] min-w-[150px] max-w-[150px]">Imported By</th>
-                        <th className="py-2.5 px-2 border-l border-slate-200 text-center w-[64px] min-w-[64px] max-w-[64px] whitespace-nowrap">Actions</th>
-                      </tr>
-                    </thead>
-
-                    <tbody className="divide-y divide-slate-100">
-                      {totalMatchingRecords === 0 ? (
-                        <tr>
-                          <td colSpan={9} className="py-12 text-center text-slate-400">
-                            <div className="flex flex-col items-center justify-center">
-                              <AlertCircle className="w-8 h-8 text-slate-300 mb-2" />
-                              <p className="font-semibold text-slate-600">
-                                {records.length === 0
-                                  ? 'No imported records yet'
-                                  : 'No records match the current filter'}
-                              </p>
-                              <p className="text-xs text-slate-400 mt-0.5">
-                                {records.length === 0
-                                  ? 'Click the "Import" button above to select and load an Excel file.'
-                                  : 'Try resetting the date filter or search query.'}
-                              </p>
-                            </div>
-                          </td>
-                        </tr>
-                      ) : (
-                        paginatedRecords.map((row, idx) => {
-                          const isSelected = selectedIds.includes(row.id);
-                          return (
-                            <tr
-                              key={row.id}
-                              className={`hover:bg-slate-50/80 transition-colors cursor-pointer group ${isSelected ? 'bg-indigo-50/40' : ''}`}
-                              onClick={() => setSelectedDetailRecord(row)}
-                            >
-                              <td className="py-2.5 px-2 text-center align-top w-[44px] min-w-[44px] max-w-[44px]" onClick={(e) => e.stopPropagation()}>
-                                <input
-                                  type="checkbox"
-                                  checked={isSelected}
-                                  onChange={() => handleToggleRow(row.id)}
-                                  className="rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer w-3.5 h-3.5"
-                                />
-                              </td>
-                              <td className="py-2.5 px-2 border-l border-slate-200 text-center font-semibold text-slate-500 whitespace-nowrap align-top w-[56px] min-w-[56px] max-w-[56px] text-[10.5px]">
-                                {startEntry + idx}
-                              </td>
-                              <td className="py-2.5 px-2.5 border-l border-slate-200 font-bold text-slate-900 align-top w-[260px] min-w-[260px] max-w-[260px] overflow-hidden">
-                                <div className="w-full flex flex-col gap-1 py-0.5 overflow-hidden">
-                                  <div className="flex items-start gap-1.5 overflow-hidden">
-                                    <Building2 className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-600 transition-colors shrink-0 mt-0.5" />
-                                    <span className="font-bold text-slate-900 group-hover:text-indigo-600 transition-colors whitespace-normal [overflow-wrap:anywhere] break-words leading-snug text-[11px] min-w-0">
-                                      {row.companyName || '—'}
-                                    </span>
-                                  </div>
-                                  {row.contacts && row.contacts.length > 1 && (
-                                    <div className="pl-[20px]">
-                                      <span
-                                        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9.5px] font-semibold bg-violet-50 text-violet-700 border border-violet-200 shrink-0"
-                                        title={row.contacts.map((c) => `${c.contactPerson || 'Contact'} (${c.designation || '—'}) • ${c.mobileNo || 'No phone'} • ${c.emailId || 'No email'}`).join('\n')}
-                                      >
-                                        <Users className="w-3 h-3 text-violet-600" />
-                                        {row.contacts.length} Contacts
-                                      </span>
-                                    </div>
-                                  )}
-                                </div>
-                              </td>
-                              <td className="py-2.5 px-2 border-l border-slate-200 text-slate-700 align-top w-[125px] min-w-[125px] max-w-[125px] overflow-hidden">
-                                <div className="w-full overflow-hidden">
-                                  <span className="text-slate-800 font-medium whitespace-normal [overflow-wrap:anywhere] break-words leading-snug block text-[10.5px]">
-                                    {row.industry || '—'}
-                                  </span>
-                                </div>
-                              </td>
-                              <td className="py-2.5 px-2.5 border-l border-slate-200 text-slate-700 font-medium align-top w-[160px] min-w-[160px] max-w-[160px] overflow-hidden">
-                                <div className="w-full overflow-hidden">
-                                  <span className="whitespace-normal [overflow-wrap:anywhere] break-words leading-relaxed block text-[10.5px]">
-                                    {row.source || row.leadSource || ''}
-                                  </span>
-                                </div>
-                              </td>
-                              <td className="py-2.5 px-2.5 border-l border-slate-200 align-top w-[185px] min-w-[185px] max-w-[185px] overflow-hidden" onClick={(e) => e.stopPropagation()}>
-                                {row.isDuplicate ? (
-                                  <span
-                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200"
-                                    title={row.duplicateReason || 'Duplicate found'}
-                                  >
-                                    <AlertTriangle className="w-3 h-3 text-rose-500" />
-                                    <span>Duplicate</span>
-                                  </span>
-                                ) : row.isConvertedToLead ? (
-                                  <div className="relative inline-flex items-center gap-1.5 flex-wrap">
-                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-teal-50 text-teal-700 border border-teal-300">
-                                      <CheckCircle2 className="w-3 h-3 text-teal-600" />
-                                      <span>Converted to Lead</span>
-                                    </span>
-                                    <button
-                                      type="button"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        if (onNavigate) onNavigate('leads');
-                                      }}
-                                      className="p-1 rounded hover:bg-emerald-50 text-emerald-600 transition"
-                                      title="View in CRM Leads"
-                                    >
-                                      <ExternalLink className="w-3 h-3" />
-                                    </button>
-                                  </div>
-                                ) : (
-                                  <div className="relative inline-flex items-center gap-1.5 flex-nowrap max-w-full">
-                                    <div className="relative inline-flex items-center max-w-[130px]">
-                                      <select
-                                        value={row.status || row.leadStatus || 'New'}
-                                        onChange={(e) => handleStatusChange(row, e.target.value)}
-                                        className={`appearance-none inline-flex items-center pl-2 pr-5 py-0.5 rounded-full text-[10px] font-semibold border cursor-pointer transition focus:outline-none focus:ring-2 focus:ring-offset-1 shadow-2xs max-w-[130px] truncate ${getStatusBadgeStyle(
-                                          row.status || row.leadStatus || 'New'
-                                        )}`}
-                                      >
-                                        {STATUS_OPTIONS.map((opt) => (
-                                          <option key={opt} value={opt} className="bg-white text-slate-800 text-xs font-normal">
-                                            {opt}
-                                          </option>
-                                        ))}
-                                      </select>
-                                      <ChevronDown className="w-3 h-3 absolute right-1.5 pointer-events-none opacity-60" />
-                                    </div>
-                                    {row.statusHistory && row.statusHistory.length > 0 && (
-                                      <button
-                                        type="button"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          handleOpenHistory(row);
-                                        }}
-                                        className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-full text-[9.5px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100 transition shrink-0"
-                                        title={`Status changed ${row.statusHistory.length} time(s). Latest: from "${row.statusHistory[0]?.previousStatus || 'New'}" to "${row.statusHistory[0]?.status}". Click to view company history.`}
-                                      >
-                                        <History className="w-3 h-3 text-indigo-600" />
-                                        <span>{row.statusHistory.length}</span>
-                                      </button>
-                                    )}
-                                  </div>
-                                )}
-                              </td>
-                              <td className="py-2.5 px-2 border-l border-slate-200 text-slate-600 whitespace-nowrap font-medium align-top w-[130px] min-w-[130px] max-w-[130px] text-[10.5px] overflow-hidden">
-                                {(() => {
-                                  const targetDate = dateFilterType === 'createdAt'
-                                    ? (row.createdAt || row.date)
-                                    : (row.updatedAt || row.lastContactedAt || row.date || row.createdAt);
-                                  if (!targetDate) return '—';
-                                  const d = new Date(targetDate);
-                                  if (isNaN(d.getTime())) return '—';
-                                  return (
-                                    <div className="flex flex-col">
-                                      <span>{d.toLocaleDateString()}</span>
-                                      {dateFilterType === 'updatedAt' && row.updatedAt && (
-                                        <span className="text-[9px] text-slate-400 font-normal">
-                                          {d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                        </span>
-                                      )}
-                                    </div>
-                                  );
-                                })()}
-                              </td>
-                              <td className="py-2.5 px-2.5 border-l border-slate-200 text-slate-700 whitespace-nowrap align-top w-[150px] min-w-[150px] max-w-[150px] overflow-hidden">
-                                <div className="flex items-center gap-1.5 overflow-hidden">
-                                  <div className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-700 text-[9.5px] font-bold flex items-center justify-center shrink-0 uppercase">
-                                    {(row.importedBy || 'U').charAt(0)}
-                                  </div>
-                                  <span className="font-medium text-slate-800 text-[10.5px] truncate max-w-[110px]" title={row.importedBy || '—'}>
-                                    {row.importedBy || '—'}
-                                  </span>
-                                </div>
-                              </td>
-                              <td className="py-2.5 px-2 border-l border-slate-200 text-center whitespace-nowrap align-top w-[64px] min-w-[64px] max-w-[64px] relative" onClick={(e) => e.stopPropagation()}>
-                                <div className="relative inline-flex items-center justify-center">
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setOpenActionMenuId((prev) => (prev === row.id ? null : row.id));
-                                    }}
-                                    className={`p-1 rounded-md transition cursor-pointer ${openActionMenuId === row.id
-                                      ? 'bg-indigo-600 text-white shadow-xs'
-                                      : 'text-slate-500 hover:text-slate-900 hover:bg-slate-200/70'
-                                      }`}
-                                    title="Row Actions"
-                                  >
-                                    <MoreVertical className="w-3.5 h-3.5" />
-                                  </button>
-
-                                  {openActionMenuId === row.id && (
-                                    <div
-                                      ref={actionMenuRef}
-                                      className={`absolute right-0 w-44 bg-white rounded-xl shadow-2xl border border-slate-200/95 py-1 z-50 text-left text-xs divide-y divide-slate-100 animate-in fade-in zoom-in-95 duration-100 ${paginatedRecords.length > 4 && idx >= paginatedRecords.length - 2
-                                        ? 'bottom-full mb-1.5'
-                                        : 'top-full mt-1.5'
-                                        }`}
-                                      onClick={(e) => e.stopPropagation()}
-                                    >
-                                      <div className="py-1">
-                                        <button
-                                          type="button"
-                                          onClick={() => {
-                                            setOpenActionMenuId(null);
-                                            handleOpenOutreach(row, 'call');
-                                          }}
-                                          className="w-full px-3 py-2 flex items-center gap-2.5 hover:bg-indigo-50 hover:text-indigo-600 text-slate-700 transition font-medium cursor-pointer"
-                                        >
-                                          <PhoneCall className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
-                                          <span>Log Outreach</span>
-                                        </button>
-
-                                        <button
-                                          type="button"
-                                          onClick={() => {
-                                            setOpenActionMenuId(null);
-                                            handleOpenOutreach(row, 'email');
-                                          }}
-                                          className="w-full px-3 py-2 flex items-center gap-2.5 hover:bg-sky-50 hover:text-sky-700 text-slate-700 transition font-medium cursor-pointer"
-                                        >
-                                          <Mail className="w-3.5 h-3.5 text-sky-500 shrink-0" />
-                                          <span>Send Sales Email</span>
-                                        </button>
-
-                                        {!row.isConvertedToLead && (
-                                          <button
-                                            type="button"
-                                            onClick={() => {
-                                              setOpenActionMenuId(null);
-                                              handleOpenConvertSingle(row);
-                                            }}
-                                            className="w-full px-3 py-2 flex items-center gap-2.5 hover:bg-emerald-50 hover:text-emerald-700 text-slate-700 transition font-medium cursor-pointer"
-                                          >
-                                            <Send className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                                            <span>Send to Leads</span>
-                                          </button>
-                                        )}
-
-                                        <button
-                                          type="button"
-                                          onClick={() => {
-                                            setOpenActionMenuId(null);
-                                            handleOpenEdit(row);
-                                          }}
-                                          className="w-full px-3 py-2 flex items-center gap-2.5 hover:bg-slate-50 hover:text-slate-900 text-slate-700 transition font-medium cursor-pointer"
-                                        >
-                                          <Pencil className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                                          <span>Edit Company</span>
-                                        </button>
-                                      </div>
-
-                                      <div className="py-1">
-                                        <button
-                                          type="button"
-                                          onClick={() => {
-                                            setOpenActionMenuId(null);
-                                            handleOpenDeleteSingle(row);
-                                          }}
-                                          className="w-full px-3 py-2 flex items-center gap-2.5 hover:bg-rose-50 hover:text-rose-700 text-rose-600 transition font-medium cursor-pointer"
-                                        >
-                                          <Trash2 className="w-3.5 h-3.5 shrink-0" />
-                                          <span>Delete</span>
-                                        </button>
-                                      </div>
-                                    </div>
-                                  )}
-                                </div>
-                              </td>
-                            </tr>
-                          );
-                        })
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* Table Footer */}
-                <div className="p-3 border-t border-slate-100 bg-slate-50/60 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500">
-                  <div className="flex items-center gap-2">
-                    <span>
-                      {/* Tip: Click any row to select. Click the <strong>Date</strong> header to toggle Ascending / Descending order. */}
-                    </span>
-                    {/* <span className="text-slate-300">|</span> */}
-                    <span className="font-medium text-slate-700">
-                      {selectedIds.length} of {records.length} selected
-                    </span>
-                  </div>
-
-                  {totalPages > 1 && (
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        type="button"
-                        disabled={validCurrentPage <= 1}
-                        onClick={() => handlePageChange(validCurrentPage - 1)}
-                        className="p-1 rounded-md border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed text-slate-600 shadow-2xs transition"
-                        title="Previous page"
-                      >
-                        <ChevronLeft className="w-3.5 h-3.5" />
-                      </button>
-
-                      <span className="text-xs text-slate-600 font-medium px-1">
-                        Page <strong className="text-indigo-600">{validCurrentPage}</strong> of{' '}
-                        <strong className="text-slate-800">{totalPages}</strong>
-                      </span>
-
-                      <button
-                        type="button"
-                        disabled={validCurrentPage >= totalPages}
-                        onClick={() => handlePageChange(validCurrentPage + 1)}
-                        className="p-1 rounded-md border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed text-slate-600 shadow-2xs transition"
-                        title="Next page"
-                      >
-                        <ChevronRight className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
+              {/* Prospects Data Table & Pagination Toolbar */}
+              <DatabaseProspectsTable
+                totalMatchingRecords={totalMatchingRecords}
+                pageSize={pageSize}
+                startEntry={startEntry}
+                endEntry={endEntry}
+                totalDataCount={totalDataCount}
+                selectedIds={selectedIds}
+                setSelectedIds={setSelectedIds}
+                showConvertedOnly={showConvertedOnly}
+                setShowConvertedOnly={setShowConvertedOnly}
+                showStatusChangedOnly={showStatusChangedOnly}
+                setShowStatusChangedOnly={setShowStatusChangedOnly}
+                selectedStatuses={selectedStatuses}
+                setSelectedStatuses={setSelectedStatuses}
+                selectedSources={selectedSources}
+                setSelectedSources={setSelectedSources}
+                handlePageSizeChange={handlePageSizeChange}
+                totalPages={totalPages}
+                validCurrentPage={validCurrentPage}
+                handlePageChange={handlePageChange}
+                isAllSelected={isAllSelected}
+                handleSelectAll={handleSelectAll}
+                dateFilterType={dateFilterType}
+                sortDirection={sortDirection}
+                setSortDirection={setSortDirection}
+                records={records}
+                paginatedRecords={paginatedRecords}
+                setSelectedDetailRecord={setSelectedDetailRecord}
+                handleToggleRow={handleToggleRow}
+                onNavigate={onNavigate}
+                handleStatusChange={handleStatusChange}
+                getStatusBadgeStyle={getStatusBadgeStyle}
+                STATUS_OPTIONS={STATUS_OPTIONS}
+                handleOpenHistory={handleOpenHistory}
+                openActionMenuId={openActionMenuId}
+                setOpenActionMenuId={setOpenActionMenuId}
+                actionMenuRef={actionMenuRef}
+                handleOpenOutreach={handleOpenOutreach}
+                handleOpenConvertSingle={handleOpenConvertSingle}
+                handleOpenEdit={handleOpenEdit}
+                handleOpenDeleteSingle={handleOpenDeleteSingle}
+              />
             </div>
           )}
         </>
       )}
 
       {/* Edit Company Details Modal */}
-      {editingRow && (
-        <Modal
-          isOpen={Boolean(editingRow)}
-          onClose={() => !isSavingEdit && setEditingRow(null)}
-          title={`Edit Company: ${editingRow.companyName || 'Lead'}`}
-          subtitle="Update any details below and click 'Save' to persist directly to the CRM database."
-          maxWidth="max-w-2xl"
-          footer={
-            <div className="flex items-center justify-end gap-2.5 w-full">
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => setEditingRow(null)}
-                disabled={isSavingEdit}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="button"
-                variant="primary"
-                icon={Save}
-                isLoading={isSavingEdit}
-                onClick={handleSaveEdit}
-                className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold shadow-xs"
-              >
-                Save
-              </Button>
-            </div>
-          }
-        >
-          <form onSubmit={handleSaveEdit} className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Input
-                label="Company Name"
-                required
-                value={editingRow.companyName || ''}
-                onChange={(e) =>
-                  setEditingRow((prev) => ({ ...prev, companyName: e.target.value }))
-                }
-                placeholder="e.g. Acme Corp"
-              />
-
-              <Input
-                label="GSTIN"
-                value={editingRow.gstin || ''}
-                onChange={(e) =>
-                  setEditingRow((prev) => ({ ...prev, gstin: e.target.value.toUpperCase() }))
-                }
-                placeholder="e.g. 29AABCI1234A1Z5"
-              />
-
-              <Input
-                label="Date of Registration"
-                value={editingRow.dateOfRegistration || ''}
-                onChange={(e) =>
-                  setEditingRow((prev) => ({ ...prev, dateOfRegistration: e.target.value }))
-                }
-                placeholder="e.g. YYYY-MM-DD"
-              />
-
-              {/* Multi-Contact Persons List */}
-              <div className="sm:col-span-2 space-y-3 pt-2 border-t border-slate-100">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-semibold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
-                    <User className="w-3.5 h-3.5 text-indigo-600" />
-                    <span>Contact Persons ({(editingRow.contacts || []).length})</span>
-                  </label>
-                  <button
-                    type="button"
-                    onClick={handleAddEditRowContact}
-                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 transition cursor-pointer shadow-2xs"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>Add Contact Person</span>
-                  </button>
-                </div>
-
-                <div className="space-y-2.5 max-h-64 overflow-y-auto pr-1">
-                  {(editingRow.contacts || []).map((contact, idx) => (
-                    <div
-                      key={idx}
-                      className={`p-3 rounded-xl border space-y-2.5 text-xs ${
-                        contact.isPrimary ? 'bg-indigo-50/40 border-indigo-200' : 'bg-slate-50 border-slate-200/90'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <span className="w-4 h-4 rounded-full bg-indigo-100 text-indigo-700 text-[10px] font-bold flex items-center justify-center">
-                            {idx + 1}
-                          </span>
-                          <span className="text-[11px] font-bold text-slate-700">
-                            {contact.contactPerson || `Person ${idx + 1}`}
-                          </span>
-                          {contact.isPrimary ? (
-                            <span className="px-1.5 py-0.2 rounded text-[9.5px] font-semibold bg-emerald-100 text-emerald-800 border border-emerald-300">
-                              Primary
-                            </span>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => handleSetPrimaryEditRowContact(idx)}
-                              className="text-[10px] font-semibold text-indigo-600 hover:underline cursor-pointer"
-                            >
-                              Make Primary
-                            </button>
-                          )}
-                        </div>
-                        {(editingRow.contacts || []).length > 1 && (
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveEditRowContact(idx)}
-                            className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition cursor-pointer"
-                            title="Remove contact person"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-                      </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                        <Input
-                          label="Contact Person"
-                          value={contact.contactPerson || ''}
-                          onChange={(e) => handleUpdateEditRowContact(idx, 'contactPerson', e.target.value)}
-                          placeholder="e.g. Rahul Verma"
-                        />
-                        <Input
-                          label="Designation / Role"
-                          value={contact.designation || ''}
-                          onChange={(e) => handleUpdateEditRowContact(idx, 'designation', e.target.value)}
-                          placeholder="e.g. VP Sales"
-                        />
-                      </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                        <Input
-                          label="Mobile No"
-                          value={contact.mobileNo || ''}
-                          onChange={(e) => handleUpdateEditRowContact(idx, 'mobileNo', e.target.value)}
-                          placeholder="e.g. +91 98200 12345"
-                        />
-                        <Input
-                          label="Email ID"
-                          type="email"
-                          value={contact.emailId || ''}
-                          onChange={(e) => handleUpdateEditRowContact(idx, 'emailId', e.target.value)}
-                          placeholder="e.g. rahul@company.com"
-                        />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <Input
-                label="Industry"
-                value={editingRow.industry || ''}
-                onChange={(e) =>
-                  setEditingRow((prev) => ({ ...prev, industry: e.target.value }))
-                }
-                placeholder="e.g. Information Technology"
-              />
-
-              <Input
-                label="Rating"
-                value={editingRow.rating || ''}
-                onChange={(e) =>
-                  setEditingRow((prev) => ({ ...prev, rating: e.target.value }))
-                }
-                placeholder="e.g. 4.5"
-              />
-
-              <Input
-                label="Source"
-                value={editingRow.source || editingRow.leadSource || ''}
-                onChange={(e) =>
-                  setEditingRow((prev) => ({
-                    ...prev,
-                    source: e.target.value,
-                    leadSource: e.target.value,
-                  }))
-                }
-                placeholder="e.g. LinkedIn, Cold Call, Referral"
-              />
-
-              <Input
-                label="Date"
-                type="date"
-                value={editingRow.dateInput || ''}
-                onChange={(e) =>
-                  setEditingRow((prev) => ({ ...prev, dateInput: e.target.value }))
-                }
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600">
-                Address
-              </label>
-              <textarea
-                rows={2}
-                value={editingRow.address || ''}
-                onChange={(e) =>
-                  setEditingRow((prev) => ({ ...prev, address: e.target.value }))
-                }
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white"
-                placeholder="Full address or location..."
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600">
-                Remarks / Notes
-              </label>
-              <textarea
-                rows={2}
-                value={editingRow.remarks || ''}
-                onChange={(e) =>
-                  setEditingRow((prev) => ({ ...prev, remarks: e.target.value }))
-                }
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white"
-                placeholder="Additional notes or remarks..."
-              />
-            </div>
-          </form>
-        </Modal>
-      )}
+      <EditCompanyModal
+        isOpen={Boolean(editingRow)}
+        onClose={() => !isSavingEdit && setEditingRow(null)}
+        editingRow={editingRow}
+        setEditingRow={setEditingRow}
+        onSave={handleSaveEdit}
+        isSaving={isSavingEdit}
+      />
 
       {/* Delete Confirmation Modal */}
-      {deleteTarget && (
-        <Modal
-          isOpen={Boolean(deleteTarget)}
-          onClose={() => {
-            if (!isDeleting) setDeleteTarget(null);
-          }}
-          title="Confirm Deletion"
-          subtitle="Move data to Recycle Bin"
-          maxWidth="max-w-md"
-          footer={
-            <div className="flex items-center justify-end gap-2.5">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => setDeleteTarget(null)}
-                disabled={isDeleting}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="button"
-                variant="danger"
-                size="sm"
-                icon={Trash2}
-                isLoading={isDeleting}
-                onClick={handleConfirmDelete}
-                className="bg-rose-600 hover:bg-rose-700 text-white shadow-xs font-semibold"
-              >
-                {deleteTarget.type === 'single'
-                  ? 'Delete Record'
-                  : `Delete (${deleteTarget.count})`}
-              </Button>
-            </div>
-          }
-        >
-          <div className="space-y-3.5 py-1 text-xs text-slate-600">
-            <div className="flex items-start gap-3">
-              <div className="w-10 h-10 rounded-xl bg-rose-50 border border-rose-100 flex items-center justify-center text-rose-600 shrink-0">
-                <Trash2 className="w-5 h-5" />
-              </div>
-              <div>
-                <h4 className="text-sm font-bold text-slate-900">
-                  {deleteTarget.type === 'single'
-                    ? `Delete "${deleteTarget.row?.companyName || 'this record'}"?`
-                    : `Delete ${deleteTarget.count} selected record${deleteTarget.count === 1 ? '' : 's'}?`}
-                </h4>
-                <p className="text-xs text-slate-500 mt-1">
-                  {deleteTarget.type === 'single'
-                    ? 'This record will be removed from your active workspace and moved to the Recycle Bin.'
-                    : `All ${deleteTarget.count} selected records will be removed from your workspace and moved to the Recycle Bin.`}
-                </p>
-              </div>
-            </div>
-
-            {deleteTarget.type === 'single' && deleteTarget.row && (
-              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/80 space-y-1.5 text-[11px] text-slate-600 mt-2">
-                {deleteTarget.row.companyName && (
-                  <div className="flex items-center justify-between">
-                    <span className="text-slate-400">Company:</span>
-                    <span className="font-semibold text-slate-800">{deleteTarget.row.companyName}</span>
-                  </div>
-                )}
-                {deleteTarget.row.contactPerson && (
-                  <div className="flex items-center justify-between">
-                    <span className="text-slate-400">Contact:</span>
-                    <span className="font-medium text-slate-700">{deleteTarget.row.contactPerson}</span>
-                  </div>
-                )}
-                {deleteTarget.row.mobileNo && (
-                  <div className="flex items-center justify-between">
-                    <span className="text-slate-400">Mobile:</span>
-                    <span className="font-mono text-slate-700">{deleteTarget.row.mobileNo}</span>
-                  </div>
-                )}
-                {deleteTarget.row.emailId && (
-                  <div className="flex items-center justify-between">
-                    <span className="text-slate-400">Email:</span>
-                    <span className="font-mono text-slate-700">{deleteTarget.row.emailId}</span>
-                  </div>
-                )}
-                {deleteTarget.row.industry && (
-                  <div className="flex items-center justify-between">
-                    <span className="text-slate-400">Industry:</span>
-                    <span className="text-slate-700">{deleteTarget.row.industry}</span>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        </Modal>
-      )}
+      <DeleteConfirmModal
+        isOpen={Boolean(deleteTarget)}
+        onClose={() => {
+          if (!isDeleting) setDeleteTarget(null);
+        }}
+        deleteTarget={deleteTarget}
+        onConfirm={handleConfirmDelete}
+        isDeleting={isDeleting}
+      />
 
       {/* Convert to Lead Confirmation Modal */}
-      {convertTarget && (
-        <Modal
-          isOpen={Boolean(convertTarget)}
-          onClose={() => !isSubmitting && setConvertTarget(null)}
-          title="Convert to Lead"
-          maxWidth="max-w-md"
-          footer={
-            <div className="flex items-center justify-end gap-2.5 w-full">
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => setConvertTarget(null)}
-                disabled={isSubmitting}
-                className="text-slate-600 hover:text-slate-800"
-              >
-                Cancel
-              </Button>
-              <Button
-                variant="primary"
-                size="sm"
-                icon={Send}
-                isLoading={isSubmitting}
-                onClick={handleConfirmConvert}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs font-semibold"
-              >
-                {convertTarget.type === 'single'
-                  ? 'Convert to Lead'
-                  : `Convert (${convertTarget.count})`}
-              </Button>
-            </div>
-          }
-        >
-          <div className="space-y-3.5 py-1 text-xs text-slate-600">
-            <div className="flex items-start gap-3">
-              <div className="w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-100 flex items-center justify-center text-emerald-600 shrink-0">
-                <Send className="w-5 h-5" />
-              </div>
-              <div>
-                <h4 className="text-sm font-bold text-slate-900">
-                  {convertTarget.type === 'single'
-                    ? `Convert "${convertTarget.row?.companyName || 'this record'}" into a Lead?`
-                    : `Convert ${convertTarget.count} selected record${convertTarget.count === 1 ? '' : 's'} into Leads?`}
-                </h4>
-                <p className="text-xs text-slate-500 mt-1">
-                  {convertTarget.type === 'single'
-                    ? 'Are you sure you want to convert this into a lead? It will be added to your active CRM Leads pipeline.'
-                    : `Are you sure you want to convert these ${convertTarget.count} records into leads? They will be added to your active CRM Leads pipeline.`}
-                </p>
-              </div>
-            </div>
-
-            {convertTarget.type === 'single' && convertTarget.row && (
-              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/80 space-y-1.5 text-[11px] text-slate-600 mt-2">
-                {convertTarget.row.companyName && (
-                  <div className="flex items-center justify-between">
-                    <span className="text-slate-400">Company:</span>
-                    <span className="font-semibold text-slate-800">{convertTarget.row.companyName}</span>
-                  </div>
-                )}
-                {convertTarget.row.contactPerson && (
-                  <div className="flex items-center justify-between">
-                    <span className="text-slate-400">Contact:</span>
-                    <span className="font-medium text-slate-700">{convertTarget.row.contactPerson}</span>
-                  </div>
-                )}
-                {convertTarget.row.mobileNo && (
-                  <div className="flex items-center justify-between">
-                    <span className="text-slate-400">Mobile:</span>
-                    <span className="font-mono text-slate-700">{convertTarget.row.mobileNo}</span>
-                  </div>
-                )}
-                {convertTarget.row.emailId && (
-                  <div className="flex items-center justify-between">
-                    <span className="text-slate-400">Email:</span>
-                    <span className="font-mono text-slate-700">{convertTarget.row.emailId}</span>
-                  </div>
-                )}
-                {convertTarget.row.industry && (
-                  <div className="flex items-center justify-between">
-                    <span className="text-slate-400">Industry:</span>
-                    <span className="text-slate-700">{convertTarget.row.industry}</span>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {convertTarget.type === 'bulk' && convertTarget.rows && (
-              <div className="p-3 bg-emerald-50/50 rounded-xl border border-emerald-100/80 text-[11px] text-emerald-900 mt-2">
-                <p className="font-semibold text-emerald-950 mb-1.5">
-                  Ready to convert {convertTarget.count} companies:
-                </p>
-                <div className="max-h-28 overflow-y-auto space-y-1">
-                  {convertTarget.rows.slice(0, 5).map((r, i) => (
-                    <div key={r.id || i} className="flex items-center justify-between text-slate-700">
-                      <span className="font-medium truncate max-w-[200px]">{r.companyName || 'Untitled'}</span>
-                      <span className="text-slate-500 font-mono text-[10px]">{r.mobileNo || r.emailId || '—'}</span>
-                    </div>
-                  ))}
-                  {convertTarget.rows.length > 5 && (
-                    <p className="text-[10px] text-emerald-700 italic pt-1">
-                      + {convertTarget.rows.length - 5} more companies...
-                    </p>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-        </Modal>
-      )}
+      <ConvertToLeadModal
+        isOpen={Boolean(convertTarget)}
+        onClose={() => !isSubmitting && setConvertTarget(null)}
+        convertTarget={convertTarget}
+        onConfirm={handleConfirmConvert}
+        isSubmitting={isSubmitting}
+      />
 
       {/* Outreach Action Modal (Call, WhatsApp, Email, Follow-up) */}
       {outreachRow && (
@@ -5365,10 +2329,6 @@ export const ImportDataPage = ({ onNavigate }) => {
           initialCustomTo={historyUserModal.initialCustomTo || ''}
           onSelectRepFilter={(repName) => {
             handleSelectRepFromLeaderboard(repName);
-          }}
-          onOpenOutreach={(prospect, type) => {
-            setOutreachRow(prospect);
-            setOutreachInitialType(type || 'call');
           }}
           onOpenProspectDetails={(prospect, options = {}) => {
             setSelectedDetailRecord(prospect);
