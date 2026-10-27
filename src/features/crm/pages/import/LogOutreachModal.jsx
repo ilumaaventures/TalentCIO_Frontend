@@ -20,7 +20,7 @@ import toast from 'react-hot-toast';
 import { Modal } from '../../components/ui/Modal';
 import { Button } from '../../components/ui/Button';
 import { dataService } from '../../services/api';
-import { crmEmailTemplateService } from '../../services/crmApi';
+import { crmEmailTemplateService, crmCommunicationService } from '../../services/crmApi';
 import {
   CRM_EMAIL_TEMPLATE_PLACEHOLDERS,
   resolveTemplate,
@@ -60,6 +60,9 @@ export const LogOutreachModal = ({
   // WhatsApp form state
   const [whatsappOutcome, setWhatsappOutcome] = useState('Sent');
   const [whatsappNotes, setWhatsappNotes] = useState('');
+  const [sendViaMetaWhatsApp, setSendViaMetaWhatsApp] = useState(true);
+  const [whatsappTemplate, setWhatsappTemplate] = useState('hello_world');
+  const [isSendingMetaWhatsApp, setIsSendingMetaWhatsApp] = useState(false);
 
   // Email form state
   const [senders, setSenders] = useState([]);
@@ -419,6 +422,44 @@ export const LogOutreachModal = ({
     window.open(`https://wa.me/91${cleanPhone}?text=${text}`, '_blank');
   };
 
+  const handleSendMetaWhatsApp = async () => {
+    const targetPhone = reachedPhone || cleanPhone;
+    if (!targetPhone) {
+      toast.error('No valid phone number for this contact');
+      return;
+    }
+    const targetName = reachedName || currentContact?.name || row.contactPerson || 'Contact';
+    setIsSendingMetaWhatsApp(true);
+    try {
+      const res = await crmCommunicationService.sendWhatsAppMessage({
+        to: targetPhone,
+        recipientName: targetName,
+        type: 'template',
+        templateName: whatsappTemplate || 'hello_world',
+        languageCode: 'en_US',
+        message: whatsappNotes,
+        importDataId: row._id,
+      });
+
+      if (res?.success) {
+        toast.success(`WhatsApp message sent to ${targetName} via Meta Cloud API!`);
+        setWhatsappOutcome('Sent');
+        const metaId = res.data?.id || res.data?.metaMessageId || '';
+        if (metaId) {
+          setWhatsappNotes((prev) => (prev ? `${prev}\n` : '') + `[Meta WhatsApp Sent: ${metaId}]`);
+        }
+        if (onSuccess) onSuccess(row);
+      } else {
+        toast.error(res?.message || 'Failed to send WhatsApp message');
+      }
+    } catch (err) {
+      console.error('Meta WhatsApp error:', err);
+      toast.error(err.response?.data?.message || err.message || 'Meta WhatsApp delivery failed');
+    } finally {
+      setIsSendingMetaWhatsApp(false);
+    }
+  };
+
   const handleLaunchCall = () => {
     if (!cleanPhone) {
       toast.error('No valid phone number for this contact');
@@ -531,6 +572,35 @@ export const LogOutreachModal = ({
         const res = await dataService.logActivity(recordId, payload);
         if (res?.record && onSuccess) onSuccess(res.record);
       } else if (activeType === 'whatsapp') {
+        let metaId = '';
+        if (sendViaMetaWhatsApp) {
+          const targetPhone = reachedPhone || cleanPhone;
+          if (!targetPhone) {
+            toast.error('Recipient phone number is missing');
+            setIsSubmitting(false);
+            return;
+          }
+
+          try {
+            const metaRes = await crmCommunicationService.sendWhatsAppMessage({
+              to: targetPhone,
+              recipientName: reachedName,
+              type: 'template',
+              templateName: whatsappTemplate || 'hello_world',
+              languageCode: 'en_US',
+              message: whatsappNotes,
+              importDataId: recordId,
+            });
+            metaId = metaRes?.data?.id || metaRes?.data?.metaMessageId || '';
+            toast.success(`WhatsApp message delivered to ${reachedName} via Meta Cloud API!`);
+          } catch (metaErr) {
+            console.error('Meta WhatsApp delivery error:', metaErr);
+            toast.error(metaErr.response?.data?.message || metaErr.message || 'Meta WhatsApp delivery failed');
+            setIsSubmitting(false);
+            return;
+          }
+        }
+
         const payload = {
           type: 'whatsapp',
           outcome: whatsappOutcome,
@@ -539,12 +609,14 @@ export const LogOutreachModal = ({
           contactDesignation: reachedDesignation,
           contactEmail: reachedEmail,
           subject: `WhatsApp outreach to ${reachedName}${reachedDesignation ? ` (${reachedDesignation})` : ''}`,
-          description: whatsappNotes,
+          description: whatsappNotes + (metaId ? ` [Meta ID: ${metaId}]` : ''),
           metadata: {
             contactPerson: reachedName,
             contactPhone: reachedPhone,
             contactDesignation: reachedDesignation,
             contactEmail: reachedEmail,
+            metaMessageId: metaId,
+            isMetaCloudApi: Boolean(sendViaMetaWhatsApp),
           },
         };
         const res = await dataService.logActivity(recordId, payload);
@@ -1074,15 +1146,66 @@ export const LogOutreachModal = ({
                   </div>
                 )}
 
-                <div className="flex items-center justify-between pb-1 border-t sm:border-t-0 pt-2 sm:pt-0 border-slate-100">
-                  <span className="font-semibold text-slate-700">Quick WhatsApp Message</span>
+                {/* Meta WhatsApp Cloud API Box */}
+                <div className="p-3 bg-emerald-50/70 rounded-xl border border-emerald-200/80 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                      <span className="font-bold text-emerald-950 text-xs">Meta WhatsApp Cloud API</span>
+                    </div>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+                      Official API
+                    </span>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="block text-[11px] font-semibold text-slate-700">
+                      Message Template
+                    </label>
+                    <select
+                      value={whatsappTemplate}
+                      onChange={(e) => setWhatsappTemplate(e.target.value)}
+                      className="w-full px-2.5 py-1.5 rounded-lg border border-emerald-300 bg-white text-slate-800 font-medium text-xs focus:ring-1 focus:ring-emerald-500 focus:outline-none"
+                    >
+                      <option value="hello_world">hello_world (Meta Pre-approved Welcome)</option>
+                    </select>
+                    <p className="text-[10px] text-slate-500">
+                      Cold outreach requires a Meta-approved template. Client replies open a 24h conversation window.
+                    </p>
+                  </div>
+
+                  <div className="pt-1 flex items-center justify-between gap-2">
+                    <label className="flex items-center gap-2 cursor-pointer text-xs">
+                      <input
+                        type="checkbox"
+                        checked={sendViaMetaWhatsApp}
+                        onChange={(e) => setSendViaMetaWhatsApp(e.target.checked)}
+                        className="rounded text-emerald-600 focus:ring-emerald-500 w-4 h-4 cursor-pointer"
+                      />
+                      <span className="font-semibold text-slate-700">Send via Meta API on submit</span>
+                    </label>
+
+                    <button
+                      type="button"
+                      disabled={isSendingMetaWhatsApp || !cleanPhone}
+                      onClick={handleSendMetaWhatsApp}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-[11px] transition-colors shadow-2xs cursor-pointer"
+                    >
+                      <Send className="w-3 h-3" />
+                      <span>{isSendingMetaWhatsApp ? 'Sending...' : 'Send WhatsApp Now'}</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between pt-1">
+                  <span className="font-semibold text-slate-600">Alternative Options:</span>
                   {cleanPhone && (
                     <button
                       type="button"
                       onClick={handleLaunchWhatsApp}
                       className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 hover:underline"
                     >
-                      <span>Launch WhatsApp Web</span>
+                      <span>Launch WhatsApp Web Manual Chat</span>
                       <ExternalLink className="w-3 h-3" />
                     </button>
                   )}
@@ -1096,18 +1219,19 @@ export const LogOutreachModal = ({
                     className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 font-medium focus:ring-1 focus:ring-indigo-500 focus:outline-none"
                   >
                     <option value="Sent">Message Sent</option>
+                    <option value="Delivered">Message Delivered</option>
                     <option value="Replied">Client Replied</option>
                     <option value="Shared Proposal">Shared Company Profile / Brochure</option>
                   </select>
                 </div>
 
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Notes / Message Summary</label>
+                  <label className="block font-semibold text-slate-700 mb-1">Notes / Outreach Summary</label>
                   <textarea
                     rows={3}
                     value={whatsappNotes}
                     onChange={(e) => setWhatsappNotes(e.target.value)}
-                    placeholder="Sent intro deck and asked for callback time..."
+                    placeholder="Message notes, client feedback, or template context..."
                     className="w-full p-2.5 text-xs rounded-lg border border-slate-300 bg-white text-slate-800 placeholder:text-slate-400 focus:ring-1 focus:ring-indigo-500 focus:outline-none"
                   />
                 </div>

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { MessageSquare, Send, CheckCheck, Clock, Plus, Phone, Users } from 'lucide-react';
+import { MessageSquare, Send, CheckCheck, Clock, Plus, Phone, Users, Sparkles } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
@@ -13,6 +14,9 @@ export const WhatsAppHubPage = () => {
   const [activeRecipient, setActiveRecipient] = useState(null);
   const [isNewChatModalOpen, setIsNewChatModalOpen] = useState(false);
   const [newChatData, setNewChatData] = useState({ name: '', phone: '' });
+  const [sendType, setSendType] = useState('template'); // 'template' | 'text'
+  const [templateName, setTemplateName] = useState('hello_world');
+  const [isSending, setIsSending] = useState(false);
 
   const fetchContactsAndMessages = async () => {
     try {
@@ -68,22 +72,38 @@ export const WhatsAppHubPage = () => {
 
   const handleSendMessage = async (e) => {
     e.preventDefault();
-    if (!inputText.trim() || !activeRecipient) return;
+    if (!activeRecipient) return;
+    if (sendType === 'text' && !inputText.trim()) {
+      toast.error('Please enter a message body');
+      return;
+    }
 
+    setIsSending(true);
     try {
-      await communicationService.sendWhatsApp({
+      const res = await communicationService.sendWhatsApp({
         recipientPhone: activeRecipient.phone,
         recipientName: activeRecipient.name,
+        type: sendType,
+        templateName: templateName || 'hello_world',
+        languageCode: 'en_US',
         message: inputText,
       });
-      setInputText('');
-      const res = await communicationService.getWhatsApp();
-      if (res?.success && res?.data?.messages) {
-        setMessages(res.data.messages);
+
+      if (res?.success) {
+        toast.success(`WhatsApp message sent to ${activeRecipient.name} via Meta Cloud API!`);
+        setInputText('');
+        const refresh = await communicationService.getWhatsApp();
+        if (refresh?.success && refresh?.data?.messages) {
+          setMessages(refresh.data.messages);
+        }
+      } else {
+        toast.error(res?.message || 'Failed to send WhatsApp message');
       }
     } catch (err) {
       console.error('Failed to send WhatsApp message:', err);
-      alert(err.message || 'Failed to send message');
+      toast.error(err.response?.data?.message || err.message || 'Failed to send message');
+    } finally {
+      setIsSending(false);
     }
   };
 
@@ -215,21 +235,67 @@ export const WhatsAppHubPage = () => {
               </div>
 
               {/* Chat Composer */}
-              <form
-                onSubmit={handleSendMessage}
-                className="p-3 bg-white border-t border-slate-200 flex items-center gap-2"
-              >
-                <input
-                  type="text"
-                  value={inputText}
-                  onChange={(e) => setInputText(e.target.value)}
-                  placeholder={`Message ${activeRecipient.name}...`}
-                  className="flex-1 px-3 py-2 text-xs rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                />
-                <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white" icon={Send}>
-                  Send
-                </Button>
-              </form>
+              <div className="p-3 bg-white border-t border-slate-200 space-y-2">
+                <div className="flex items-center justify-between text-[11px]">
+                  <div className="flex items-center gap-1.5 bg-slate-100 p-0.5 rounded-lg">
+                    <button
+                      type="button"
+                      onClick={() => setSendType('template')}
+                      className={`px-2.5 py-1 rounded-md font-semibold transition-all cursor-pointer ${
+                        sendType === 'template'
+                          ? 'bg-emerald-600 text-white shadow-2xs'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      Meta Template
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSendType('text')}
+                      className={`px-2.5 py-1 rounded-md font-semibold transition-all cursor-pointer ${
+                        sendType === 'text'
+                          ? 'bg-emerald-600 text-white shadow-2xs'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      Direct Text (24h Window)
+                    </button>
+                  </div>
+                  <span className="text-[10px] text-slate-400">
+                    {sendType === 'template' ? 'Meta-approved template for cold outreach' : 'Free-form message within 24h'}
+                  </span>
+                </div>
+
+                <form onSubmit={handleSendMessage} className="flex items-center gap-2">
+                  {sendType === 'template' ? (
+                    <div className="flex-1">
+                      <select
+                        value={templateName}
+                        onChange={(e) => setTemplateName(e.target.value)}
+                        className="w-full px-3 py-2 text-xs rounded-lg border border-emerald-300 bg-emerald-50/40 text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      >
+                        <option value="hello_world">hello_world (Meta Pre-approved Welcome)</option>
+                      </select>
+                    </div>
+                  ) : (
+                    <input
+                      type="text"
+                      value={inputText}
+                      onChange={(e) => setInputText(e.target.value)}
+                      placeholder={`Message ${activeRecipient.name}...`}
+                      className="flex-1 px-3 py-2 text-xs rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    />
+                  )}
+                  <Button
+                    size="sm"
+                    disabled={isSending}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
+                    icon={Send}
+                  >
+                    {isSending ? 'Sending...' : 'Send'}
+                  </Button>
+                </form>
+              </div>
             </>
           )}
         </Card>
