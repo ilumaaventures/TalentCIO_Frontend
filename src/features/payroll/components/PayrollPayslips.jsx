@@ -638,7 +638,7 @@ const PayrollPayslips = () => {
                                   </button>
                                   {slip?.payslipUrl && (
                                     <a
-                                      href={slip.payslipUrl.startsWith('http') ? slip.payslipUrl : `${api.defaults?.baseURL?.replace('/api/v1', '') || ''}${slip.payslipUrl}`}
+                                      href={slip.payslipUrl.startsWith('http') ? slip.payslipUrl : `${api.defaults?.baseURL?.replace(/\/api(\/v1)?\/?$/, '') || ''}${slip.payslipUrl}`}
                                       target="_blank"
                                       rel="noreferrer"
                                       className="inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
