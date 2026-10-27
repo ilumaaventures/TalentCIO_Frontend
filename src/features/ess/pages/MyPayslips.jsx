@@ -222,7 +222,7 @@ const MyPayslips = () => {
                                             <div className="flex items-center gap-2">
                                                 {pay.payslipUrl && (
                                                     <a
-                                                        href={pay.payslipUrl.startsWith('http') ? pay.payslipUrl : `${api.defaults?.baseURL?.replace('/api/v1', '') || ''}${pay.payslipUrl}`}
+                                                        href={pay.payslipUrl.startsWith('http') ? pay.payslipUrl : `${api.defaults?.baseURL?.replace(/\/api(\/v1)?\/?$/, '') || ''}${pay.payslipUrl}`}
                                                         target="_blank"
                                                         rel="noopener noreferrer"
                                                         onClick={(e) => e.stopPropagation()}
