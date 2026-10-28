@@ -48,6 +48,14 @@ export const getPhase2InterviewStatusValue = (candidate = {}) => {
         return 'Shortlisted';
     }
 
+    if (candidate?.phase2Decision === 'Did Not Turn Up' || candidate?.phase2Decision === 'Did not Turn up') {
+        return 'Did not Turn up';
+    }
+
+    if (candidate?.phase2Decision === 'Left in between') {
+        return 'Left in between';
+    }
+
     return '';
 };
 
