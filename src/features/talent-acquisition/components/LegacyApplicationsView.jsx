@@ -493,7 +493,7 @@ const OpeningSection = ({ opening, openingNum, onTransfer, users }) => {
                             ]} />
                             <FilterSelect label="Decision" val={filterDecision} onChange={setFilterDecision} options={
                                 activePhase === 1 ? [['All', 'All Decisions'], ['Shortlisted', 'Shortlisted'], ['Profile Shared', 'Profile Shared'], ['Rejected', 'Rejected'], ['Did Not Turn Up', 'Did Not Turn Up'], ['On Hold', 'On Hold'], ['None', 'None']] :
-                                activePhase === 2 ? [['All', 'All Decisions'], ['Shortlisted_Selected', 'Shortlisted/Selected'], ['Selected', 'Selected'], ['Rejected', 'Rejected'], ['On Hold', 'On Hold'], ['None', 'None']] :
+                                activePhase === 2 ? [['All', 'All Decisions'], ['Shortlisted_Selected', 'Shortlisted/Selected'], ['Selected', 'Selected'], ['Rejected', 'Rejected'], ['On Hold', 'On Hold'], ['Did Not Turn Up', 'Did Not Turn Up'], ['Left in between', 'Left in between'], ['None', 'None']] :
                                     [['All', 'All Decisions'], ['Offer Sent', 'Offer Sent'], ['Offer Accepted', 'Offer Accepted'], ['Joined', 'Joined'], ['No Show_Offer Declined', 'Declined'], ['Rejected', 'Rejected'], ['None', 'None']]
                             } />
                             <FilterSelect label="Interviews" val={filterInterviewStatus} onChange={setFilterInterviewStatus} options={[
