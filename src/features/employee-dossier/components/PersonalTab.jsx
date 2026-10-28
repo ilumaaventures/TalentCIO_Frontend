@@ -386,7 +386,27 @@ export const PersonalTab = ({
                         {isEditing && <EditDisclaimer isDirectWrite={isCurrentUserAdmin && !isSelf} />}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <PendingHighlight show={showPending} label="Aadhaar Number" liveValue={profile.identity?.aadhaarNumber} pendingValue={pend.identity?.aadhaarNumber}>
-                                <Field section="identity" isEditing={isEditing} label="Aadhaar Number" field="aadhaarNumber" value={profile.identity?.aadhaarNumber} formData={formData} onChange={handleInputChange} required />
+                                <Field
+                                    section="identity"
+                                    isEditing={isEditing}
+                                    label="Aadhaar Number"
+                                    field="aadhaarNumber"
+                                    value={profile.identity?.aadhaarNumber}
+                                    formData={formData}
+                                    onChange={handleInputChange}
+                                    onBlur={() => {
+                                        const current = formData.identity?.aadhaarNumber;
+                                        if (current && typeof current === 'string' && current.includes(' ')) {
+                                            handleInputChange('identity', 'aadhaarNumber', current.replace(/\s+/g, ''));
+                                        }
+                                    }}
+                                    required
+                                    error={
+                                        formData.identity?.aadhaarNumber && String(formData.identity.aadhaarNumber).includes('-')
+                                            ? "Hyphens ('-') are not allowed in Aadhaar Number"
+                                            : null
+                                    }
+                                />
                             </PendingHighlight>
                             <PendingHighlight show={showPending} label="PAN Number" liveValue={profile.identity?.panNumber} pendingValue={pend.identity?.panNumber}>
                                 <Field section="identity" isEditing={isEditing} label="PAN Number" field="panNumber" value={profile.identity?.panNumber} formData={formData} onChange={handleInputChange} required />

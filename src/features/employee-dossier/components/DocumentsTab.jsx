@@ -1,15 +1,17 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { 
-    FileText, CheckCircle, AlertCircle, Shield, X, Eye, Download, RotateCcw, Upload, Trash2 
+import {
+    FileText, CheckCircle, AlertCircle, Shield, X, Eye, Download, RotateCcw, Upload, Trash2,
+    ExternalLink, Loader2
 } from 'lucide-react';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
 import api from '@/lib/apiClient';
 import Button from '@/components/ui/Button';
-import { 
-    documentCategories, 
-    DOSSIER_ALLOWED_FILE_TYPES, 
-    DOSSIER_FILE_MAX_SIZE_BYTES 
+import { getStoredAccessToken } from '@/features/auth/utils/authStorage';
+import {
+    documentCategories,
+    DOSSIER_ALLOWED_FILE_TYPES,
+    DOSSIER_FILE_MAX_SIZE_BYTES
 } from '@/features/employee-dossier/utils/DossierHelpers';
 
 export const DocumentsTab = ({
@@ -28,7 +30,7 @@ export const DocumentsTab = ({
     const [uploadingDocTitle, setUploadingDocTitle] = useState(null);
     const [isUploading, setIsUploading] = useState(false);
     const [deletingDocId, setDeletingDocId] = useState(null);
-    
+
     // Preview State
     const [previewFile, setPreviewFile] = useState(null);
     const [previewUrl, setPreviewUrl] = useState(null);
@@ -36,7 +38,7 @@ export const DocumentsTab = ({
     const [showUploadPreview, setShowUploadPreview] = useState(false);
     const [uploadCategory, setUploadCategory] = useState(null);
     const [replaceDocumentContext, setReplaceDocumentContext] = useState(null);
-    
+
     // New state for custom document titles
     const [showTitleModal, setShowTitleModal] = useState(false);
     const [customDocTitle, setCustomDocTitle] = useState('');
@@ -44,6 +46,7 @@ export const DocumentsTab = ({
     const [documentReviewModal, setDocumentReviewModal] = useState(null);
     const [documentReviewReason, setDocumentReviewReason] = useState('');
     const [processingDocumentReview, setProcessingDocumentReview] = useState(false);
+    const [previewModalDoc, setPreviewModalDoc] = useState(null);
 
     const fileInputRef = useRef(null);
 
@@ -51,8 +54,27 @@ export const DocumentsTab = ({
     useEffect(() => {
         return () => {
             if (previewUrl) URL.revokeObjectURL(previewUrl);
+            if (previewModalDoc?.url) URL.revokeObjectURL(previewModalDoc.url);
         };
-    }, [previewUrl]);
+    }, [previewUrl, previewModalDoc?.url]);
+
+    // Close preview modal on ESC key
+    useEffect(() => {
+        const handleKeyDown = (e) => {
+            if (e.key === 'Escape' && previewModalDoc) {
+                if (previewModalDoc.url) {
+                    URL.revokeObjectURL(previewModalDoc.url);
+                }
+                setPreviewModalDoc(null);
+            }
+        };
+        if (previewModalDoc) {
+            window.addEventListener('keydown', handleKeyDown);
+        }
+        return () => {
+            window.removeEventListener('keydown', handleKeyDown);
+        };
+    }, [previewModalDoc]);
 
     const handleFileSelect = (e) => {
         const file = e.target.files[0];
@@ -246,15 +268,15 @@ export const DocumentsTab = ({
         return [person.firstName, person.lastName].filter(Boolean).join(' ').trim() || person.email || '';
     };
     const formatAuditDateTime = (value) => (value ? format(new Date(value), 'dd MMM yyyy, hh:mm a') : '');
-    
+
     const canVerify = isCurrentUserAdmin
         || currentUser?.permissions?.includes('dossier.verify_documents')
         || currentUser?.permissions?.includes('dossier.approve');
-        
+
     const hasPendingDocs = profile.documents?.some((doc) => normalizeDocumentStatus(doc.verificationStatus) === 'Pending Review');
     const onboardingCustomFiles = Array.isArray(profile.onboardingCustomFiles) ? profile.onboardingCustomFiles : [];
     const visibleDocuments = Array.isArray(profile.documents) ? profile.documents : [];
-    
+
     const getDocumentStatusClasses = (status) => {
         if (status === 'Verified') return 'bg-emerald-100 text-emerald-700 border-emerald-200';
         if (status === 'Rejected') return 'bg-red-100 text-red-700 border-red-200';
@@ -421,21 +443,59 @@ export const DocumentsTab = ({
         }
     };
 
+    const handleClosePreviewModal = () => {
+        if (previewModalDoc?.url) {
+            URL.revokeObjectURL(previewModalDoc.url);
+        }
+        setPreviewModalDoc(null);
+    };
+
     const handleView = async (doc) => {
+        if (!doc) return;
+
+        if (previewModalDoc?.url) {
+            URL.revokeObjectURL(previewModalDoc.url);
+        }
+
+        const cleanUrl = String(doc.url || '').split('?')[0].toLowerCase();
+        const initialIsImage = /\.(png|jpe?g|webp|gif|svg)$/i.test(cleanUrl);
+
+        // Open modal immediately in loading state (100% immune to popup blockers)
+        setPreviewModalDoc({
+            doc,
+            url: null,
+            isImage: initialIsImage,
+            loading: true,
+            error: null
+        });
+
         try {
-            const toastId = toast.loading('Preparing preview...');
             const response = await api.get('/dossier/proxy-pdf', {
                 params: { url: doc.url, download: false },
                 responseType: 'blob'
             });
 
-            const blob = new Blob([response.data], { type: response.headers['content-type'] || 'application/pdf' });
-            const url = window.URL.createObjectURL(blob);
-            window.open(url, '_blank');
-            toast.dismiss(toastId);
+            const rawContentType = response.headers['content-type'] || '';
+            const isImage = rawContentType.startsWith('image/') || initialIsImage;
+            const contentType = isImage ? (rawContentType || 'image/jpeg') : 'application/pdf';
+
+            const blob = new Blob([response.data], { type: contentType });
+            const objectUrl = window.URL.createObjectURL(blob);
+
+            setPreviewModalDoc(prev => (prev && prev.doc?._id === doc._id ? {
+                ...prev,
+                url: objectUrl,
+                isImage,
+                loading: false,
+                error: null
+            } : prev));
         } catch (error) {
             console.error('Preview Error:', error);
-            toast.error('Failed to preview document');
+            setPreviewModalDoc(prev => (prev && prev.doc?._id === doc._id ? {
+                ...prev,
+                loading: false,
+                error: 'Failed to load document preview. Please use Download to view the file.'
+            } : prev));
         }
     };
 
@@ -1007,6 +1067,123 @@ export const DocumentsTab = ({
                     </div>
                 </div>
             )}
+
+            {/* In-App Document Preview Modal */}
+            {previewModalDoc && (
+                <div
+                    className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 p-3 md:p-6 backdrop-blur-sm"
+                    onClick={handleClosePreviewModal}
+                    role="dialog"
+                    aria-modal="true"
+                    aria-label="Document Preview"
+                >
+                    <div
+                        className="relative flex flex-col w-full max-w-5xl h-[90vh] bg-white rounded-2xl shadow-2xl overflow-hidden border border-slate-200"
+                        onClick={e => e.stopPropagation()}
+                    >
+                        {/* Header */}
+                        <div className="flex items-center justify-between border-b border-slate-200 bg-white px-5 py-3.5 shrink-0">
+                            <div className="flex items-center gap-3 min-w-0 pr-4">
+                                <div className="h-10 w-10 rounded-xl bg-blue-50 flex items-center justify-center shrink-0 text-blue-600">
+                                    <FileText size={20} />
+                                </div>
+                                <div className="min-w-0">
+                                    <div className="flex items-center gap-2">
+                                        <h3 className="text-sm font-bold text-slate-800 truncate" title={previewModalDoc.doc.title}>
+                                            {previewModalDoc.doc.title}
+                                        </h3>
+                                        {previewModalDoc.doc.category && (
+                                            <span className="hidden sm:inline-block px-2 py-0.5 text-[10px] font-semibold bg-slate-100 text-slate-600 rounded-md">
+                                                {previewModalDoc.doc.category}
+                                            </span>
+                                        )}
+                                    </div>
+                                    <p className="text-xs text-slate-500 mt-0.5 truncate">
+                                        {previewModalDoc.doc.fileName || (previewModalDoc.isImage ? 'Image Document' : 'PDF Document')}
+                                        {previewModalDoc.doc.uploadDate && ` • Uploaded ${format(new Date(previewModalDoc.doc.uploadDate), 'MMM dd, yyyy')}`}
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className="flex items-center gap-2 shrink-0">
+                                <button
+                                    type="button"
+                                    onClick={() => handleDownload(previewModalDoc.doc)}
+                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+                                    title="Download Document"
+                                >
+                                    <Download size={15} />
+                                    <span className="hidden sm:inline">Download</span>
+                                </button>
+
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        const token = getStoredAccessToken();
+                                        const baseUrl = api.defaults.baseURL || '/api';
+                                        const proxyUrl = `${baseUrl}/dossier/proxy-pdf?url=${encodeURIComponent(previewModalDoc.doc.url)}&download=false${token ? `&token=${encodeURIComponent(token)}` : ''}`;
+                                        window.open(proxyUrl, '_blank', 'noopener,noreferrer');
+                                    }}
+                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+                                    title="Open in new window"
+                                >
+                                    <ExternalLink size={15} />
+                                    <span className="hidden sm:inline">New Tab</span>
+                                </button>
+
+                                <button
+                                    type="button"
+                                    onClick={handleClosePreviewModal}
+                                    className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors ml-1"
+                                    aria-label="Close Preview"
+                                >
+                                    <X size={20} />
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Body */}
+                        <div className="flex-1 bg-slate-100 overflow-hidden relative flex items-center justify-center">
+                            {previewModalDoc.loading ? (
+                                <div className="flex flex-col items-center justify-center gap-3 p-8">
+                                    <Loader2 size={36} className="animate-spin text-blue-600" />
+                                    <p className="text-sm font-medium text-slate-600">Preparing document preview...</p>
+                                </div>
+                            ) : previewModalDoc.error ? (
+                                <div className="flex flex-col items-center justify-center gap-3 p-8 text-center max-w-md">
+                                    <div className="h-12 w-12 rounded-full bg-red-100 text-red-600 flex items-center justify-center">
+                                        <AlertCircle size={24} />
+                                    </div>
+                                    <h4 className="text-base font-semibold text-slate-800">Preview Unavailable</h4>
+                                    <p className="text-sm text-slate-500">{previewModalDoc.error}</p>
+                                    <Button
+                                        onClick={() => handleDownload(previewModalDoc.doc)}
+                                        className="mt-2"
+                                    >
+                                        <Download size={16} className="mr-2" />
+                                        Download File Instead
+                                    </Button>
+                                </div>
+                            ) : previewModalDoc.isImage ? (
+                                <div className="w-full h-full flex items-center justify-center p-4 overflow-auto">
+                                    <img
+                                        src={previewModalDoc.url}
+                                        alt={previewModalDoc.doc.title}
+                                        className="max-h-full max-w-full object-contain rounded-lg shadow-sm"
+                                    />
+                                </div>
+                            ) : (
+                                <iframe
+                                    src={`${previewModalDoc.url}#toolbar=1&navpanes=0`}
+                                    title={previewModalDoc.doc.title}
+                                    className="w-full h-full border-0 bg-white"
+                                />
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
+
     );
 };

@@ -99,12 +99,19 @@ export const HrisTab = ({
             isValid = false;
         }
 
-        if (!iden.aadhaarNumber || !iden.aadhaarNumber.trim()) {
+        const rawAadhaar = String(iden.aadhaarNumber || '').trim();
+        if (!rawAadhaar) {
             errors['identity.aadhaarNumber'] = 'Required';
             isValid = false;
-        } else if (!/^\d{12}$/.test(iden.aadhaarNumber.trim())) {
-            errors['identity.aadhaarNumber'] = 'Aadhaar Card Number must be a 12-digit number';
+        } else if (rawAadhaar.includes('-')) {
+            errors['identity.aadhaarNumber'] = "Hyphens ('-') are not allowed in Aadhaar Card Number";
             isValid = false;
+        } else {
+            const cleanAadhaar = rawAadhaar.replace(/\s+/g, '');
+            if (!/^\d{12}$/.test(cleanAadhaar)) {
+                errors['identity.aadhaarNumber'] = 'Aadhaar Card Number must be a 12-digit number';
+                isValid = false;
+            }
         }
 
         if (formData.compensation?.isUanApplicable === true) {
@@ -292,6 +299,12 @@ export const HrisTab = ({
         try {
             setSavingSection('hris');
             const dataToSubmit = { ...formData };
+            if (dataToSubmit.identity?.aadhaarNumber) {
+                dataToSubmit.identity = {
+                    ...dataToSubmit.identity,
+                    aadhaarNumber: String(dataToSubmit.identity.aadhaarNumber).replace(/\s+/g, '')
+                };
+            }
 
             let declared = forceIsDeclared !== undefined ? forceIsDeclared : !!formData.hris?.isDeclared;
 
@@ -689,7 +702,27 @@ export const HrisTab = ({
                             <Field section="identity" isEditing={isEditing} label="PAN Card Number" field="panNumber" value={profile.identity?.panNumber} formData={formData} onChange={handleInputChange} required error={validationErrors['identity.panNumber']} />
                         </PendingHighlight>
                         <PendingHighlight show={showPending} label="Aadhaar Card Number" liveValue={profile.identity?.aadhaarNumber} pendingValue={pend.identity?.aadhaarNumber}>
-                            <Field section="identity" isEditing={isEditing} label="Aadhaar Card Number" field="aadhaarNumber" value={profile.identity?.aadhaarNumber} formData={formData} onChange={handleInputChange} required error={validationErrors['identity.aadhaarNumber']} />
+                            <Field
+                                section="identity"
+                                isEditing={isEditing}
+                                label="Aadhaar Card Number"
+                                field="aadhaarNumber"
+                                value={profile.identity?.aadhaarNumber}
+                                formData={formData}
+                                onChange={handleInputChange}
+                                onBlur={() => {
+                                    const current = formData.identity?.aadhaarNumber;
+                                    if (current && typeof current === 'string' && current.includes(' ')) {
+                                        handleInputChange('identity', 'aadhaarNumber', current.replace(/\s+/g, ''));
+                                    }
+                                }}
+                                required
+                                error={
+                                    formData.identity?.aadhaarNumber && String(formData.identity.aadhaarNumber).includes('-')
+                                        ? "Hyphens ('-') are not allowed in Aadhaar Card Number"
+                                        : validationErrors['identity.aadhaarNumber']
+                                }
+                            />
                         </PendingHighlight>
                         <PendingHighlight show={showPending} label="Passport Number" liveValue={profile.identity?.passportNumber} pendingValue={pend.identity?.passportNumber}>
                             <Field section="identity" isEditing={isEditing} label="Passport Number" field="passportNumber" value={profile.identity?.passportNumber} formData={formData} onChange={handleInputChange} />
