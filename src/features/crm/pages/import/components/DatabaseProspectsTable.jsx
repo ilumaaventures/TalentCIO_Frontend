@@ -579,10 +579,32 @@ export const DatabaseProspectsTable = ({
 
         {/* Table Footer */}
         <div className="p-3 border-t border-slate-100 bg-slate-50/60 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
             <span className="font-medium text-slate-700">
               {selectedIds.length} of {records.length} selected
             </span>
+
+            {/* Entries per page options in footer */}
+            <div className="flex items-center gap-1 text-[11px] text-slate-600 border-l border-slate-200 pl-3">
+              <span className="text-[10.5px] font-medium text-slate-500">Show:</span>
+              <div className="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-0.5 shadow-2xs">
+                {[50, 80, 100].map((size) => (
+                  <button
+                    key={size}
+                    type="button"
+                    onClick={() => handlePageSizeChange(size)}
+                    className={`px-2 py-0.5 rounded-md text-[10.5px] font-semibold transition cursor-pointer ${
+                      pageSize === size
+                        ? 'bg-indigo-600 text-white shadow-2xs'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-white'
+                    }`}
+                  >
+                    {size}
+                  </button>
+                ))}
+              </div>
+              <span className="text-[10.5px] text-slate-400">entries</span>
+            </div>
           </div>
 
           {totalPages > 1 && (

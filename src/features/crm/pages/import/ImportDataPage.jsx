@@ -231,6 +231,29 @@ export const ImportDataPage = ({ onNavigate }) => {
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+    }, 300);
+    return () => clearTimeout(handler);
+  }, [searchQuery]);
+
+  const [serverPagination, setServerPagination] = useState({
+    total: 0,
+    totalAll: 0,
+    page: 1,
+    limit: 50,
+    totalPages: 1,
+  });
+  const [serverMetrics, setServerMetrics] = useState({
+    totalAll: 0,
+    totalMatching: 0,
+    todayCount: 0,
+    convertedCount: 0,
+    statusChangedCount: 0,
+    sources: [],
+  });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
@@ -645,40 +668,96 @@ export const ImportDataPage = ({ onNavigate }) => {
     }
   }, []);
 
+  const requestIdRef = useRef(0);
   // Fetch active import data from server and reconcile with workspace
   const syncWithServer = useCallback(async (forceVerify = false) => {
-    if (isSyncingRef.current) return;
-    isSyncingRef.current = true;
+    const currentReqId = ++requestIdRef.current;
     try {
-      const res = await dataService.getImportData({ all: 'true' });
+      const params = {
+        page: currentPage,
+        limit: pageSize,
+        dateFilter,
+        dateFilterType,
+        sortBy: dateFilterType === 'createdAt' ? 'createdAt' : 'updatedAt',
+        sortOrder: sortDirection,
+      };
+
+      if (dateFilter === 'custom') {
+        if (fromDate) params.fromDate = fromDate;
+        if (toDate) params.toDate = toDate;
+      }
+
+      if (debouncedSearch && debouncedSearch.trim()) {
+        params.search = debouncedSearch.trim();
+      }
+
+      if (selectedUsers && selectedUsers.length > 0) {
+        params.importedBy = selectedUsers.join(',');
+      }
+
+      if (selectedStatuses && selectedStatuses.length > 0) {
+        params.status = selectedStatuses.join(',');
+      }
+
+      if (selectedSources && selectedSources.length > 0) {
+        params.source = selectedSources.join(',');
+      }
+
+      if (showConvertedOnly) {
+        params.showConvertedOnly = 'true';
+      }
+
+      if (showStatusChangedOnly) {
+        params.showStatusChangedOnly = 'true';
+      }
+
+      const res = await dataService.getImportData(params);
+      if (currentReqId !== requestIdRef.current) return;
+
       if (res?.success && Array.isArray(res.data)) {
         const serverRows = res.data;
-        if (serverRows.length > 0) {
-          const mappedServer = serverRows.map((s) => ({
-            ...s,
-            importedBy: s.importedBy || (canViewAll ? '' : currentUserName),
-            importedByUserId: s.importedByUserId || null,
-          }));
-          setRecords(mappedServer);
-          safePersistToStorage(userStorageKey, mappedServer);
-          // Verify CRM lead status for the fresh server records once
-          verifyLeadsStatus(mappedServer, forceVerify);
-        } else {
-          setRecords((prev) => {
-            if (canViewAll && prev.length > 0) {
-              dataService.syncImportData(prev).catch(console.warn);
-              return prev;
-            }
-            return [];
-          });
+        const mappedServer = serverRows.map((s) => ({
+          ...s,
+          importedBy: s.importedBy || (canViewAll ? '' : currentUserName),
+          importedByUserId: s.importedByUserId || null,
+        }));
+        setRecords(mappedServer);
+        safePersistToStorage(userStorageKey, mappedServer);
+
+        if (res.pagination) {
+          setServerPagination(res.pagination);
         }
+        if (res.metrics) {
+          setServerMetrics(res.metrics);
+        }
+
+        // Verify CRM lead status for the fresh server records once
+        verifyLeadsStatus(mappedServer, forceVerify);
       }
     } catch (err) {
-      console.warn('Failed to sync import data from server:', err);
-    } finally {
-      isSyncingRef.current = false;
+      if (currentReqId === requestIdRef.current) {
+        console.warn('Failed to sync import data from server:', err);
+      }
     }
-  }, [canViewAll, currentUserName, userStorageKey, verifyLeadsStatus]);
+  }, [
+    currentPage,
+    pageSize,
+    dateFilter,
+    dateFilterType,
+    fromDate,
+    toDate,
+    debouncedSearch,
+    selectedUsers,
+    selectedStatuses,
+    selectedSources,
+    showConvertedOnly,
+    showStatusChangedOnly,
+    sortDirection,
+    canViewAll,
+    currentUserName,
+    userStorageKey,
+    verifyLeadsStatus,
+  ]);
 
   useEffect(() => {
     syncWithServer();
@@ -713,7 +792,16 @@ export const ImportDataPage = ({ onNavigate }) => {
   const handleFileUpload = async (file) => {
     if (!file) return;
     try {
-      const staged = await parseExcelFile(file, records, currentUserName, user);
+      let fullExisting = records;
+      try {
+        const fullRes = await dataService.getImportData({ all: 'true' });
+        if (fullRes?.success && Array.isArray(fullRes.data)) {
+          fullExisting = fullRes.data;
+        }
+      } catch (e) {
+        console.warn('Could not fetch all records for duplicate check, falling back to loaded records', e);
+      }
+      const staged = await parseExcelFile(file, fullExisting, currentUserName, user);
       setStagedData(staged);
       setShowPreview(true);
       setPreviewTab('all');
@@ -983,6 +1071,7 @@ export const ImportDataPage = ({ onNavigate }) => {
 
     setSelectedIds([]);
     setStagedData(null);
+    syncWithServer(true);
 
     if (newRows.length > 0 && updateRows.length > 0) {
       toast.success(`Imported ${newRows.length} new records and updated ${updateRows.length} existing records.`);
@@ -1004,16 +1093,44 @@ export const ImportDataPage = ({ onNavigate }) => {
 
   // Export Database records to Excel (.xlsx)
   const handleExportData = async () => {
-    const dateFiltered = filteredAndSortedRecords;
     let rowsToExport = [];
     if (selectedIds.length > 0) {
-      rowsToExport = dateFiltered.filter((r) => selectedIds.includes(r.id));
+      rowsToExport = records.filter((r) => selectedIds.includes(r.id));
       if (rowsToExport.length === 0) {
-        toast.error('None of the selected records match the active date filter.');
+        toast.error('None of the selected records match.');
         return;
       }
     } else {
-      rowsToExport = dateFiltered;
+      toast('Preparing export for all matching records...', { icon: '⏳' });
+      try {
+        const params = {
+          all: 'true',
+          dateFilter,
+          dateFilterType,
+          sortBy: dateFilterType === 'createdAt' ? 'createdAt' : 'updatedAt',
+          sortOrder: sortDirection,
+        };
+        if (dateFilter === 'custom') {
+          if (fromDate) params.fromDate = fromDate;
+          if (toDate) params.toDate = toDate;
+        }
+        if (debouncedSearch && debouncedSearch.trim()) params.search = debouncedSearch.trim();
+        if (selectedUsers && selectedUsers.length > 0) params.importedBy = selectedUsers.join(',');
+        if (selectedStatuses && selectedStatuses.length > 0) params.status = selectedStatuses.join(',');
+        if (selectedSources && selectedSources.length > 0) params.source = selectedSources.join(',');
+        if (showConvertedOnly) params.showConvertedOnly = 'true';
+        if (showStatusChangedOnly) params.showStatusChangedOnly = 'true';
+
+        const res = await dataService.getImportData(params);
+        if (res?.success && Array.isArray(res.data)) {
+          rowsToExport = res.data;
+        } else {
+          rowsToExport = records;
+        }
+      } catch (e) {
+        console.warn('Failed to fetch full matching records for export', e);
+        rowsToExport = records;
+      }
     }
     await exportRecordsToExcel({ rowsToExport, dateFilter });
   };
@@ -1086,74 +1203,12 @@ export const ImportDataPage = ({ onNavigate }) => {
     }
   }, [dateFilter, fromDate, toDate, dateFilterType]);
 
-  // Scoped records: when user does not have view_all permission, strictly restrict to their own records
-  const scopedRecords = useMemo(() => {
-    if (canViewAll) return records;
-    const currUser = (currentUserName || '').trim().toLowerCase();
-    const myId = user?._id ? String(user._id) : '';
-    return records.filter((r) => {
-      const recUser = (r.importedBy || '').trim().toLowerCase();
-      const recUserId = r.importedByUserId ? String(r.importedByUserId) : '';
-      const assignedId = r.assignedTo ? String(r.assignedTo) : '';
-      return (
-        (myId && (recUserId === myId || assignedId === myId)) ||
-        (currUser && recUser === currUser)
-      );
-    });
-  }, [records, canViewAll, currentUserName, user?._id]);
-
-  // Filter scoped records by selected user(s) (Imported By)
-  const userFilteredRecords = useMemo(() => {
-    if (selectedUsers.length === 0) return scopedRecords;
-    return scopedRecords.filter((item) => {
-      const itemUser = (item.importedBy || '').trim().toLowerCase();
-      const itemUserId = item.importedByUserId ? String(item.importedByUserId).toLowerCase() : '';
-      return selectedUsers.some((selected) => {
-        const selLower = selected.trim().toLowerCase();
-
-        // When item has an importedBy name, it MUST match the selected user
-        if (itemUser) {
-          if (itemUser === selLower) return true;
-          const opt = activeUserOptions.find(
-            (o) => o.name.toLowerCase() === selLower || String(o.id).toLowerCase() === selLower
-          );
-          if (opt && itemUser === opt.name.toLowerCase()) return true;
-          return false;
-        }
-
-        // Fallback when importedBy is empty: match by user ID
-        if (itemUserId && itemUserId === selLower) return true;
-        const opt = activeUserOptions.find(
-          (o) => o.name.toLowerCase() === selLower || String(o.id).toLowerCase() === selLower
-        );
-        if (opt && itemUserId && String(opt.id).toLowerCase() === itemUserId) return true;
-        return false;
-      });
-    });
-  }, [scopedRecords, selectedUsers, activeUserOptions]);
-
-  // Records filtered strictly by the date filter (used for Table and active filter matching)
-  const dateFilteredRecords = useMemo(() => {
-    return userFilteredRecords.filter((item) => isRecordInDateFilter(item, dateFilter, fromDate, toDate, dateFilterType));
-  }, [userFilteredRecords, dateFilter, fromDate, toDate, dateFilterType]);
-
-  // Records imported/updated today (always calculated for the Today metric card)
-  const todayFilteredRecords = useMemo(() => {
-    return userFilteredRecords.filter((item) => isRecordInDateFilter(item, 'today', '', '', dateFilterType));
-  }, [userFilteredRecords, dateFilterType]);
-  const todayFilteredCount = todayFilteredRecords.length;
-
-  // Card metric values (dynamically reflecting active Imported By and Date filters)
-  const totalDataCount = userFilteredRecords.length;
-  const dateFilteredCount = dateFilteredRecords.length;
-
-  const dateFilteredConvertedCount = useMemo(() => {
-    return dateFilteredRecords.filter(isConvertedLead).length;
-  }, [dateFilteredRecords]);
-
-  const dateFilteredStatusChangedCount = useMemo(() => {
-    return dateFilteredRecords.filter(isStatusChangedRecord).length;
-  }, [dateFilteredRecords]);
+  // Scoped metrics & counts from server
+  const totalDataCount = serverMetrics.totalAll || serverPagination.totalAll || serverPagination.total || records.length;
+  const dateFilteredCount = serverPagination.total ?? records.length;
+  const todayFilteredCount = serverMetrics.todayCount ?? (dateFilter === 'today' ? dateFilteredCount : 0);
+  const dateFilteredConvertedCount = serverMetrics.convertedCount ?? 0;
+  const dateFilteredStatusChangedCount = serverMetrics.statusChangedCount ?? 0;
 
   // Status Filter options & live counts
   const allFilterableStatuses = useMemo(() => {
@@ -1169,16 +1224,19 @@ export const ImportDataPage = ({ onNavigate }) => {
 
   const statusCounts = useMemo(() => {
     const map = {};
-    dateFilteredRecords.forEach((r) => {
+    records.forEach((r) => {
       const s = r.isConvertedToLead ? 'Converted to Lead' : (r.status || r.leadStatus || 'New');
       map[s] = (map[s] || 0) + 1;
     });
     return map;
-  }, [dateFilteredRecords]);
+  }, [records]);
 
-  // Source Filter options & live counts
+  // Source Filter options & live counts (combining all DB sources from metrics with current page)
   const availableSources = useMemo(() => {
     const map = {};
+    (serverMetrics.sources || []).forEach((src) => {
+      if (src) map[src] = 0;
+    });
     records.forEach((r) => {
       const src = (r.source || r.leadSource || '').trim();
       if (src) map[src] = (map[src] || 0) + 1;
@@ -1187,7 +1245,7 @@ export const ImportDataPage = ({ onNavigate }) => {
       name,
       count: map[name] || 0,
     }));
-  }, [records]);
+  }, [serverMetrics.sources, records]);
 
   const filteredSourceOptions = useMemo(() => {
     if (!sourceFilterSearch.trim()) return availableSources;
@@ -1238,84 +1296,18 @@ export const ImportDataPage = ({ onNavigate }) => {
     toast.success('Filters cleared (Reset to Today, Updated At)');
   };
 
-  // Filter & Sort Logic for Active Records
-  const filteredAndSortedRecords = useMemo(() => {
-    return dateFilteredRecords
-      .filter((item) => {
-        // Filter by Converted to Lead if card filter is active
-        if (showConvertedOnly && !isConvertedLead(item)) {
-          return false;
-        }
-
-        // Filter by Status Changes if card filter is active
-        if (showStatusChangedOnly && !isStatusChangedRecord(item)) {
-          return false;
-        }
-
-        // Filter by Status (multi-select)
-        if (selectedStatuses.length > 0) {
-          const itemStatus = item.isConvertedToLead
-            ? 'Converted to Lead'
-            : (item.status || item.leadStatus || 'New');
-          const matches = selectedStatuses.some(
-            (s) => s.toLowerCase() === itemStatus.toLowerCase()
-          );
-          if (!matches) return false;
-        }
-
-        // Filter by Source (multi-select)
-        if (selectedSources.length > 0) {
-          const itemSrc = (item.source || item.leadSource || '').trim().toLowerCase();
-          const matches = selectedSources.some(
-            (src) => src.toLowerCase() === itemSrc
-          );
-          if (!matches) return false;
-        }
-
-        if (!searchQuery.trim()) return true;
-        const q = searchQuery.toLowerCase();
-        const matchCompany = item.companyName?.toLowerCase().includes(q);
-        const matchPerson = item.contactPerson?.toLowerCase().includes(q);
-        const matchEmail = item.emailId?.toLowerCase().includes(q);
-        const matchMobile = item.mobileNo?.toLowerCase().includes(q);
-        const matchIndustry = item.industry?.toLowerCase().includes(q);
-        const matchAddress = item.address?.toLowerCase().includes(q);
-        const matchUser = item.importedBy?.toLowerCase().includes(q);
-        return matchCompany || matchPerson || matchEmail || matchMobile || matchIndustry || matchAddress || matchUser;
-      })
-      .sort((a, b) => {
-        // Converted-to-lead rows always go to the bottom
-        const aConverted = a.isConvertedToLead ? 1 : 0;
-        const bConverted = b.isConvertedToLead ? 1 : 0;
-        if (aConverted !== bConverted) return aConverted - bConverted;
-        // Within each group keep the user's chosen date sort respecting date basis
-        const getDateForSort = (rec) => {
-          if (dateFilterType === 'createdAt') {
-            return new Date(rec.createdAt || rec.date).getTime() || 0;
-          }
-          return new Date(rec.updatedAt || rec.lastContactedAt || rec.date || rec.createdAt).getTime() || 0;
-        };
-        const dateA = getDateForSort(a);
-        const dateB = getDateForSort(b);
-        return sortDirection === 'desc' ? dateB - dateA : dateA - dateB;
-      });
-  }, [dateFilteredRecords, searchQuery, sortDirection, showConvertedOnly, showStatusChangedOnly, dateFilterType, selectedStatuses, selectedSources]);
-
   // Reset to first page when any filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [dateFilter, dateFilterType, fromDate, toDate, selectedUsers, selectedStatuses, selectedSources, searchQuery, sortDirection, showConvertedOnly, showStatusChangedOnly]);
+  }, [dateFilter, dateFilterType, fromDate, toDate, selectedUsers, selectedStatuses, selectedSources, debouncedSearch, sortDirection, showConvertedOnly, showStatusChangedOnly]);
 
   // Pagination calculation
-  const totalMatchingRecords = filteredAndSortedRecords.length;
-  const totalPages = Math.max(1, Math.ceil(totalMatchingRecords / pageSize));
+  const totalMatchingRecords = serverPagination.total ?? records.length;
+  const totalPages = Math.max(1, serverPagination.totalPages || Math.ceil(totalMatchingRecords / pageSize));
   const validCurrentPage = Math.min(Math.max(1, currentPage), totalPages);
 
-  // Paginated slice for the current page view
-  const paginatedRecords = useMemo(() => {
-    const startIndex = (validCurrentPage - 1) * pageSize;
-    return filteredAndSortedRecords.slice(startIndex, startIndex + pageSize);
-  }, [filteredAndSortedRecords, validCurrentPage, pageSize]);
+  // Paginated records directly from server
+  const paginatedRecords = records;
 
   // Entry counters
   const startEntry = totalMatchingRecords === 0 ? 0 : (validCurrentPage - 1) * pageSize + 1;
@@ -1406,8 +1398,8 @@ export const ImportDataPage = ({ onNavigate }) => {
   };
 
   const nonDuplicateIds = useMemo(() => {
-    return filteredAndSortedRecords.filter((r) => !r.isDuplicate).map((r) => r.id);
-  }, [filteredAndSortedRecords]);
+    return records.filter((r) => !r.isDuplicate).map((r) => r.id);
+  }, [records]);
 
   const handleSelectOnlyNew = () => {
     setSelectedIds(nonDuplicateIds);
@@ -2104,7 +2096,7 @@ export const ImportDataPage = ({ onNavigate }) => {
                 todayFilteredCount={todayFilteredCount}
                 dateFilteredCount={dateFilteredCount}
                 dateFilteredConvertedCount={dateFilteredConvertedCount}
-                scopedRecords={scopedRecords}
+                scopedRecords={{ length: totalDataCount }}
                 dateFilterInfo={dateFilterInfo}
                 onNavigate={onNavigate}
               />
