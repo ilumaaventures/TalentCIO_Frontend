@@ -770,6 +770,7 @@ export const ImportDataPage = ({ onNavigate }) => {
 
       const updatedList = [...prevList];
       const unshiftedUpdates = [];
+      const actuallyModifiedRows = [];
 
       updateRows.forEach((uRow) => {
         let matchIdx = -1;
@@ -865,6 +866,7 @@ export const ImportDataPage = ({ onNavigate }) => {
             importedBy: uRow.importedBy || ex.importedBy || currentUserName,
             importedByUserId: uRow.importedByUserId || ex.importedByUserId || null,
           };
+          actuallyModifiedRows.push(updatedList[matchIdx]);
         } else {
           unshiftedUpdates.push({
             ...uRow,
@@ -916,10 +918,13 @@ export const ImportDataPage = ({ onNavigate }) => {
 
       const combined = [...newRowsWithUser, ...unshiftedUpdates, ...updatedList];
 
-      // Sync updated list with server
-      dataService.syncImportData(combined).catch((err) => {
-        console.warn('Failed to sync import records with server:', err);
-      });
+      // Sync ONLY newly imported and actually updated records with server (not all existing records)
+      const rowsToSync = [...newRowsWithUser, ...unshiftedUpdates, ...actuallyModifiedRows];
+      if (rowsToSync.length > 0) {
+        dataService.syncImportData(rowsToSync).catch((err) => {
+          console.warn('Failed to sync import records with server:', err);
+        });
+      }
 
       return combined;
     });
@@ -1659,7 +1664,10 @@ export const ImportDataPage = ({ onNavigate }) => {
               dataService.updateImportDataStatus(r._id || r.id, 'Converted to Lead')
             )
           ).catch(console.warn);
-          dataService.syncImportData(updated).catch(console.warn);
+          const convertedRows = updated.filter((r) => sentIds.has(r.id));
+          if (convertedRows.length > 0) {
+            dataService.syncImportData(convertedRows).catch(console.warn);
+          }
 
           toast.success(
             skippedDups > 0
