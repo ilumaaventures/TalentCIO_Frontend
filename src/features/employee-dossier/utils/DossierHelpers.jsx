@@ -42,7 +42,7 @@ export const DOSSIER_ALLOWED_FILE_TYPES = new Set([
 ]);
 
 // Helper Components defined outside to prevent re-renders
-export const Field = ({ label, value, section, field, type = "text", options = null, isEditing, hideIfEmpty, onChangeOverride, valueOverride, placeholder, formData, onChange, maxLength, error, required, dateFormat = "dd MMM yyyy" }) => {
+export const Field = ({ label, value, section, field, type = "text", options = null, isEditing, hideIfEmpty, onChangeOverride, valueOverride, placeholder, formData, onChange, onBlur, maxLength, error, required, dateFormat = "dd MMM yyyy" }) => {
     const rawCurrentValue = valueOverride !== undefined ? valueOverride : formData?.[section]?.[field];
     const currentValue = rawCurrentValue ?? '';
     const handleChange = onChangeOverride || ((e) => onChange(section, field, e.target.value));
@@ -82,6 +82,7 @@ export const Field = ({ label, value, section, field, type = "text", options = n
                             type={type}
                             value={type === 'date' && currentValue ? new Date(currentValue).toISOString().split('T')[0] : currentValue}
                             onChange={handleChange}
+                            onBlur={onBlur}
                             placeholder={placeholder}
                             maxLength={maxLength}
                             className={`w-full p-2 border rounded-md text-sm focus:ring-2 focus:ring-blue-100 outline-none ${error ? 'border-red-500 bg-red-50' : 'border-slate-300'}`}

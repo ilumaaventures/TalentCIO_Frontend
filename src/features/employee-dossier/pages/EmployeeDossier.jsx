@@ -564,6 +564,14 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
         }
         if (section === 'identity') {
             if (isEmpty(data.aadhaarNumber) || isEmpty(data.panNumber)) return 'All fields are required';
+            const rawAadhaar = String(data.aadhaarNumber || '').trim();
+            if (rawAadhaar.includes('-')) {
+                return "Hyphens ('-') are not allowed in Aadhaar Number";
+            }
+            const cleanAadhaar = rawAadhaar.replace(/\s+/g, '');
+            if (!/^\d{12}$/.test(cleanAadhaar)) {
+                return 'Aadhaar Number must be a 12-digit number';
+            }
         }
         if (section === 'family') {
             if (isEmpty(data.fatherName) || isEmpty(data.motherName)) return 'All fields are required';
@@ -599,7 +607,13 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
 
         try {
             setSavingSection(section);
-            const updates = formData[section];
+            let updates = formData[section];
+            if (section === 'identity' && updates?.aadhaarNumber) {
+                updates = {
+                    ...updates,
+                    aadhaarNumber: String(updates.aadhaarNumber).replace(/\s+/g, '')
+                };
+            }
             await api.patch(`/dossier/${userId}/${section}`, updates);
             toast.success('Changes saved successfully');
             setEditMode(false);
@@ -639,10 +653,15 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
 
         try {
             setSavingSection('personal_all');
+            const identityData = formData.identity ? {
+                ...formData.identity,
+                aadhaarNumber: formData.identity.aadhaarNumber ? String(formData.identity.aadhaarNumber).replace(/\s+/g, '') : formData.identity.aadhaarNumber
+            } : formData.identity;
+
             await Promise.all([
                 api.patch(`/dossier/${userId}/personal`, formData.personal),
                 api.patch(`/dossier/${userId}/contact`, formData.contact),
-                api.patch(`/dossier/${userId}/identity`, formData.identity),
+                api.patch(`/dossier/${userId}/identity`, identityData),
                 api.patch(`/dossier/${userId}/family`, formData.family)
             ]);
             toast.success('All personal details saved successfully');
