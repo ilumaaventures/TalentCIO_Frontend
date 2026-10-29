@@ -313,15 +313,19 @@ export const EmployeePerformance = ({ userId, employee: initialEmployee = null, 
                     <tr key={p._id} className="hover:bg-slate-50/70 transition-colors">
                       <td className="py-3.5 px-5">
                         <div className="flex items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => navigate(`/projects/${p._id}`)}
-                            className="font-bold text-blue-600 hover:text-blue-800 hover:underline inline-flex items-center gap-1.5 cursor-pointer text-left"
-                            title="Open Project"
-                          >
-                            <span>{p.name}</span>
-                            <ExternalLink size={12} className="opacity-70" />
-                          </button>
+                          {p._id !== 'unassigned' ? (
+                            <button
+                              type="button"
+                              onClick={() => navigate(`/projects/${p._id}`)}
+                              className="font-bold text-blue-600 hover:text-blue-800 hover:underline inline-flex items-center gap-1.5 cursor-pointer text-left"
+                              title="Open Project"
+                            >
+                              <span>{p.name}</span>
+                              <ExternalLink size={12} className="opacity-70" />
+                            </button>
+                          ) : (
+                            <span className="font-semibold text-slate-700">{p.name}</span>
+                          )}
                         </div>
                       </td>
                       <td className="py-3.5 px-4">
