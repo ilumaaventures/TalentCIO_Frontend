@@ -331,7 +331,7 @@ export const sanitizeSheetName = (rawName, code = '', existingNames = new Set())
     return candidate;
 };
 
-export const buildBulkTimesheetWorkbook = async ({ month, teamMembers = [], workLogsByUser = {}, timesheets = {}, startDate, endDate }) => {
+export const buildBulkTimesheetWorkbook = async ({ month, teamMembers = [], workLogsByUser = {}, timesheets = {}, startDate, endDate, assignedProjectsByUser = {} }) => {
     const workbook = new ExcelJS.Workbook();
     const existingNames = new Set();
     const [yearNum, monthNum] = (month || format(new Date(), 'yyyy-MM')).split('-').map(Number);
@@ -343,7 +343,7 @@ export const buildBulkTimesheetWorkbook = async ({ month, teamMembers = [], work
     const summarySheet = workbook.addWorksheet('Summary');
     existingNames.add('summary');
 
-    summarySheet.mergeCells('A1:F1');
+    summarySheet.mergeCells('A1:I1');
     const titleCell = summarySheet.getCell('A1');
     titleCell.value = `Team Timesheets Summary - ${format(reportDate, 'MMMM yyyy')}`;
     titleCell.font = { bold: true, size: 15, color: { argb: 'FFFFFFFF' } };
@@ -351,7 +351,7 @@ export const buildBulkTimesheetWorkbook = async ({ month, teamMembers = [], work
     titleCell.alignment = { vertical: 'middle', horizontal: 'center' };
     summarySheet.getRow(1).height = 30;
 
-    summarySheet.mergeCells('A2:F2');
+    summarySheet.mergeCells('A2:I2');
     summarySheet.getCell('A2').value = `Period: ${format(start, 'dd-MM-yyyy')} to ${format(end, 'dd-MM-yyyy')} | Total Employees: ${teamMembers.length}`;
     summarySheet.getCell('A2').font = { size: 11, italic: true, color: { argb: 'FF475569' } };
     summarySheet.getCell('A2').alignment = { vertical: 'middle', horizontal: 'center' };
@@ -360,12 +360,12 @@ export const buildBulkTimesheetWorkbook = async ({ month, teamMembers = [], work
     summarySheet.addRow([]);
 
     const sumHeader = summarySheet.addRow([
-        'Employee Name', 'Employee Code', 'Department', 'Designation', 'Total Hours Logged', 'Timesheet Status'
+        'Employee Name', 'Employee Code', 'Department', 'Designation', 'Total Projects', 'Project Name', 'Hours Spent', 'Total Hours Logged', 'Timesheet Status'
     ]);
     sumHeader.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
     sumHeader.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF334155' } };
     sumHeader.alignment = { vertical: 'middle', horizontal: 'center' };
-    sumHeader.height = 24;
+    sumHeader.height = 25;
 
     let grandTotalHours = 0;
 
@@ -380,29 +380,111 @@ export const buildBulkTimesheetWorkbook = async ({ month, teamMembers = [], work
         const desigTitle = member.designationRef?.title || member.designation || '-';
         const status = ts.status || (logs.length > 0 ? 'DRAFT' : 'NOT STARTED');
 
-        const row = summarySheet.addRow([
-            `${member.firstName} ${member.lastName || ''}`.trim(),
-            member.employeeCode || '-',
-            deptName,
-            desigTitle,
-            Number(totalUserHours.toFixed(2)),
-            status
-        ]);
-        row.alignment = { vertical: 'middle' };
-        row.getCell(5).alignment = { horizontal: 'right' };
-        row.getCell(6).alignment = { horizontal: 'center' };
+        // Compile project list: union of assigned projects and logged projects
+        const assignedList = (assignedProjectsByUser && assignedProjectsByUser[uId]) || [];
+        const projectMap = new Map();
+
+        assignedList.forEach(p => {
+            const key = p._id ? String(p._id) : (p.name || 'Unnamed Project');
+            projectMap.set(key, {
+                name: p.name || 'Unnamed Project',
+                hours: 0
+            });
+        });
+
+        logs.forEach(log => {
+            const projObj = log.project || {};
+            const key = projObj._id ? String(projObj._id) : (projObj.name || log.projectName || 'General / Unassigned');
+            const name = projObj.name || log.projectName || 'General / Unassigned';
+            const hrs = Number(log.hours) || 0;
+
+            if (projectMap.has(key)) {
+                projectMap.get(key).hours += hrs;
+            } else {
+                projectMap.set(key, {
+                    name,
+                    hours: hrs
+                });
+            }
+        });
+
+        const projectItems = Array.from(projectMap.values());
+        const totalProjectsCount = projectItems.length;
+
+        // If no projects found, show 1 row with placeholder
+        const displayItems = projectItems.length > 0
+            ? projectItems
+            : [{ name: 'No Projects Assigned', hours: 0 }];
+
+        const startRowNum = summarySheet.lastRow.number + 1;
+
+        displayItems.forEach((item) => {
+            const row = summarySheet.addRow([
+                `${member.firstName} ${member.lastName || ''}`.trim(),
+                member.employeeCode || '-',
+                deptName,
+                desigTitle,
+                totalProjectsCount,
+                item.name,
+                Number(item.hours.toFixed(2)),
+                Number(totalUserHours.toFixed(2)),
+                status
+            ]);
+            row.height = 22;
+            row.alignment = { vertical: 'middle' };
+
+            row.getCell(1).alignment = { vertical: 'middle', horizontal: 'left' };
+            row.getCell(2).alignment = { vertical: 'middle', horizontal: 'center' };
+            row.getCell(3).alignment = { vertical: 'middle', horizontal: 'left' };
+            row.getCell(4).alignment = { vertical: 'middle', horizontal: 'left' };
+            row.getCell(5).alignment = { vertical: 'middle', horizontal: 'center' };
+            row.getCell(6).alignment = { vertical: 'middle', horizontal: 'left' };
+            row.getCell(7).alignment = { vertical: 'middle', horizontal: 'right' };
+            row.getCell(8).alignment = { vertical: 'middle', horizontal: 'right' };
+            row.getCell(9).alignment = { vertical: 'middle', horizontal: 'center' };
+
+            if (status === 'REJECTED') {
+                row.getCell(9).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEE2E2' } };
+                row.getCell(9).font = { color: { argb: 'FFDC2626' }, bold: true };
+            } else if (status === 'APPROVED') {
+                row.getCell(9).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDCFCE7' } };
+                row.getCell(9).font = { color: { argb: 'FF16A34A' }, bold: true };
+            } else if (status === 'SUBMITTED') {
+                row.getCell(9).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEF3C7' } };
+                row.getCell(9).font = { color: { argb: 'FFD97706' }, bold: true };
+            } else if (status === 'DRAFT') {
+                row.getCell(9).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } };
+                row.getCell(9).font = { color: { argb: 'FF64748B' }, bold: true };
+            }
+        });
+
+        const endRowNum = summarySheet.lastRow.number;
+
+        if (endRowNum > startRowNum) {
+            summarySheet.mergeCells(startRowNum, 1, endRowNum, 1);
+            summarySheet.mergeCells(startRowNum, 2, endRowNum, 2);
+            summarySheet.mergeCells(startRowNum, 3, endRowNum, 3);
+            summarySheet.mergeCells(startRowNum, 4, endRowNum, 4);
+            summarySheet.mergeCells(startRowNum, 5, endRowNum, 5);
+            summarySheet.mergeCells(startRowNum, 8, endRowNum, 8);
+            summarySheet.mergeCells(startRowNum, 9, endRowNum, 9);
+        }
     });
 
     const sumTotalRow = summarySheet.addRow([
-        'Grand Total', '', '', '', Number(grandTotalHours.toFixed(2)), ''
+        'Grand Total', '', '', '', '', '', Number(grandTotalHours.toFixed(2)), Number(grandTotalHours.toFixed(2)), ''
     ]);
+    summarySheet.mergeCells(sumTotalRow.number, 1, sumTotalRow.number, 6);
     sumTotalRow.font = { bold: true, size: 11 };
     sumTotalRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } };
+    sumTotalRow.height = 24;
     sumTotalRow.alignment = { vertical: 'middle' };
-    sumTotalRow.getCell(5).alignment = { horizontal: 'right' };
+    sumTotalRow.getCell(1).alignment = { vertical: 'middle', horizontal: 'center' };
+    sumTotalRow.getCell(7).alignment = { vertical: 'middle', horizontal: 'right' };
+    sumTotalRow.getCell(8).alignment = { vertical: 'middle', horizontal: 'right' };
 
     summarySheet.columns = [
-        { width: 28 }, { width: 16 }, { width: 22 }, { width: 22 }, { width: 20 }, { width: 18 }
+        { width: 26 }, { width: 16 }, { width: 22 }, { width: 20 }, { width: 16 }, { width: 28 }, { width: 16 }, { width: 20 }, { width: 18 }
     ];
 
     // 2. INDIVIDUAL EMPLOYEE SHEETS
