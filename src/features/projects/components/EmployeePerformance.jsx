@@ -9,9 +9,13 @@ import {
   ExternalLink,
   FolderGit2,
   MessageSquare,
-  CheckSquare
+  CheckSquare,
+  Download
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { saveAs } from 'file-saver';
+import api from '@/lib/apiClient';
+import { buildBulkTimesheetWorkbook } from '@/features/users-roles/utils/userExportUtils';
 import projectService from '../services/projectService';
 import Skeleton from '@/components/ui/Skeleton';
 
@@ -21,6 +25,46 @@ export const EmployeePerformance = ({ userId, employee: initialEmployee = null, 
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [exporting, setExporting] = useState(false);
+
+  const handleExportTimesheet = async () => {
+    if (!userId) return;
+    const toastId = toast.loading('Generating Timesheet Report...');
+    setExporting(true);
+    try {
+      const res = await api.post('/timesheet/team-report', {
+        range: range === 'all' ? 'all' : undefined,
+        month: range === 'all' ? 'all' : undefined,
+        userIds: [userId]
+      });
+
+      const { teamMembers, workLogsByUser, timesheets, startDate, endDate, assignedProjectsByUser, isAllTime } = res.data;
+
+      if (!teamMembers || teamMembers.length === 0) {
+        toast.error('No timesheet data found for this employee.', { id: toastId });
+        return;
+      }
+
+      const { buffer, fileName } = await buildBulkTimesheetWorkbook({
+        month: range === 'all' ? 'All Time' : undefined,
+        teamMembers,
+        workLogsByUser,
+        timesheets,
+        startDate,
+        endDate,
+        assignedProjectsByUser,
+        isAllTime: isAllTime || range === 'all'
+      });
+
+      saveAs(new Blob([buffer]), fileName);
+      toast.success('Timesheet Excel downloaded!', { id: toastId });
+    } catch (err) {
+      console.error('Failed to export employee timesheet:', err);
+      toast.error('Failed to export timesheet report', { id: toastId });
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const fetchPerformance = useCallback(async (selectedRange) => {
     if (!userId) return;
@@ -183,6 +227,17 @@ export const EmployeePerformance = ({ userId, employee: initialEmployee = null, 
             title="Refresh"
           >
             <RefreshCw size={14} className={refreshing ? 'animate-spin text-blue-600' : ''} />
+          </button>
+
+          <button
+            type="button"
+            onClick={handleExportTimesheet}
+            disabled={exporting}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-semibold transition cursor-pointer"
+            title="Download Timesheet Excel"
+          >
+            <Download size={14} className={exporting ? 'animate-spin' : ''} />
+            <span>Export</span>
           </button>
         </div>
       </div>

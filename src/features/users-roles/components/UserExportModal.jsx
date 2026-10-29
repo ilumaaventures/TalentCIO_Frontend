@@ -2,6 +2,7 @@ import React from 'react';
 import { Download, X, Clock, Users, FileSpreadsheet, Calendar } from 'lucide-react';
 import { ALL_HRIS_SECTIONS } from '../utils/userExportUtils';
 import MonthPicker from '@/components/ui/MonthPicker';
+import { format } from 'date-fns';
 
 const UserExportModal = ({
     showExportModal,
@@ -118,17 +119,42 @@ const UserExportModal = ({
 
                         {/* Export Period */}
                         <div className="pt-2 border-t border-slate-200">
-                            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">2. Export Period</p>
-                            <div className="flex items-center gap-3">
-                                <div className="flex-1">
-                                    <label className="block text-xs font-medium text-slate-600 mb-1">Select Month</label>
-                                    <MonthPicker
-                                        value={exportMonth}
-                                        onChange={setExportMonth}
-                                    />
+                            <div className="flex items-center justify-between mb-2">
+                                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">2. Export Period</p>
+                                <div className="flex items-center gap-1 bg-slate-200/70 p-0.5 rounded-lg text-[11px] font-semibold">
+                                    <button
+                                        type="button"
+                                        onClick={() => setExportMonth(format(new Date(), 'yyyy-MM'))}
+                                        className={`px-2.5 py-1 rounded-md transition ${exportMonth !== 'all' ? 'bg-white text-slate-800 shadow-xs' : 'text-slate-500 hover:text-slate-800'}`}
+                                    >
+                                        Monthly
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setExportMonth('all')}
+                                        className={`px-2.5 py-1 rounded-md transition ${exportMonth === 'all' ? 'bg-white text-emerald-700 shadow-xs font-bold' : 'text-slate-500 hover:text-slate-800'}`}
+                                    >
+                                        All Time
+                                    </button>
                                 </div>
-                                <p className="text-xs text-slate-400 pt-5">Used for Attendance &amp; Timesheet data</p>
                             </div>
+                            {exportMonth === 'all' ? (
+                                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-800 flex items-center justify-between">
+                                    <span>Exporting <strong>All Time (Lifetime)</strong> timesheet records for selected users.</span>
+                                    <span className="text-[10px] uppercase font-bold px-2 py-0.5 bg-emerald-200 text-emerald-800 rounded">All History</span>
+                                </div>
+                            ) : (
+                                <div className="flex items-center gap-3">
+                                    <div className="flex-1">
+                                        <label className="block text-xs font-medium text-slate-600 mb-1">Select Month</label>
+                                        <MonthPicker
+                                            value={exportMonth}
+                                            onChange={setExportMonth}
+                                        />
+                                    </div>
+                                    <p className="text-xs text-slate-400 pt-5">Used for Attendance &amp; Timesheet data</p>
+                                </div>
+                            )}
                         </div>
                     </div>
 
