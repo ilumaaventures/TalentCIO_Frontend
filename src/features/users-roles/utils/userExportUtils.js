@@ -331,13 +331,14 @@ export const sanitizeSheetName = (rawName, code = '', existingNames = new Set())
     return candidate;
 };
 
-export const buildBulkTimesheetWorkbook = async ({ month, teamMembers = [], workLogsByUser = {}, timesheets = {}, startDate, endDate, assignedProjectsByUser = {} }) => {
+export const buildBulkTimesheetWorkbook = async ({ month, teamMembers = [], workLogsByUser = {}, timesheets = {}, startDate, endDate, assignedProjectsByUser = {}, isAllTime = false }) => {
     const workbook = new ExcelJS.Workbook();
     const existingNames = new Set();
-    const [yearNum, monthNum] = (month || format(new Date(), 'yyyy-MM')).split('-').map(Number);
+    const allTimeMode = isAllTime || month === 'all' || month === 'All Time' || month === 'all_time';
+    const [yearNum, monthNum] = (!allTimeMode && month && String(month).includes('-') ? month : format(new Date(), 'yyyy-MM')).split('-').map(Number);
     const reportDate = new Date(yearNum, monthNum - 1, 1);
-    const start = startDate ? new Date(startDate) : startOfMonth(reportDate);
-    const end = endDate ? new Date(endDate) : endOfMonth(reportDate);
+    const start = startDate ? new Date(startDate) : (allTimeMode ? new Date(0) : startOfMonth(reportDate));
+    const end = endDate ? new Date(endDate) : (allTimeMode ? new Date() : endOfMonth(reportDate));
 
     // 1. OVERVIEW / SUMMARY SHEET
     const summarySheet = workbook.addWorksheet('Summary');
@@ -345,14 +346,16 @@ export const buildBulkTimesheetWorkbook = async ({ month, teamMembers = [], work
 
     summarySheet.mergeCells('A1:I1');
     const titleCell = summarySheet.getCell('A1');
-    titleCell.value = `Team Timesheets Summary - ${format(reportDate, 'MMMM yyyy')}`;
+    titleCell.value = allTimeMode ? 'Team Timesheets Summary - All Time' : `Team Timesheets Summary - ${format(reportDate, 'MMMM yyyy')}`;
     titleCell.font = { bold: true, size: 15, color: { argb: 'FFFFFFFF' } };
     titleCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E293B' } };
     titleCell.alignment = { vertical: 'middle', horizontal: 'center' };
     summarySheet.getRow(1).height = 30;
 
     summarySheet.mergeCells('A2:I2');
-    summarySheet.getCell('A2').value = `Period: ${format(start, 'dd-MM-yyyy')} to ${format(end, 'dd-MM-yyyy')} | Total Employees: ${teamMembers.length}`;
+    summarySheet.getCell('A2').value = allTimeMode
+        ? `Period: All Time (Lifetime) | Total Employees: ${teamMembers.length}`
+        : `Period: ${format(start, 'dd-MM-yyyy')} to ${format(end, 'dd-MM-yyyy')} | Total Employees: ${teamMembers.length}`;
     summarySheet.getCell('A2').font = { size: 11, italic: true, color: { argb: 'FF475569' } };
     summarySheet.getCell('A2').alignment = { vertical: 'middle', horizontal: 'center' };
     summarySheet.getRow(2).height = 20;
@@ -605,7 +608,9 @@ export const buildBulkTimesheetWorkbook = async ({ month, teamMembers = [], work
     });
 
     const buffer = await workbook.xlsx.writeBuffer();
-    const fileName = `Timesheets_Bulk_${format(reportDate, 'MMMM_yyyy')}.xlsx`;
+    const fileName = allTimeMode
+        ? 'Timesheets_Bulk_All_Time.xlsx'
+        : `Timesheets_Bulk_${format(reportDate, 'MMMM_yyyy')}.xlsx`;
     return { buffer, fileName };
 };
 
