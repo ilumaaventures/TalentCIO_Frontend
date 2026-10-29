@@ -351,7 +351,7 @@ const Users = () => {
                 userIds: targetUserIds
             });
 
-            const { teamMembers, workLogsByUser, timesheets, startDate, endDate } = res.data;
+            const { teamMembers, workLogsByUser, timesheets, startDate, endDate, assignedProjectsByUser } = res.data;
 
             if (!teamMembers || teamMembers.length === 0) {
                 toast.error('No employees found to export timesheet for in this period.', { id: toastId });
@@ -364,7 +364,8 @@ const Users = () => {
                 workLogsByUser,
                 timesheets,
                 startDate,
-                endDate
+                endDate,
+                assignedProjectsByUser
             });
 
             saveAs(new Blob([buffer]), fileName);
