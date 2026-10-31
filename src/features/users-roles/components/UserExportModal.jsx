@@ -33,7 +33,8 @@ const UserExportModal = ({
         || exportOptions.leaves;
 
     const hasAnyOptionSelected = Boolean(
-        exportOptions.timesheetBulk
+        exportOptions.performanceReport
+        || exportOptions.timesheetBulk
         || hasAttendanceSelection
         || exportOptions.documents
         || exportOptions.hrisProfiles
@@ -314,33 +315,76 @@ const UserExportModal = ({
                         </div>
                     </div>
 
-                    {/* Timesheet Bulk Export Card (At the last of the page) */}
+                    {/* Performance Management Report & Timesheet Export Card */}
                     <div className="border border-indigo-200 rounded-xl overflow-hidden bg-indigo-50/20">
                         <div className="bg-indigo-50 px-4 py-2.5 flex items-center justify-between border-b border-indigo-100">
                             <div className="flex items-center gap-2">
-                                <div className="h-5 w-5 rounded bg-indigo-600 text-white flex items-center justify-center text-[10px] font-bold">T</div>
-                                <span className="text-xs font-semibold text-indigo-900 uppercase tracking-wide">Timesheet Export</span>
+                                <div className="h-5 w-5 rounded bg-indigo-600 text-white flex items-center justify-center text-[10px] font-bold">P</div>
+                                <span className="text-xs font-semibold text-indigo-900 uppercase tracking-wide">Performance Management Report</span>
                             </div>
-                            <span className="text-[10px] font-semibold text-indigo-600 bg-indigo-100 px-2 py-0.5 rounded-full">Single Excel (.xlsx)</span>
+                            <span className="text-[10px] font-semibold text-indigo-600 bg-indigo-100 px-2 py-0.5 rounded-full">Excel (.xlsx)</span>
                         </div>
-                        <div className="p-4">
-                            <label className={`flex items-start gap-3 p-3.5 rounded-lg border cursor-pointer transition-all ${exportOptions.timesheetBulk ? 'border-indigo-400 bg-indigo-50/70 shadow-sm' : 'border-slate-200 bg-white hover:bg-slate-50'}`}>
+                        <div className="p-4 space-y-3">
+                            <label className={`flex items-start gap-3 p-3.5 rounded-lg border cursor-pointer transition-all ${(exportOptions.performanceReport || exportOptions.timesheetBulk) ? 'border-indigo-400 bg-indigo-50/70 shadow-sm' : 'border-slate-200 bg-white hover:bg-slate-50'}`}>
                                 <input
                                     type="checkbox"
-                                    checked={exportOptions.timesheetBulk}
-                                    onChange={e => setExportOptions({ ...exportOptions, timesheetBulk: e.target.checked })}
+                                    checked={exportOptions.performanceReport || exportOptions.timesheetBulk}
+                                    onChange={e => setExportOptions({ ...exportOptions, performanceReport: e.target.checked, timesheetBulk: e.target.checked })}
                                     className="h-4 w-4 mt-0.5 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 shrink-0"
                                 />
-                                <div className="min-w-0">
+                                <div className="min-w-0 flex-1">
                                     <div className="flex items-center gap-2">
                                         <Clock size={15} className="text-indigo-600" />
-                                        <span className="text-sm font-bold text-slate-800">Download Timesheet (Separate Sheet per Employee)</span>
+                                        <span className="text-sm font-bold text-slate-800">Download Performance Management Report</span>
                                     </div>
                                     <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-                                        Exports complete timesheet logs for each employee in a separate sheet inside a single Excel file.
+                                        First sheet contains a full summary of each employee with total projects allotted, project names, and hours spent per project.
                                     </p>
                                 </div>
                             </label>
+
+                            {(exportOptions.performanceReport || exportOptions.timesheetBulk) && (
+                                <div className="ml-2 pl-4 border-l-2 border-indigo-200 space-y-3 pt-1">
+                                    <label className="flex items-center gap-2.5 cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={exportOptions.alsoDownloadTimesheet || false}
+                                            onChange={e => setExportOptions({ ...exportOptions, alsoDownloadTimesheet: e.target.checked })}
+                                            className="h-4 w-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500"
+                                        />
+                                        <span className="text-xs font-bold text-indigo-950">Also download timesheet</span>
+                                    </label>
+
+                                    {exportOptions.alsoDownloadTimesheet && (
+                                        <div className="p-3 bg-white border border-indigo-100 rounded-lg shadow-xs space-y-2">
+                                            <p className="text-[11px] font-semibold text-slate-700">Select Timesheet Date Range:</p>
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <div>
+                                                    <label className="block text-[11px] font-medium text-slate-500 mb-1">From Date</label>
+                                                    <input
+                                                        type="date"
+                                                        value={exportOptions.timesheetFromDate || ''}
+                                                        onChange={e => setExportOptions({ ...exportOptions, timesheetFromDate: e.target.value })}
+                                                        className="w-full text-xs px-2.5 py-1.5 rounded-lg border border-slate-300 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-[11px] font-medium text-slate-500 mb-1">To Date</label>
+                                                    <input
+                                                        type="date"
+                                                        value={exportOptions.timesheetToDate || ''}
+                                                        onChange={e => setExportOptions({ ...exportOptions, timesheetToDate: e.target.value })}
+                                                        className="w-full text-xs px-2.5 py-1.5 rounded-lg border border-slate-300 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none"
+                                                    />
+                                                </div>
+                                            </div>
+                                            <p className="text-[11px] text-slate-400 mt-1">
+                                                Complete timesheet data for the selected period will be included in the same file with a separate sheet for each employee.
+                                            </p>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                         </div>
                     </div>
 
@@ -357,7 +401,7 @@ const UserExportModal = ({
                     <div className="text-xs text-slate-400 truncate">
                         {(() => {
                             const parts = [
-                                exportOptions.timesheetBulk && 'Bulk Timesheets (Excel)',
+                                (exportOptions.performanceReport || exportOptions.timesheetBulk) && (exportOptions.alsoDownloadTimesheet ? 'Performance & Timesheets (Excel)' : 'Performance Summary (Excel)'),
                                 hasAttendanceSelection && 'Attendance (Single Excel)',
                                 exportOptions.documents && 'Att.Docs ZIP',
                                 exportOptions.hrisProfiles && `HRIS (${hrisSections.size} sections)`,

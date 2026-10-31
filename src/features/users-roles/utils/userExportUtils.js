@@ -331,7 +331,18 @@ export const sanitizeSheetName = (rawName, code = '', existingNames = new Set())
     return candidate;
 };
 
-export const buildBulkTimesheetWorkbook = async ({ month, teamMembers = [], workLogsByUser = {}, timesheets = {}, startDate, endDate, assignedProjectsByUser = {}, isAllTime = false }) => {
+export const buildBulkTimesheetWorkbook = async ({
+    month,
+    teamMembers = [],
+    workLogsByUser = {},
+    timesheets = {},
+    startDate,
+    endDate,
+    assignedProjectsByUser = {},
+    isAllTime = false,
+    includeTimesheets = true,
+    reportTitle = 'Performance Management Report'
+}) => {
     const workbook = new ExcelJS.Workbook();
     const existingNames = new Set();
     const allTimeMode = isAllTime || month === 'all' || month === 'All Time' || month === 'all_time';
@@ -346,7 +357,12 @@ export const buildBulkTimesheetWorkbook = async ({ month, teamMembers = [], work
 
     summarySheet.mergeCells('A1:I1');
     const titleCell = summarySheet.getCell('A1');
-    titleCell.value = allTimeMode ? 'Team Timesheets Summary - All Time' : `Team Timesheets Summary - ${format(reportDate, 'MMMM yyyy')}`;
+    const displayPeriodTitle = allTimeMode
+        ? 'All Time'
+        : (startDate && endDate
+            ? `${format(start, 'dd MMM yyyy')} to ${format(end, 'dd MMM yyyy')}`
+            : format(reportDate, 'MMMM yyyy'));
+    titleCell.value = `${reportTitle} - ${displayPeriodTitle}`;
     titleCell.font = { bold: true, size: 15, color: { argb: 'FFFFFFFF' } };
     titleCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E293B' } };
     titleCell.alignment = { vertical: 'middle', horizontal: 'center' };
@@ -490,43 +506,48 @@ export const buildBulkTimesheetWorkbook = async ({ month, teamMembers = [], work
         { width: 26 }, { width: 16 }, { width: 22 }, { width: 20 }, { width: 16 }, { width: 28 }, { width: 16 }, { width: 20 }, { width: 18 }
     ];
 
-    // 2. INDIVIDUAL EMPLOYEE SHEETS
-    teamMembers.forEach(member => {
-        const uId = String(member._id);
-        const logs = [...(workLogsByUser[uId] || [])].sort((a, b) => new Date(a.date) - new Date(b.date));
-        const ts = timesheets[uId] || {};
+    // 2. INDIVIDUAL EMPLOYEE SHEETS (Only if includeTimesheets is true)
+    if (includeTimesheets) {
+        teamMembers.forEach(member => {
+            const uId = String(member._id);
+            const logs = [...(workLogsByUser[uId] || [])].sort((a, b) => new Date(a.date) - new Date(b.date));
+            const ts = timesheets[uId] || {};
 
-        const sheetName = sanitizeSheetName(
-            `${member.firstName} ${member.lastName || ''}`.trim(),
-            member.employeeCode,
-            existingNames
-        );
+            const sheetName = sanitizeSheetName(
+                `${member.firstName} ${member.lastName || ''}`.trim(),
+                member.employeeCode,
+                existingNames
+            );
 
-        const sheet = workbook.addWorksheet(sheetName);
+            const sheet = workbook.addWorksheet(sheetName);
 
-        // Header Banner
-        sheet.mergeCells('A1:J1');
-        const h1 = sheet.getCell('A1');
-        h1.value = `Timesheet: ${member.firstName} ${member.lastName || ''} - ${format(reportDate, 'MMMM yyyy')}`;
-        h1.font = { bold: true, size: 14, color: { argb: 'FFFFFFFF' } };
-        h1.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F497D' } };
-        h1.alignment = { vertical: 'middle', horizontal: 'center' };
-        sheet.getRow(1).height = 28;
+            // Header Banner
+            sheet.mergeCells('A1:J1');
+            const h1 = sheet.getCell('A1');
+            h1.value = allTimeMode
+                ? `Timesheet: ${member.firstName} ${member.lastName || ''} - All Time`
+                : `Timesheet: ${member.firstName} ${member.lastName || ''} - ${format(start, 'dd MMM yyyy')} to ${format(end, 'dd MMM yyyy')}`;
+            h1.font = { bold: true, size: 14, color: { argb: 'FFFFFFFF' } };
+            h1.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F497D' } };
+            h1.alignment = { vertical: 'middle', horizontal: 'center' };
+            sheet.getRow(1).height = 28;
 
-        const managers = member.reportingManagers || [];
-        const mgrNames = managers.length > 0
-            ? managers.map(m => typeof m === 'object' ? `${m.firstName} ${m.lastName || ''}`.trim() : m).join(', ')
-            : 'N/A';
-        const deptName = member.departmentRef?.name || member.department || 'N/A';
+            const managers = member.reportingManagers || [];
+            const mgrNames = managers.length > 0
+                ? managers.map(m => typeof m === 'object' ? `${m.firstName} ${m.lastName || ''}`.trim() : m).join(', ')
+                : 'N/A';
+            const deptName = member.departmentRef?.name || member.department || 'N/A';
 
-        sheet.mergeCells('A2:E2');
-        sheet.getCell('A2').value = `Employee Code: ${member.employeeCode || 'N/A'}  |  Department: ${deptName}  |  Supervisor(s): ${mgrNames}`;
-        sheet.getCell('A2').font = { size: 10, bold: true, color: { argb: 'FF334155' } };
+            sheet.mergeCells('A2:E2');
+            sheet.getCell('A2').value = `Employee Code: ${member.employeeCode || 'N/A'}  |  Department: ${deptName}  |  Supervisor(s): ${mgrNames}`;
+            sheet.getCell('A2').font = { size: 10, bold: true, color: { argb: 'FF334155' } };
 
-        sheet.mergeCells('F2:J2');
-        sheet.getCell('F2').value = `Period: ${format(start, 'dd-MM-yyyy')} to ${format(end, 'dd-MM-yyyy')}  |  Status: ${ts.status || 'DRAFT'}`;
-        sheet.getCell('F2').font = { size: 10, bold: true, color: { argb: 'FF334155' } };
-        sheet.getCell('F2').alignment = { horizontal: 'right' };
+            sheet.mergeCells('F2:J2');
+            sheet.getCell('F2').value = allTimeMode
+                ? `Period: All Time  |  Status: ${ts.status || 'DRAFT'}`
+                : `Period: ${format(start, 'dd-MM-yyyy')} to ${format(end, 'dd-MM-yyyy')}  |  Status: ${ts.status || 'DRAFT'}`;
+            sheet.getCell('F2').font = { size: 10, bold: true, color: { argb: 'FF334155' } };
+            sheet.getCell('F2').alignment = { horizontal: 'right' };
 
         sheet.addRow([]); // Spacer
 
@@ -606,11 +627,12 @@ export const buildBulkTimesheetWorkbook = async ({ month, teamMembers = [], work
             { width: 12 }  // Billable
         ];
     });
+    }
 
     const buffer = await workbook.xlsx.writeBuffer();
     const fileName = allTimeMode
-        ? 'Timesheets_Bulk_All_Time.xlsx'
-        : `Timesheets_Bulk_${format(reportDate, 'MMMM_yyyy')}.xlsx`;
+        ? 'Performance_Management_Report_All_Time.xlsx'
+        : `Performance_Management_Report_${format(start, 'ddMMMyyyy')}_to_${format(end, 'ddMMMyyyy')}.xlsx`;
     return { buffer, fileName };
 };
 

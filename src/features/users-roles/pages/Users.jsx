@@ -8,7 +8,7 @@ import ExcelJS from 'exceljs';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 import { useNavigate } from 'react-router-dom';
-import { format } from 'date-fns';
+import { format, subMonths } from 'date-fns';
 import { createCachePayload, readSessionCache } from '@/lib/cache';
 import { exportCandidateHRIS } from '@/features/employee-dossier/utils/hrisExporter';
 import { buildMasterSalaryStructure, createDefaultSalaryData, parseBool } from '@/features/payroll/utils/payroll';
@@ -67,6 +67,10 @@ const Users = () => {
         checkInOut: true,
         duration: true,
         leaves: true,
+        performanceReport: false,
+        alsoDownloadTimesheet: false,
+        timesheetFromDate: format(subMonths(new Date(), 2), 'yyyy-MM-01'),
+        timesheetToDate: format(new Date(), 'yyyy-MM-dd'),
         timesheetBulk: false,
         documents: false,
         hrisProfiles: false,
@@ -333,7 +337,7 @@ const Users = () => {
     };
 
     const handleExportBulkTimesheet = async () => {
-        const toastId = toast.loading('Preparing Bulk Timesheets Excel...');
+        const toastId = toast.loading('Preparing Performance Management Report...');
         try {
             const isAll = exportScope === 'all';
             let targetUserIds = [];
@@ -346,15 +350,26 @@ const Users = () => {
                 targetUserIds = selectedEmployeeIds;
             }
 
-            const res = await api.post('/timesheet/team-report', {
-                month: exportMonth,
+            const payload = {
                 userIds: targetUserIds
-            });
+            };
+
+            const shouldIncludeTimesheets = Boolean(exportOptions.alsoDownloadTimesheet);
+
+            if (shouldIncludeTimesheets && exportOptions.timesheetFromDate && exportOptions.timesheetToDate) {
+                payload.fromDate = exportOptions.timesheetFromDate;
+                payload.toDate = exportOptions.timesheetToDate;
+            } else {
+                payload.month = exportMonth;
+                if (exportMonth === 'all') payload.range = 'all';
+            }
+
+            const res = await api.post('/timesheet/team-report', payload);
 
             const { teamMembers, workLogsByUser, timesheets, startDate, endDate, assignedProjectsByUser, isAllTime } = res.data;
 
             if (!teamMembers || teamMembers.length === 0) {
-                toast.error('No employees found to export timesheet for in this period.', { id: toastId });
+                toast.error('No employees found to export report for in this period.', { id: toastId });
                 return;
             }
 
@@ -366,14 +381,16 @@ const Users = () => {
                 startDate,
                 endDate,
                 assignedProjectsByUser,
-                isAllTime
+                isAllTime,
+                includeTimesheets: shouldIncludeTimesheets,
+                reportTitle: 'Performance Management Report'
             });
 
             saveAs(new Blob([buffer]), fileName);
-            toast.success('Bulk Timesheets Excel downloaded successfully!', { id: toastId });
+            toast.success('Performance Management Report downloaded successfully!', { id: toastId });
         } catch (error) {
             console.error('handleExportBulkTimesheet error:', error);
-            toast.error(error.response?.data?.message || 'Failed to export bulk timesheets', { id: toastId });
+            toast.error(error.response?.data?.message || 'Failed to export report', { id: toastId });
         }
     };
 
@@ -433,7 +450,7 @@ const Users = () => {
             || exportOptions.checkInOut
             || exportOptions.duration
             || exportOptions.leaves;
-        const shouldDownloadTimesheet = exportOptions.timesheetBulk;
+        const shouldDownloadTimesheet = exportOptions.performanceReport || exportOptions.timesheetBulk;
         const shouldDownloadDocuments = hasAttendanceDocumentFeature && exportOptions.documents;
         const shouldDownloadHRIS = canExportHRIS && exportOptions.hrisProfiles;
         const shouldDownloadUserDocuments = exportOptions.userDocuments;
