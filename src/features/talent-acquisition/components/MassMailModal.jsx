@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Eye, Mail, Paperclip, Send, X } from 'lucide-react';
+import { AlertCircle, Eye, Mail, Paperclip, Send, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import api from '@/lib/apiClient';
 import toast from 'react-hot-toast';
@@ -115,6 +115,7 @@ const MassMailModal = ({
     const [cc, setCc] = useState('');
     const [bcc, setBcc] = useState('');
     const [attachments, setAttachments] = useState([]);
+    const [sendError, setSendError] = useState('');
     const [filters, setFilters] = useState({
         status: [],
         decision: [],
@@ -138,6 +139,7 @@ const MassMailModal = ({
         setSelectedIds(initialSelectedIds);
         setSendToAllMatching(initialSelectedIds.length === 0);
         setFilters({ status: [], decision: [], phase2Decision: [], phase3Decision: [] });
+        setSendError('');
     }, [isOpen, initialSelectedIds]);
 
     useEffect(() => {
@@ -230,34 +232,47 @@ const MassMailModal = ({
     };
 
     const handleSubmit = async () => {
-        if (!sendToAllMatching && selectedIds.length === 0) {
-            toast.error('Select at least one candidate or choose all matching recipients.');
+        const targetCandidateIds = sendToAllMatching
+            ? filteredCandidates.map((c) => c._id)
+            : selectedIds;
+
+        if (targetCandidateIds.length === 0) {
+            const noRecipMsg = 'Select at least one candidate or choose all matching recipients.';
+            setSendError(noRecipMsg);
+            toast.error(noRecipMsg);
             setStep(1);
             return;
         }
 
         if (!customSubject.trim() || !customHtmlBody.trim()) {
-            toast.error('Subject and email body are required.');
+            const emptyMsg = 'Subject and email body are required.';
+            setSendError(emptyMsg);
+            toast.error(emptyMsg);
             setStep(2);
             return;
         }
 
         const subjectValidation = validateTemplateSyntax(customSubject, TEMPLATE_PLACEHOLDERS);
         if (!subjectValidation.valid) {
-            toast.error(`Subject error: ${subjectValidation.message}`);
+            const subjMsg = `Subject error: ${subjectValidation.message}`;
+            setSendError(subjMsg);
+            toast.error(subjMsg);
             setStep(2);
             return;
         }
 
         const bodyValidation = validateTemplateSyntax(customHtmlBody, TEMPLATE_PLACEHOLDERS);
         if (!bodyValidation.valid) {
-            toast.error(`HTML body error: ${bodyValidation.message}`);
+            const bodyMsg = `HTML body error: ${bodyValidation.message}`;
+            setSendError(bodyMsg);
+            toast.error(bodyMsg);
             setStep(2);
             return;
         }
 
         try {
             setSending(true);
+            setSendError('');
             let response;
 
             if (attachments.length > 0) {
@@ -265,6 +280,8 @@ const MassMailModal = ({
                 if (templateMode === 'saved' && templateId) {
                     formData.append('templateId', templateId);
                     if (activeTemplate?.name) formData.append('templateName', activeTemplate.name);
+                } else {
+                    formData.append('templateName', 'Custom Email');
                 }
                 formData.append('emailAccountId', selectedEmailAccountId);
                 formData.append('customSubject', customSubject);
@@ -273,10 +290,9 @@ const MassMailModal = ({
                 if (cc.trim()) formData.append('cc', cc.trim());
                 if (bcc.trim()) formData.append('bcc', bcc.trim());
 
-                if (sendToAllMatching) {
+                formData.append('candidateIds', JSON.stringify(targetCandidateIds));
+                if (sendToAllMatching && (filters.status.length || filters.decision.length || filters.phase2Decision.length || filters.phase3Decision.length)) {
                     formData.append('filters', JSON.stringify(normalizeFiltersForRequest(filters)));
-                } else {
-                    formData.append('candidateIds', JSON.stringify(selectedIds));
                 }
 
                 attachments.forEach((file) => {
@@ -289,12 +305,12 @@ const MassMailModal = ({
             } else {
                 const payload = {
                     templateId: templateMode === 'saved' ? templateId : undefined,
-                    templateName: (templateMode === 'saved' && activeTemplate?.name) ? activeTemplate.name : undefined,
+                    templateName: (templateMode === 'saved' && activeTemplate?.name) ? activeTemplate.name : 'Custom Email',
                     emailAccountId: selectedEmailAccountId,
                     customSubject,
                     customHtmlBody,
-                    candidateIds: sendToAllMatching ? [] : selectedIds,
-                    filters: sendToAllMatching ? normalizeFiltersForRequest(filters) : undefined,
+                    candidateIds: targetCandidateIds,
+                    filters: sendToAllMatching && (filters.status.length || filters.decision.length || filters.phase2Decision.length || filters.phase3Decision.length) ? normalizeFiltersForRequest(filters) : undefined,
                     customNote,
                     cc: cc.trim() || undefined,
                     bcc: bcc.trim() || undefined
@@ -308,7 +324,14 @@ const MassMailModal = ({
             onClose();
         } catch (error) {
             console.error('Mass mail failed', error);
-            toast.error(error.response?.data?.message || 'Failed to send mass email');
+            const errData = error.response?.data;
+            const fullError = [
+                errData?.message,
+                errData?.error && errData.error !== errData.message ? errData.error : null
+            ].filter(Boolean).join(': ') || error.message || 'Failed to send mass email';
+
+            setSendError(fullError);
+            toast.error(fullError);
         } finally {
             setSending(false);
         }
@@ -328,6 +351,24 @@ const MassMailModal = ({
                         <X size={18} />
                     </button>
                 </div>
+
+                {sendError && (
+                    <div className="mx-6 mt-4 flex items-start gap-3 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800 shadow-sm animate-in fade-in duration-200">
+                        <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-rose-600" />
+                        <div className="flex-1">
+                            <p className="font-bold text-rose-900">Failed to send mass mail</p>
+                            <p className="mt-1 text-xs text-rose-700 whitespace-pre-wrap">{sendError}</p>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => setSendError('')}
+                            className="rounded-lg p-1 text-rose-400 hover:bg-rose-100 hover:text-rose-700 transition"
+                            title="Dismiss"
+                        >
+                            <X size={16} />
+                        </button>
+                    </div>
+                )}
 
                 <div className="border-b border-slate-200 bg-slate-50 px-6 py-3">
                     <div className="flex flex-wrap gap-2">
@@ -598,7 +639,24 @@ const MassMailModal = ({
                     )}
 
                     {step === 3 && (
-                        <div className="grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">
+                        <div className="space-y-4">
+                            {sendError && (
+                                <div className="flex items-start gap-3 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800 shadow-sm">
+                                    <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-rose-600" />
+                                    <div className="flex-1">
+                                        <p className="font-bold text-rose-900">Delivery Error</p>
+                                        <p className="mt-1 text-xs text-rose-700 whitespace-pre-wrap">{sendError}</p>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setSendError('')}
+                                        className="rounded-lg p-1 text-rose-400 hover:bg-rose-100 hover:text-rose-700 transition"
+                                    >
+                                        <X size={16} />
+                                    </button>
+                                </div>
+                            )}
+                            <div className="grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">
                             <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5">
                                 <h4 className="text-sm font-bold text-slate-800">Confirm recipients</h4>
                                 <div className="space-y-2 text-sm text-slate-600">
@@ -622,6 +680,7 @@ const MassMailModal = ({
                                 </div>
                                 <div className="prose prose-sm max-w-none text-slate-700" dangerouslySetInnerHTML={{ __html: previewHtml || '<p>No preview available.</p>' }} />
                             </div>
+                        </div>
                         </div>
                     )}
                 </div>
