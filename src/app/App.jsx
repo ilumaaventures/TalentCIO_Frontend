@@ -1,4 +1,5 @@
 import React, { lazy, Suspense } from 'react';
+import { createPortal } from 'react-dom';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from '@/features/auth/context/AuthContext';
 import { ClientAuthProvider } from '@/features/client-portal/context/ClientAuthContext';
@@ -148,7 +149,18 @@ function App() {
       <Router>
         <AuthProvider>
           <ClientAuthProvider>
-            <Toaster position="top-right" />
+            {typeof document !== 'undefined' ? createPortal(
+              <Toaster 
+                position="top-right" 
+                containerStyle={{ zIndex: 9999999 }}
+                toastOptions={{
+                  style: {
+                    zIndex: 9999999,
+                  }
+                }}
+              />,
+              document.body
+            ) : null}
             <ErrorBoundary>
               <Suspense fallback={<PageLoader />}>
                 <Routes>
