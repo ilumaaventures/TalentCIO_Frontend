@@ -275,6 +275,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
     const canViewTimesheets = user?.roles?.some(r => r === 'Admin' || r.name === 'Admin') ||
         user?.permissions?.includes('*') ||
         user?.permissions?.includes('timesheet.view') ||
+        user?.permissions?.includes('timesheet.view_assigned') ||
         user?.permissions?.includes('timesheet.update_others');
     const canSubmitTimesheet = user?.roles?.some(r => r === 'Admin' || r.name === 'Admin') ||
         user?.permissions?.includes('*') ||
