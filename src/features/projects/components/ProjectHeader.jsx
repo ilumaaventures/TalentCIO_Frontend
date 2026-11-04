@@ -1,5 +1,7 @@
 import React, { useMemo, useState } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import {
+  ArrowLeft,
   Briefcase,
   Plus,
   Clock,
@@ -71,8 +73,25 @@ export const ProjectHeader = ({
   canCreateTask,
   canExportReport,
   onSelectMember,
-  discussionsCount = 0
+  discussionsCount = 0,
+  onBack
 }) => {
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  const handleBack = () => {
+    if (typeof onBack === 'function') {
+      onBack();
+      return;
+    }
+    const fromPath = location.state?.from;
+    if (fromPath) {
+      navigate(fromPath);
+      return;
+    }
+    navigate('/projects');
+  };
+
   const hasModules = project?.hasModules !== false;
 
   const resolvedMembers = useMemo(() => {
@@ -109,6 +128,14 @@ export const ProjectHeader = ({
         {/* Left: Project info */}
         <div className="space-y-1.5">
           <div className="flex items-center gap-2.5 flex-wrap">
+            <button
+              onClick={handleBack}
+              className="p-2 -ml-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer mr-0.5"
+              title="Go back"
+              type="button"
+            >
+              <ArrowLeft size={20} />
+            </button>
             <span className="p-2 rounded-xl bg-blue-50 text-blue-600 border border-blue-100">
               <Briefcase size={20} />
             </span>
