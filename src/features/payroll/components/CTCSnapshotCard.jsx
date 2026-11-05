@@ -63,7 +63,13 @@ export const CTCSnapshotCard = ({ breakup, payrollConfig, handleDownloadBreakup 
                                         <span className="font-semibold text-slate-800">{fmtMoney(breakup.hraMaster)}</span>
                                     </div>
                                 )}
-                                {breakup.specialAllowance > 0 && (
+                                {(Number(breakup.flexi) > 0 || Number(breakup.flexiAmount) > 0) && (
+                                    <div className="flex justify-between text-sm text-slate-600 border-b border-slate-50 pb-1.5">
+                                        <span>Flexi Allowance</span>
+                                        <span className="font-semibold text-slate-800">{fmtMoney(breakup.flexi || breakup.flexiAmount)}</span>
+                                    </div>
+                                )}
+                                {Number(breakup.specialAllowance) > 0 && (
                                     <div className="flex justify-between text-sm text-slate-600 border-b border-slate-50 pb-1.5">
                                         <span>Special Allowance</span>
                                         <span className="font-semibold text-slate-800">{fmtMoney(breakup.specialAllowance)}</span>

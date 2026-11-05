@@ -45,7 +45,8 @@ export const createDefaultSalaryData = (breakup = {}, comp = {}, user = null, co
   const defaultMonthly = rawMonthly ? String(rawMonthly) : '';
   const defaultAnnual = rawMonthly ? String(rawMonthly * 12) : '';
 
-  const compType = breakup.compensationType || breakup.payType || 'monthly_salary';
+  const rawCompType = breakup.compensationType || breakup.payType || 'monthly_salary';
+  const compType = rawCompType === 'salaried' ? 'monthly_salary' : rawCompType;
   const compDefaults = (config?.compensationTypeDefaults && config.compensationTypeDefaults[compType]) || {};
   const baseDefaults = STRATEGY_DEFAULTS[compType] || { pfEligible: true, esiEligible: true, ptApplicable: true, gratuityEligible: true, lwfApplicable: true };
 
@@ -253,7 +254,8 @@ export const buildMasterSalaryStructure = (source = {}, configInput = {}) => {
   const config = normalizePayrollConfig(configInput);
   let monthlyCTC = roundAmount(getMonthlyCTCValue(source));
 
-  const compType = source.compensationType || source.payType || 'monthly_salary';
+  const rawCompType = source.compensationType || source.payType || 'monthly_salary';
+  const compType = rawCompType === 'salaried' ? 'monthly_salary' : rawCompType;
 
   switch (compType) {
     case 'hourly': {
@@ -592,8 +594,37 @@ export const buildMasterSalaryStructure = (source = {}, configInput = {}) => {
   const professionalTax = ptEnabled
     ? (manualPT > 0 ? manualPT : computedPT)
     : 0;
-  const otherDeductions = source.deductions?.otherDeductions || source.otherDeductions || [];
+  const otherDeductions = source.deductions?.otherDeductions || source.otherDeductions || source.customDeductions || [];
   const otherDeductionsSum = roundAmount(otherDeductions.reduce((sum, item) => sum + (Number(item.amount) || 0), 0));
+
+  const deductionsMap = {};
+  if (hasDynamicComponents) {
+    config.salaryComponents.forEach(c => {
+      if (c.type === 'deduction') {
+        let amount = 0;
+        if (c.linkedTo === 'ctc_percent') {
+          let pct = c.linkValue;
+          const overrideVal = source[c.id + 'Percent'];
+          if (overrideVal !== undefined && overrideVal !== null && Number(overrideVal) > 0) {
+            pct = Number(overrideVal) > 1 ? Number(overrideVal) / 100 : Number(overrideVal);
+          }
+          amount = roundAmount(monthlyCTC * pct);
+        } else if (c.linkedTo === 'basic_percent') {
+          let pct = c.linkValue;
+          const overrideVal = source[c.id + 'Percent'];
+          if (overrideVal !== undefined && overrideVal !== null && Number(overrideVal) > 0) {
+            pct = Number(overrideVal) > 1 ? Number(overrideVal) / 100 : Number(overrideVal);
+          }
+          amount = roundAmount(basicMaster * pct);
+        } else if (c.linkedTo === 'fixed') {
+          let val = source[c.id] !== undefined ? source[c.id] : (source.deductions?.[c.id] !== undefined ? source.deductions[c.id] : (c.linkValue || 0));
+          amount = roundAmount(val);
+        }
+        deductionsMap[c.id] = amount;
+      }
+    });
+  }
+  const dynamicDeductionsSum = roundAmount(Object.values(deductionsMap).reduce((sum, v) => sum + v, 0));
 
   const totalDeductions = roundAmount(
     pfEmployee +
@@ -601,7 +632,8 @@ export const buildMasterSalaryStructure = (source = {}, configInput = {}) => {
     professionalTax +
     tds +
     lwfEmployee +
-    otherDeductionsSum
+    otherDeductionsSum +
+    dynamicDeductionsSum
   );
 
   return {
@@ -650,6 +682,7 @@ export const buildMasterSalaryStructure = (source = {}, configInput = {}) => {
     includeGratuityInCTC,
     useSalaryComponents: source.useSalaryComponents !== false,
     earningsMap,
+    deductionsMap,
   };
 };
 

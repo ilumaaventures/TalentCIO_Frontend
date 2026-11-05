@@ -725,18 +725,18 @@ const CompensationFormSection = ({ formData, calculateSalaryBreakdown, onChange,
                         
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                             {(config?.salaryComponents || [
-                                { id: 'basic', name: 'Basic Salary', linkedTo: 'ctc_percent', linkValue: 0.5, frequency: 'monthly' },
-                                { id: 'hra', name: 'HRA', linkedTo: 'basic_percent', linkValue: 0.5, frequency: 'monthly' },
-                                { id: 'flexi', name: 'Flexi Allowance', linkedTo: 'remainder', frequency: 'monthly' },
-                                { id: 'broadband', name: 'Broadband', linkedTo: 'fixed', linkValue: 0, frequency: 'monthly' },
-                                { id: 'petrol', name: 'Petrol', linkedTo: 'fixed', linkValue: 0, frequency: 'monthly' },
-                                { id: 'lta', name: 'LTA', linkedTo: 'fixed', linkValue: 0, frequency: 'monthly' },
-                                { id: 'conveyance', name: 'Conveyance', linkedTo: 'fixed', linkValue: 0, frequency: 'monthly' },
-                                { id: 'medical', name: 'Medical Allowance', linkedTo: 'fixed', linkValue: 0, frequency: 'monthly' },
-                                { id: 'bonus', name: 'Bonus', linkedTo: 'fixed', linkValue: 0, frequency: 'semi_annually' }
+                                { id: 'basic', name: 'Basic Salary', type: 'earning', linkedTo: 'ctc_percent', linkValue: 0.5, frequency: 'monthly' },
+                                { id: 'hra', name: 'HRA', type: 'earning', linkedTo: 'basic_percent', linkValue: 0.5, frequency: 'monthly' },
+                                { id: 'flexi', name: 'Flexi Allowance', type: 'earning', linkedTo: 'remainder', frequency: 'monthly' },
+                                { id: 'broadband', name: 'Broadband', type: 'earning', linkedTo: 'fixed', linkValue: 0, frequency: 'monthly' },
+                                { id: 'petrol', name: 'Petrol', type: 'earning', linkedTo: 'fixed', linkValue: 0, frequency: 'monthly' },
+                                { id: 'lta', name: 'LTA', type: 'earning', linkedTo: 'fixed', linkValue: 0, frequency: 'monthly' },
+                                { id: 'conveyance', name: 'Conveyance', type: 'earning', linkedTo: 'fixed', linkValue: 0, frequency: 'monthly' },
+                                { id: 'medical', name: 'Medical Allowance', type: 'earning', linkedTo: 'fixed', linkValue: 0, frequency: 'monthly' },
+                                { id: 'bonus', name: 'Bonus', type: 'earning', linkedTo: 'fixed', linkValue: 0, frequency: 'semi_annually' }
                             ])
-                            .filter(c => c.type === 'earning' || !c.type || ['basic', 'hra', 'flexi', 'special', 'broadband', 'petrol', 'lta', 'conveyance', 'medical', 'bonus'].includes(c.id))
                             .map(c => {
+                                const isDeduction = c.type === 'deduction';
                                 const isFixed = c.linkedTo === 'fixed';
                                 const isRemainder = c.linkedTo === 'remainder';
                                 const currentFreq = (salary.componentFrequencies && salary.componentFrequencies[c.id]) || c.frequency || 'monthly';
@@ -759,14 +759,21 @@ const CompensationFormSection = ({ formData, calculateSalaryBreakdown, onChange,
                                 const value = c.id === 'basic' ? (salary.basicMaster || salary.basic || '0')
                                     : c.id === 'hra' ? (salary.hraMaster || salary.hra || '0')
                                     : c.id === 'special' || c.id === 'flexi' ? (salary.flexi || salary.specialAllowance || '0')
-                                    : (salary[c.id] || '0');
+                                    : (salary[c.id] !== undefined ? salary[c.id] : '0');
 
                                 return (
-                                    <div key={c.id} className="bg-slate-50/70 border border-slate-200/80 rounded-xl p-3 space-y-1.5">
+                                    <div key={c.id} className={`rounded-xl p-3 space-y-1.5 transition-colors ${isDeduction ? 'bg-rose-50/40 border border-rose-200/80' : 'bg-slate-50/70 border border-slate-200/80'}`}>
                                         <div className="flex items-center justify-between">
-                                            <label className="text-[11px] font-bold text-slate-700">
-                                                {c.name} {formulaLabel && <span className="text-[10px] font-normal text-slate-500">({formulaLabel})</span>}
-                                            </label>
+                                            <div className="flex items-center gap-1.5 flex-wrap">
+                                                <label className="text-[11px] font-bold text-slate-700">
+                                                    {c.name} {formulaLabel && <span className="text-[10px] font-normal text-slate-500">({formulaLabel})</span>}
+                                                </label>
+                                                {isDeduction && (
+                                                    <span className="text-[9px] font-extrabold text-rose-600 bg-rose-100/70 border border-rose-200 px-1.5 py-0.2 rounded uppercase">
+                                                        Deduction
+                                                    </span>
+                                                )}
+                                            </div>
                                             <select
                                                 value={currentFreq}
                                                 onChange={(e) => {
@@ -787,12 +794,14 @@ const CompensationFormSection = ({ formData, calculateSalaryBreakdown, onChange,
                                                 type="number"
                                                 value={value || ''}
                                                 onChange={(e) => onBreakdownChange({ [c.id]: e.target.value })}
-                                                className="zoho-input text-xs"
+                                                className={`zoho-input text-xs ${isDeduction ? 'focus:border-rose-400' : ''}`}
                                                 placeholder="0"
                                             />
                                         ) : (
                                             <div className="flex items-center justify-between border border-slate-200 bg-white rounded-lg px-3 py-1.5 h-[34px]">
-                                                <span className="text-xs font-bold text-slate-800">₹{parseFloat(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+                                                <span className={`text-xs font-bold ${isDeduction ? 'text-rose-600' : 'text-slate-800'}`}>
+                                                    {isDeduction ? '-' : ''}₹{parseFloat(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                                                </span>
                                                 <span className="text-[9px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded-full uppercase">{currentFreq.replace('_', ' ')}</span>
                                             </div>
                                         )}

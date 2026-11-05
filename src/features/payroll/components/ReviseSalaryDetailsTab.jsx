@@ -354,6 +354,11 @@ const ReviseSalaryDetailsTab = () => {
                         mergedSalary[id] = String(val);
                     });
                 }
+                if (master.deductionsMap) {
+                    Object.entries(master.deductionsMap).forEach(([id, val]) => {
+                        mergedSalary[id] = String(val);
+                    });
+                }
             }
 
             return {
