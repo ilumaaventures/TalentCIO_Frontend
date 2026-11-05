@@ -122,6 +122,20 @@ export const CTCSnapshotCard = ({ breakup, payrollConfig, handleDownloadBreakup 
                                     <span className="font-semibold text-slate-800">{fmtMoney(breakup.lwfEmployer)}</span>
                                 </div>
                             )}
+                            {hasDynamicComponents && (
+                                payrollConfig.salaryComponents
+                                    .filter(c => c.type === 'deduction' && (c.deductFromFlexi || c.includeInCTC))
+                                    .map(c => {
+                                        const val = breakup.deductionsMap?.[c.id] !== undefined ? breakup.deductionsMap[c.id] : (breakup[c.id] || 0);
+                                        if (val <= 0) return null;
+                                        return (
+                                            <div key={c.id} className="flex justify-between text-sm text-slate-600 border-b border-slate-50 pb-1.5">
+                                                <span>{c.name} <span className="text-[10px] text-blue-600 font-semibold">(Flexi Benefit)</span></span>
+                                                <span className="font-semibold text-slate-800">{fmtMoney(val)}</span>
+                                            </div>
+                                        );
+                                    })
+                            )}
                         </div>
                     </div>
                 )}
@@ -171,7 +185,7 @@ export const CTCSnapshotCard = ({ breakup, payrollConfig, handleDownloadBreakup 
                             ))}
                             {hasDynamicComponents && (
                                 payrollConfig.salaryComponents
-                                    .filter(c => c.type === 'deduction')
+                                    .filter(c => c.type === 'deduction' && !c.deductFromFlexi && !c.includeInCTC)
                                     .map(c => {
                                         const val = breakup.deductionsMap?.[c.id] !== undefined ? breakup.deductionsMap[c.id] : (breakup[c.id] || 0);
                                         if (val <= 0) return null;
