@@ -768,10 +768,20 @@ const CompensationFormSection = ({ formData, calculateSalaryBreakdown, onChange,
                                                 <label className="text-[11px] font-bold text-slate-700">
                                                     {c.name} {formulaLabel && <span className="text-[10px] font-normal text-slate-500">({formulaLabel})</span>}
                                                 </label>
-                                                {isDeduction && (
+                                                {isDeduction ? (
                                                     <span className="text-[9px] font-extrabold text-rose-600 bg-rose-100/70 border border-rose-200 px-1.5 py-0.2 rounded uppercase">
                                                         Deduction
                                                     </span>
+                                                ) : (
+                                                    c.includeInCTC !== false ? (
+                                                        <span className="text-[9px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.2 rounded" title="Included in CTC budget">
+                                                            In CTC
+                                                        </span>
+                                                    ) : (
+                                                        <span className="text-[9px] font-semibold text-slate-500 bg-slate-100 border border-slate-200 px-1.5 py-0.2 rounded" title="Excluded from CTC budget">
+                                                            Outside CTC
+                                                        </span>
+                                                    )
                                                 )}
                                             </div>
                                             <select

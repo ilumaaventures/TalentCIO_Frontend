@@ -422,7 +422,14 @@ const SalaryPreviewCard = ({ formData, config }) => {
                                         if (val <= 0) return null;
                                         return (
                                             <div key={c.id} className="flex justify-between items-center py-1 border-b border-slate-50">
-                                                <span className="text-slate-600">{c.name}</span>
+                                                <span className="text-slate-600 flex items-center gap-1.5">
+                                                    {c.name}
+                                                    {c.includeInCTC === false && (
+                                                        <span className="text-[9px] font-medium text-slate-500 bg-slate-100 px-1 py-0.2 rounded border border-slate-200">
+                                                            Excl. CTC
+                                                        </span>
+                                                    )}
+                                                </span>
                                                 <span className="font-semibold text-slate-800">₹{val.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
                                             </div>
                                         );
@@ -470,6 +477,23 @@ const SalaryPreviewCard = ({ formData, config }) => {
                                         <span className="font-semibold text-slate-800">₹{parseFloat(salary.insuranceAmount || '0').toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
                                     </div>
                                 )}
+                                {(config?.salaryComponents || [])
+                                    .filter(c => c.type === 'deduction' && (c.deductFromFlexi || c.includeInCTC))
+                                    .map(c => {
+                                        const val = parseFloat(salary[c.id] || 0);
+                                        if (val <= 0) return null;
+                                        return (
+                                            <div key={c.id} className="flex justify-between items-center py-1 border-b border-slate-50">
+                                                <span className="text-slate-600 flex items-center gap-1.5">
+                                                    {c.name}
+                                                    <span className="text-[9px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.2 rounded border border-blue-200">
+                                                        Flexi Benefit
+                                                    </span>
+                                                </span>
+                                                <span className="font-semibold text-slate-800">₹{val.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+                                            </div>
+                                        );
+                                    })}
                             </>
                         )}
 

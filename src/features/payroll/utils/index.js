@@ -456,6 +456,7 @@ export const buildMasterSalaryStructure = (source = {}, configInput = {}) => {
     if (hasDynamicComponents) {
       ltaCap = roundAmount(basicMaster * config.ltaMaxPercent);
       let sumOfAllNonRemainder = 0;
+      let flexiDeductionsSum = 0;
       config.salaryComponents.forEach(c => {
         if (c.type === 'earning' && c.linkedTo !== 'remainder') {
           let amount = 0;
@@ -464,9 +465,19 @@ export const buildMasterSalaryStructure = (source = {}, configInput = {}) => {
           } else if (c.id === 'hra') {
             amount = hraMaster;
           } else if (c.linkedTo === 'ctc_percent') {
-            amount = roundAmount(monthlyCTC * c.linkValue);
+            let pct = c.linkValue;
+            const overrideVal = source[c.id + 'Percent'];
+            if (overrideVal !== undefined && overrideVal !== null && Number(overrideVal) > 0) {
+              pct = Number(overrideVal) > 1 ? Number(overrideVal) / 100 : Number(overrideVal);
+            }
+            amount = roundAmount(monthlyCTC * pct);
           } else if (c.linkedTo === 'basic_percent') {
-            amount = roundAmount(basicMaster * c.linkValue);
+            let pct = c.linkValue;
+            const overrideVal = source[c.id + 'Percent'];
+            if (overrideVal !== undefined && overrideVal !== null && Number(overrideVal) > 0) {
+              pct = Number(overrideVal) > 1 ? Number(overrideVal) / 100 : Number(overrideVal);
+            }
+            amount = roundAmount(basicMaster * pct);
           } else if (c.linkedTo === 'fixed') {
             let val = source[c.id] !== undefined ? source[c.id] : (source.salaryStructure?.[c.id] !== undefined ? source.salaryStructure[c.id] : 0);
             if (c.id === 'medical' && val === 0) {
@@ -479,13 +490,39 @@ export const buildMasterSalaryStructure = (source = {}, configInput = {}) => {
           }
           if (c.id === 'lta') amount = roundAmount(Math.min(amount, ltaCap || amount));
           em[c.id] = amount;
-          sumOfAllNonRemainder += amount;
+          if (c.includeInCTC !== false) {
+            sumOfAllNonRemainder += amount;
+          }
+        }
+      });
+      config.salaryComponents.forEach(c => {
+        if (c.type === 'deduction' && (c.deductFromFlexi === true || c.includeInCTC === true)) {
+          let amount = 0;
+          if (c.linkedTo === 'ctc_percent') {
+            let pct = c.linkValue;
+            const overrideVal = source[c.id + 'Percent'];
+            if (overrideVal !== undefined && overrideVal !== null && Number(overrideVal) > 0) {
+              pct = Number(overrideVal) > 1 ? Number(overrideVal) / 100 : Number(overrideVal);
+            }
+            amount = roundAmount(monthlyCTC * pct);
+          } else if (c.linkedTo === 'basic_percent') {
+            let pct = c.linkValue;
+            const overrideVal = source[c.id + 'Percent'];
+            if (overrideVal !== undefined && overrideVal !== null && Number(overrideVal) > 0) {
+              pct = Number(overrideVal) > 1 ? Number(overrideVal) / 100 : Number(overrideVal);
+            }
+            amount = roundAmount(basicMaster * pct);
+          } else if (c.linkedTo === 'fixed') {
+            let val = source[c.id] !== undefined ? source[c.id] : (source.deductions?.[c.id] !== undefined ? source.deductions[c.id] : (source.salaryStructure?.[c.id] !== undefined ? source.salaryStructure[c.id] : (c.linkValue || 0)));
+            amount = roundAmount(val);
+          }
+          flexiDeductionsSum += amount;
         }
       });
       config.salaryComponents.forEach(c => {
         if (c.type === 'earning' && c.linkedTo === 'remainder') {
           em[c.id] = roundAmount(Math.max(
-            monthlyCTC - sumOfAllNonRemainder - pfEmployerInCTC - gratuityInCTC - lwfEmployer - insurance - esiEmployerPlaceholder - employerNPS - otherAllowancesSum,
+            monthlyCTC - sumOfAllNonRemainder - flexiDeductionsSum - pfEmployerInCTC - gratuityInCTC - lwfEmployer - insurance - esiEmployerPlaceholder - employerNPS - otherAllowancesSum,
             0
           ));
         }
@@ -598,6 +635,8 @@ export const buildMasterSalaryStructure = (source = {}, configInput = {}) => {
   const otherDeductionsSum = roundAmount(otherDeductions.reduce((sum, item) => sum + (Number(item.amount) || 0), 0));
 
   const deductionsMap = {};
+  let dynamicGrossDeductionsSum = 0;
+  let dynamicFlexiDeductionsSum = 0;
   if (hasDynamicComponents) {
     config.salaryComponents.forEach(c => {
       if (c.type === 'deduction') {
@@ -617,10 +656,15 @@ export const buildMasterSalaryStructure = (source = {}, configInput = {}) => {
           }
           amount = roundAmount(basicMaster * pct);
         } else if (c.linkedTo === 'fixed') {
-          let val = source[c.id] !== undefined ? source[c.id] : (source.deductions?.[c.id] !== undefined ? source.deductions[c.id] : (c.linkValue || 0));
+          let val = source[c.id] !== undefined ? source[c.id] : (source.deductions?.[c.id] !== undefined ? source.deductions[c.id] : (source.salaryStructure?.[c.id] !== undefined ? source.salaryStructure[c.id] : (c.linkValue || 0)));
           amount = roundAmount(val);
         }
         deductionsMap[c.id] = amount;
+        if (c.deductFromFlexi === true || c.includeInCTC === true) {
+          dynamicFlexiDeductionsSum += amount;
+        } else {
+          dynamicGrossDeductionsSum += amount;
+        }
       }
     });
   }
@@ -633,7 +677,7 @@ export const buildMasterSalaryStructure = (source = {}, configInput = {}) => {
     tds +
     lwfEmployee +
     otherDeductionsSum +
-    dynamicDeductionsSum
+    dynamicGrossDeductionsSum
   );
 
   return {
@@ -662,12 +706,32 @@ export const buildMasterSalaryStructure = (source = {}, configInput = {}) => {
     esiEmployer,
     esiEmployee,
     grossSalary,
+    monthlyGross: grossSalary,
     totalEarnings,
-    totalEmployerContributions,
-    grossTotalSalary: roundAmount(totalEarnings + totalEmployerContributions),
+    totalEmployerContributions: roundAmount(pfEmployer + esiEmployer + gratuity + lwfEmployer + insurance + employerNPS + dynamicFlexiDeductionsSum),
+    grossTotalSalary: roundAmount(totalEarnings + totalEmployerContributions + dynamicFlexiDeductionsSum),
     totalDeductions,
+    dynamicGrossDeductionsSum,
+    dynamicFlexiDeductionsSum,
     netTakeHome: roundAmount(Math.max(0, totalEarnings - totalDeductions)),
-    diff: roundAmount(monthlyCTC - (basicMaster + hraMaster + flexi + broadband + petrol + lta + pfEmployerInCTC + gratuityInCTC + lwfEmployer + insurance + esiEmployer + employerNPS + conveyance + medicalAllowance + specialAllowance)),
+    diff: roundAmount(monthlyCTC - (
+      (hasDynamicComponents
+        ? Object.entries(earningsMap).reduce((sum, [id, val]) => {
+            const comp = config.salaryComponents?.find(c => c.id === id);
+            if (comp && comp.includeInCTC === false) return sum;
+            return sum + val;
+          }, 0)
+        : (basicMaster + hraMaster + flexi + broadband + petrol + lta + conveyance + medicalAllowance + specialAllowance)
+      ) +
+      pfEmployerInCTC +
+      gratuityInCTC +
+      lwfEmployer +
+      insurance +
+      esiEmployer +
+      employerNPS +
+      dynamicFlexiDeductionsSum +
+      otherAllowancesSum
+    )),
     taxRegime,
     declarations,
     taxDetails,
