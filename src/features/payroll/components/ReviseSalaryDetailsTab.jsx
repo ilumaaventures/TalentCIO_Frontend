@@ -438,6 +438,13 @@ const ReviseSalaryDetailsTab = () => {
         });
     }, [payrollConfig]);
 
+    // Re-run breakdown calculation whenever payrollConfig resolves or changes
+    useEffect(() => {
+        if (payrollConfig && selectedUserId) {
+            calculateSalaryBreakdown({});
+        }
+    }, [payrollConfig, selectedUserId, calculateSalaryBreakdown]);
+
     // Unique departments
     const departments = useMemo(() => {
         const set = new Set();
