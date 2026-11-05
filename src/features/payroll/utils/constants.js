@@ -1,3 +1,30 @@
+export const DEFAULT_DISPLAY_PREFERENCES = {
+  // CTC & Top-Level Metrics
+  showAnnualCTC: true,
+  showMonthlyCTC: true,
+  showGrossSalary: true,
+  showNetTakeHome: true,
+  showCtcComponentsCard: true,
+
+  // Earnings Breakdown
+  showEarningsBreakdown: true,
+
+  // Employer Statutory & Benefits
+  showEmployerStatutory: true,
+  showPFEmployer: true,
+  showGratuity: true,
+  showLWFEmployer: true,
+  showInsurance: true,
+
+  // Employee Statutory & Deductions
+  showEmployeeDeductions: true,
+  showPFEmployee: true,
+  showESIEmployee: true,
+  showProfessionalTax: true,
+  showLWFEmployee: true,
+  showTDS: true,
+};
+
 export const DEFAULT_PAYROLL_CONFIG = {
   basicPercent: 0.5,
   hraPercent: 0.5,
@@ -17,6 +44,28 @@ export const DEFAULT_PAYROLL_CONFIG = {
   defaultInsurance: 0,
   ltaMaxPercent: 0.0833,
   standardMonthlyHours: 160,
+  compensationTypeDefaults: {},
+  displayPreferences: DEFAULT_DISPLAY_PREFERENCES,
+};
+
+export const STRATEGY_DEFAULTS = {
+  monthly_salary: { pfEligible: true, esiEligible: true, ptApplicable: true, gratuityEligible: true, lwfApplicable: true },
+  attendance_based: { pfEligible: true, esiEligible: true, ptApplicable: true, gratuityEligible: true, lwfApplicable: true },
+  salary_plus_commission: { pfEligible: true, esiEligible: true, ptApplicable: true, gratuityEligible: true, lwfApplicable: true },
+  weekly_salary: { pfEligible: true, esiEligible: true, ptApplicable: true, gratuityEligible: true, lwfApplicable: true },
+  weekly_wage: { pfEligible: true, esiEligible: true, ptApplicable: true, gratuityEligible: true, lwfApplicable: true },
+
+  hourly: { pfEligible: false, esiEligible: false, ptApplicable: false, gratuityEligible: false, lwfApplicable: false },
+  daily_wage: { pfEligible: false, esiEligible: false, ptApplicable: false, gratuityEligible: false, lwfApplicable: false },
+  piece_rate: { pfEligible: false, esiEligible: false, ptApplicable: false, gratuityEligible: false, lwfApplicable: false },
+  project_based: { pfEligible: false, esiEligible: false, ptApplicable: false, gratuityEligible: false, lwfApplicable: false },
+  flat_project: { pfEligible: false, esiEligible: false, ptApplicable: false, gratuityEligible: false, lwfApplicable: false },
+  milestone: { pfEligible: false, esiEligible: false, ptApplicable: false, gratuityEligible: false, lwfApplicable: false },
+  milestone_based: { pfEligible: false, esiEligible: false, ptApplicable: false, gratuityEligible: false, lwfApplicable: false },
+  timesheet_based: { pfEligible: false, esiEligible: false, ptApplicable: false, gratuityEligible: false, lwfApplicable: false },
+  commission_only: { pfEligible: false, esiEligible: false, ptApplicable: false, gratuityEligible: false, lwfApplicable: false },
+  retainer: { pfEligible: false, esiEligible: false, ptApplicable: false, gratuityEligible: false, lwfApplicable: false },
+  stipend_intern: { pfEligible: false, esiEligible: false, ptApplicable: false, gratuityEligible: false, lwfApplicable: false },
 };
 
 export const fmtMoney = (value) => `₹${(Number(value) || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;

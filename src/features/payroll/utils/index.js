@@ -1,5 +1,7 @@
 import {
   DEFAULT_PAYROLL_CONFIG,
+  DEFAULT_DISPLAY_PREFERENCES,
+  STRATEGY_DEFAULTS,
   fmtMoney,
   parseBool,
   payrollStatusClass,
@@ -22,6 +24,8 @@ import {
 
 export {
   DEFAULT_PAYROLL_CONFIG,
+  DEFAULT_DISPLAY_PREFERENCES,
+  STRATEGY_DEFAULTS,
   fmtMoney,
   parseBool,
   payrollStatusClass,
@@ -41,17 +45,40 @@ export const createDefaultSalaryData = (breakup = {}, comp = {}, user = null, co
   const defaultMonthly = rawMonthly ? String(rawMonthly) : '';
   const defaultAnnual = rawMonthly ? String(rawMonthly * 12) : '';
 
+  const compType = breakup.compensationType || breakup.payType || 'monthly_salary';
+  const compDefaults = (config?.compensationTypeDefaults && config.compensationTypeDefaults[compType]) || {};
+  const baseDefaults = STRATEGY_DEFAULTS[compType] || { pfEligible: true, esiEligible: true, ptApplicable: true, gratuityEligible: true, lwfApplicable: true };
+
+  const resolveInitFlag = (val, overrideVal, baseVal) => {
+    if (overrideVal === 'force_eligible' || overrideVal === true || overrideVal === 'true') {
+      return true;
+    }
+    if (overrideVal === 'force_exempt' || overrideVal === false || overrideVal === 'false') {
+      return false;
+    }
+    if (val !== undefined && val !== null && val !== '') {
+      return parseBool(val);
+    }
+    if (overrideVal === 'default_eligible' || overrideVal === 'eligible') {
+      return true;
+    }
+    if (overrideVal === 'default_exempt' || overrideVal === 'exempt') {
+      return false;
+    }
+    return Boolean(baseVal);
+  };
+
   const salaryData = {
     annualCTC: comp.ctc ? String(comp.ctc * 12) : (breakup.annualCTC ? String(breakup.annualCTC) : defaultAnnual),
     monthlyCTC: comp.ctc ? String(comp.ctc) : (breakup.monthlyCTC ? String(breakup.monthlyCTC) : defaultMonthly),
-    compensationType: breakup.compensationType || breakup.payType || 'monthly_salary',
+    compensationType: compType,
     attendanceMode: (user && user.attendanceMode) || breakup.attendanceMode || 'attendance',
     payType: breakup.payType || 'salaried',
-    pfEnabled: parseBool(breakup.pfEnabled, true),
-    esiEnabled: parseBool(breakup.esiEnabled, true),
-    ptEnabled: parseBool(breakup.ptEnabled, true),
-    lwfEnabled: parseBool(breakup.lwfEnabled, true),
-    gratuityEnabled: parseBool(breakup.gratuityEnabled, true),
+    pfEnabled: resolveInitFlag(breakup.pfEnabled, compDefaults.pfEligible ?? compDefaults.pfEnabled, baseDefaults.pfEligible),
+    esiEnabled: resolveInitFlag(breakup.esiEnabled, compDefaults.esiEligible ?? compDefaults.esiEnabled, baseDefaults.esiEligible),
+    ptEnabled: resolveInitFlag(breakup.ptEnabled, compDefaults.ptApplicable ?? compDefaults.ptEnabled, baseDefaults.ptApplicable),
+    lwfEnabled: resolveInitFlag(breakup.lwfEnabled, compDefaults.lwfApplicable ?? compDefaults.lwfEnabled, baseDefaults.lwfApplicable),
+    gratuityEnabled: resolveInitFlag(breakup.gratuityEnabled, compDefaults.gratuityEligible ?? compDefaults.gratuityEnabled, baseDefaults.gratuityEligible),
     tdsEnabled: parseBool(breakup.tdsEnabled, true),
     includePfInCTC: parseBool(breakup.includePfInCTC, false),
     includeGratuityInCTC: parseBool(breakup.includeGratuityInCTC, true),
@@ -203,6 +230,8 @@ export const normalizePayrollConfig = (config = {}) => {
     defaultInsurance: getNum(cfg.defaultInsurance, DEFAULT_PAYROLL_CONFIG.defaultInsurance),
     ltaMaxPercent: getNum(cfg.ltaMaxPercent, DEFAULT_PAYROLL_CONFIG.ltaMaxPercent),
     standardMonthlyHours: getNum(cfg.standardMonthlyHours, DEFAULT_PAYROLL_CONFIG.standardMonthlyHours),
+    compensationTypeDefaults: cfg.compensationTypeDefaults || DEFAULT_PAYROLL_CONFIG.compensationTypeDefaults || {},
+    displayPreferences: cfg.displayPreferences ? { ...DEFAULT_DISPLAY_PREFERENCES, ...cfg.displayPreferences } : { ...DEFAULT_DISPLAY_PREFERENCES },
     salaryComponents: cfg.salaryComponents || null,
   };
 };
@@ -274,12 +303,60 @@ export const buildMasterSalaryStructure = (source = {}, configInput = {}) => {
 
   const useComponents = source.useSalaryComponents === true || (source.useSalaryComponents !== false && !isIntern && !isHourly && !isFlat && !isNonSalariedType);
 
-  // Toggles integration — non-structured mode & non-salaried contractor strategies turn off standard statutory components (PF, ESI, PT, LWF, Gratuity)
-  const pfEnabled = useComponents && source.pfEnabled !== false;
-  const esiEnabled = useComponents && source.esiEnabled !== false;
-  const ptEnabled = useComponents && source.ptEnabled !== false;
-  const lwfEnabled = useComponents && source.lwfEnabled !== false;
-  const gratuityEnabled = useComponents && source.gratuityEnabled !== false;
+  const compDefaults = (config.compensationTypeDefaults && config.compensationTypeDefaults[compType]) || {};
+  const isNonStructuredExplicit = source.useSalaryComponents === false;
+  const baseDefaults = STRATEGY_DEFAULTS[compType] || {
+    pfEligible: !isNonSalariedType && !isIntern && !isHourly && !isFlat && !isNonStructuredExplicit,
+    esiEligible: !isNonSalariedType && !isIntern && !isHourly && !isFlat && !isNonStructuredExplicit,
+    ptApplicable: !isNonSalariedType && !isIntern && !isHourly && !isFlat && !isNonStructuredExplicit,
+    gratuityEligible: !isNonSalariedType && !isIntern && !isHourly && !isFlat && !isNonStructuredExplicit,
+    lwfApplicable: !isNonSalariedType && !isIntern && !isHourly && !isFlat && !isNonStructuredExplicit,
+  };
+
+  const resolveStatutory = (sourceVal, overrideVal, baseVal) => {
+    if (overrideVal === 'force_eligible' || overrideVal === true || overrideVal === 'true') {
+      return true;
+    }
+    if (overrideVal === 'force_exempt' || overrideVal === false || overrideVal === 'false') {
+      return false;
+    }
+    if (sourceVal !== undefined && sourceVal !== null && sourceVal !== '') {
+      return parseBool(sourceVal);
+    }
+    if (overrideVal === 'default_eligible' || overrideVal === 'eligible') {
+      return true;
+    }
+    if (overrideVal === 'default_exempt' || overrideVal === 'exempt') {
+      return false;
+    }
+    return Boolean(baseVal);
+  };
+
+  const pfEnabled = resolveStatutory(
+    source.pfEnabled !== undefined ? source.pfEnabled : source.pfEligible,
+    compDefaults.pfEligible !== undefined ? compDefaults.pfEligible : compDefaults.pfEnabled,
+    baseDefaults.pfEligible
+  );
+  const esiEnabled = resolveStatutory(
+    source.esiEnabled !== undefined ? source.esiEnabled : source.esiEligible,
+    compDefaults.esiEligible !== undefined ? compDefaults.esiEligible : compDefaults.esiEnabled,
+    baseDefaults.esiEligible
+  );
+  const ptEnabled = resolveStatutory(
+    source.ptEnabled !== undefined ? source.ptEnabled : source.ptApplicable,
+    compDefaults.ptApplicable !== undefined ? compDefaults.ptApplicable : compDefaults.ptEnabled,
+    baseDefaults.ptApplicable
+  );
+  const lwfEnabled = resolveStatutory(
+    source.lwfEnabled !== undefined ? source.lwfEnabled : source.lwfApplicable,
+    compDefaults.lwfApplicable !== undefined ? compDefaults.lwfApplicable : compDefaults.lwfEnabled,
+    baseDefaults.lwfApplicable
+  );
+  const gratuityEnabled = resolveStatutory(
+    source.gratuityEnabled !== undefined ? source.gratuityEnabled : source.gratuityEligible,
+    compDefaults.gratuityEligible !== undefined ? compDefaults.gratuityEligible : compDefaults.gratuityEnabled,
+    baseDefaults.gratuityEligible
+  );
   const includePfInCTC = pfEnabled && source.includePfInCTC === true;
   const includeGratuityInCTC = gratuityEnabled && source.includeGratuityInCTC !== false;
 

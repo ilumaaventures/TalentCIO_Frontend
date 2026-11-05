@@ -43,11 +43,11 @@ const api = axios.create({
   },
 });
 
-// Prevent redundant parallel mutations by sharing the first in-flight result
-// with any identical follow-up request instead of surfacing a cancellation error.
+// Prevent redundant parallel requests (both identical in-flight GETs and duplicate mutations)
+// by sharing the first in-flight result with any concurrent identical follow-up request.
 const pendingRequests = new Map();
 
-const createSharedRequestRecord = () => {
+const createSharedRequestRecord = (timeoutMs = 45000) => {
   let resolveShared;
   let rejectShared;
 
@@ -56,10 +56,20 @@ const createSharedRequestRecord = () => {
     rejectShared = reject;
   });
 
+  const timer = setTimeout(() => {
+    rejectShared(new Error('Request deduplication timeout'));
+  }, timeoutMs);
+
   return {
     sharedPromise,
-    resolve: resolveShared,
-    reject: rejectShared,
+    resolve: (val) => {
+      clearTimeout(timer);
+      resolveShared(val);
+    },
+    reject: (err) => {
+      clearTimeout(timer);
+      rejectShared(err);
+    },
   };
 };
 
@@ -149,13 +159,15 @@ const isPublicAuthFlowPath = (pathname = '') => (
   || pathname === '/auth/handoff'
 );
 
-// Add a request interceptor to attach workspace context and dedupe sensitive mutations.
+// Add a request interceptor to attach workspace context and dedupe sensitive mutations and identical in-flight GETs.
 api.interceptors.request.use(
   (config) => {
-    // Block only identical in-flight mutations, including params and payload.
-    const requestKey = getRequestKey(config);
-    const method = String(config.method || '').toLowerCase();
-    if (MUTATION_METHODS.has(method)) {
+    // Deduplicate identical in-flight requests (both GET and mutations) sharing the same URL and payload.
+    const method = String(config.method || 'get').toLowerCase();
+    const shouldDedupe = method === 'get' || MUTATION_METHODS.has(method);
+
+    if (shouldDedupe) {
+      const requestKey = getRequestKey(config);
       const pendingRecord = pendingRequests.get(requestKey);
       if (pendingRecord) {
         config.adapter = () => pendingRecord.sharedPromise;
@@ -258,8 +270,13 @@ api.interceptors.response.use(
     const requestKey = response.config?.__requestKey || getRequestKey(response.config);
     const pendingRecord = pendingRequests.get(requestKey);
     if (pendingRecord) {
-      pendingRecord.resolve(response);
       pendingRequests.delete(requestKey);
+      pendingRecord.resolve({
+        ...response,
+        data: (response.data && typeof response.data === 'object')
+          ? (Array.isArray(response.data) ? [...response.data] : { ...response.data })
+          : response.data
+      });
     }
     return response;
   },
@@ -268,8 +285,8 @@ api.interceptors.response.use(
       const requestKey = error.config.__requestKey || getRequestKey(error.config);
       const pendingRecord = pendingRequests.get(requestKey);
       if (pendingRecord) {
-        pendingRecord.reject(error);
         pendingRequests.delete(requestKey);
+        pendingRecord.reject(error);
       }
     }
 

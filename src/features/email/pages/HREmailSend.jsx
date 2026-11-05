@@ -416,13 +416,15 @@ const HREmailSend = () => {
             const payload = response.data || {};
             setResult({
                 ...payload,
+                totalSent: payload.totalSent ?? payload.sentCount ?? (payload.sent || []).length,
+                totalFailed: payload.totalFailed ?? payload.failedCount ?? (payload.failed || []).length,
                 sent: (payload.sent || []).map((item) => ({
                     ...item,
-                    employee: selectedEmployeeMap.get(String(item.userId))
+                    employee: selectedEmployeeMap.get(String(item.userId)) || { firstName: item.name || item.email || 'Employee', lastName: '' }
                 })),
                 failed: (payload.failed || []).map((item) => ({
                     ...item,
-                    employee: selectedEmployeeMap.get(String(item.userId))
+                    employee: selectedEmployeeMap.get(String(item.userId)) || { firstName: item.name || item.email || 'Employee', lastName: '' }
                 }))
             });
         } catch (error) {
@@ -467,7 +469,9 @@ const HREmailSend = () => {
     };
 
     if (result) {
-        const dossierSavedCount = (result.sent || []).filter((entry) => Array.isArray(entry.dossierDocIds) && entry.dossierDocIds.length > 0).length;
+        const totalSent = result.totalSent ?? result.sentCount ?? (result.sent?.length || 0);
+        const totalFailed = result.totalFailed ?? result.failedCount ?? (result.failed?.length || 0);
+        const dossierSavedCount = (result.sent || []).filter((entry) => entry.dossierSaved || (Array.isArray(entry.dossierDocIds) && entry.dossierDocIds.length > 0)).length;
         const primaryHistoryUserId = result.sent?.[0]?.userId || selectedEmployees[0]?._id;
 
         return (
@@ -484,11 +488,11 @@ const HREmailSend = () => {
                     <div className="mt-4 grid gap-2.5 md:grid-cols-3">
                         <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-3">
                             <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-700">Sent</div>
-                            <div className="mt-1 text-xl font-black text-emerald-700">{result.totalSent || 0}</div>
+                            <div className="mt-1 text-xl font-black text-emerald-700">{totalSent}</div>
                         </div>
                         <div className="rounded-xl border border-amber-100 bg-amber-50 p-3">
                             <div className="text-[10px] font-bold uppercase tracking-wider text-amber-700">Failed</div>
-                            <div className="mt-1 text-xl font-black text-amber-700">{result.totalFailed || 0}</div>
+                            <div className="mt-1 text-xl font-black text-amber-700">{totalFailed}</div>
                         </div>
                         <div className="rounded-xl border border-blue-100 bg-blue-50 p-3">
                             <div className="text-[10px] font-bold uppercase tracking-wider text-blue-700">Dossier Saves</div>

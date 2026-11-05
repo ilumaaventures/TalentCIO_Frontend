@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { toast } from 'react-hot-toast';
-import { Save, Loader2, Info, Settings, Shield, RotateCcw } from 'lucide-react';
+import { Save, Loader2, Info, Settings, Shield, RotateCcw, SlidersHorizontal } from 'lucide-react';
 import api from '@/lib/apiClient';
-import { DEFAULT_PAYROLL_CONFIG } from '@/features/payroll/utils/payroll';
+import { DEFAULT_PAYROLL_CONFIG, DEFAULT_DISPLAY_PREFERENCES } from '@/features/payroll/utils/payroll';
 
 const COMPENSATION_TYPES = [
   { id: 'monthly_salary', name: 'Monthly Fixed Salary' },
@@ -111,7 +111,12 @@ const PayrollSettings = ({ embed = false, onSave }) => {
       'Reset all payroll settings to factory defaults?\n\nThis will restore default salary components, PF, ESI, LWF, Gratuity rates, and general policy values.\n\nClick OK to confirm.'
     )) return;
     const defaultComponents = mergeSalaryComponents([], DEFAULT_PAYROLL_CONFIG);
-    setForm({ ...DEFAULT_PAYROLL_CONFIG, salaryComponents: defaultComponents });
+    setForm({
+      ...DEFAULT_PAYROLL_CONFIG,
+      salaryComponents: defaultComponents,
+      compensationTypeDefaults: {},
+      displayPreferences: { ...DEFAULT_DISPLAY_PREFERENCES }
+    });
     toast.success('Settings reset to defaults. Click Save to apply.');
   };
 
@@ -122,7 +127,11 @@ const PayrollSettings = ({ embed = false, onSave }) => {
         const data = res.data || {};
         const mergedConfig = {
           ...DEFAULT_PAYROLL_CONFIG,
-          ...data
+          ...data,
+          displayPreferences: {
+            ...DEFAULT_DISPLAY_PREFERENCES,
+            ...(data.displayPreferences || {})
+          }
         };
         const mergedComponents = mergeSalaryComponents(data.salaryComponents, mergedConfig);
 
@@ -148,15 +157,31 @@ const PayrollSettings = ({ embed = false, onSave }) => {
     }));
   };
 
+  const handleDisplayPrefToggle = (prefKey) => {
+    setForm(prev => {
+      const currentPrefs = { ...DEFAULT_DISPLAY_PREFERENCES, ...(prev.displayPreferences || {}) };
+      return {
+        ...prev,
+        displayPreferences: {
+          ...currentPrefs,
+          [prefKey]: !currentPrefs[prefKey]
+        }
+      };
+    });
+  };
+
   const handleOverrideChange = (compensationType, flagKey, overrideValue) => {
     setForm((prev) => {
       const currentDefaults = { ...(prev.compensationTypeDefaults || {}) };
       const currentTypeOverrides = { ...(currentDefaults[compensationType] || {}) };
+      const baseDefaults = STRATEGY_DEFAULTS[compensationType] || {};
+      const baseVal = Boolean(baseDefaults[flagKey]);
+      const systemBase = baseVal ? 'default_eligible' : 'default_exempt';
       
-      if (overrideValue === 'default') {
+      if (overrideValue === systemBase) {
         delete currentTypeOverrides[flagKey];
       } else {
-        currentTypeOverrides[flagKey] = overrideValue === 'true';
+        currentTypeOverrides[flagKey] = overrideValue;
       }
       
       if (Object.keys(currentTypeOverrides).length === 0) {
@@ -377,10 +402,19 @@ const PayrollSettings = ({ embed = false, onSave }) => {
             }) : [];
         } else if (key === 'pfCalculationType') {
           payload[key] = value || 'percent';
+        } else if (key === 'compensationTypeDefaults') {
+          payload[key] = (value && typeof value === 'object') ? value : {};
+        } else if (key === 'displayPreferences') {
+          payload[key] = (value && typeof value === 'object') ? value : {};
         } else {
           payload[key] = Number(value) || 0;
         }
       });
+      payload.compensationTypeDefaults = form.compensationTypeDefaults || {};
+      payload.displayPreferences = {
+        ...DEFAULT_DISPLAY_PREFERENCES,
+        ...(form.displayPreferences || {})
+      };
 
       await api.put('/payroll/config', payload);
       toast.success('Payroll configuration settings saved successfully');
@@ -830,7 +864,16 @@ const PayrollSettings = ({ embed = false, onSave }) => {
                         {STATUTORY_FLAGS.map((flag) => {
                           const val = overrides[flag.key];
                           const baseVal = baseDefaults[flag.key];
-                          const selectValue = val === undefined ? 'default' : String(val);
+                          let selectValue = 'default_eligible';
+                          if (val === undefined || val === 'default') {
+                            selectValue = baseVal ? 'default_eligible' : 'default_exempt';
+                          } else if (val === 'default_eligible' || val === 'default_exempt' || val === 'force_eligible' || val === 'force_exempt') {
+                            selectValue = val;
+                          } else if (val === true || val === 'true') {
+                            selectValue = 'force_eligible';
+                          } else if (val === false || val === 'false') {
+                            selectValue = 'force_exempt';
+                          }
                           
                           return (
                             <td key={flag.key} className="px-3 py-1.5 text-center">
@@ -839,9 +882,10 @@ const PayrollSettings = ({ embed = false, onSave }) => {
                                 onChange={(e) => handleOverrideChange(type.id, flag.key, e.target.value)}
                                 className="border border-slate-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-slate-700"
                               >
-                                <option value="default">Default ({baseVal ? 'Eligible' : 'Exempt'})</option>
-                                <option value="true">Force Eligible</option>
-                                <option value="false">Force Exempt</option>
+                                <option value="default_eligible">Default (Eligible)</option>
+                                <option value="default_exempt">Default (Exempt)</option>
+                                <option value="force_eligible">Force Eligible</option>
+                                <option value="force_exempt">Force Exempt</option>
                               </select>
                             </td>
                           );
@@ -851,6 +895,183 @@ const PayrollSettings = ({ embed = false, onSave }) => {
                   })}
                 </tbody>
               </table>
+            </div>
+          </div>
+
+          {/* Template & Live Preview Display Preferences Section */}
+          <div className="mt-6 pt-5 border-t border-slate-200">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
+              <div>
+                <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
+                  <SlidersHorizontal size={14} className="text-blue-600" />
+                  Salary Preview & Template Display Options
+                </h4>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Choose which metrics, statutory costs, and breakdown items appear in the <strong>Salary Structure Preview (Live Estimate)</strong>, <strong>CTC Components</strong> card, and generated offer / revision letter templates.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const allTrue = {};
+                    Object.keys(DEFAULT_DISPLAY_PREFERENCES).forEach(k => allTrue[k] = true);
+                    setForm(prev => ({ ...prev, displayPreferences: allTrue }));
+                  }}
+                  className="text-[11px] font-semibold text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
+                >
+                  Select All
+                </button>
+                <span className="text-slate-300">|</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setForm(prev => ({ ...prev, displayPreferences: { ...DEFAULT_DISPLAY_PREFERENCES } }));
+                  }}
+                  className="text-[11px] font-semibold text-slate-500 hover:text-slate-700 hover:underline cursor-pointer"
+                >
+                  Reset Defaults
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3">
+              {/* Group 1: CTC & Summary Totals */}
+              <div className="bg-slate-50/60 rounded-xl border border-slate-200 p-4 space-y-3">
+                <div className="border-b border-slate-200/80 pb-2">
+                  <h5 className="text-[11px] font-bold text-slate-800 uppercase tracking-wider">
+                    CTC & Summary Totals
+                  </h5>
+                  <span className="text-[10px] text-slate-400">Controls headline compensation and take-home figures</span>
+                </div>
+                <div className="space-y-2.5">
+                  {[
+                    { key: 'showAnnualCTC', label: 'Annual CTC', desc: 'Displays Annual CTC (e.g. ₹6,00,000) in preview & CTC cards' },
+                    { key: 'showMonthlyCTC', label: 'Monthly CTC', desc: 'Displays Monthly CTC (e.g. ₹50,000) in live preview header' },
+                    { key: 'showGrossSalary', label: 'Gross Salary', desc: 'Displays Monthly Gross Salary before statutory deductions' },
+                    { key: 'showNetTakeHome', label: 'Est. Net Take-Home', desc: 'Displays estimated employee take-home pay after deductions' },
+                    { key: 'showCtcComponentsCard', label: 'CTC Components Card', desc: 'Shows the "CTC Components (Synced with payroll settings)" box' },
+                  ].map(item => {
+                    const isChecked = (form.displayPreferences || DEFAULT_DISPLAY_PREFERENCES)[item.key] !== false;
+                    return (
+                      <label key={item.key} className="flex items-start gap-2.5 p-2 rounded-lg hover:bg-white transition-colors cursor-pointer border border-transparent hover:border-slate-200/70">
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => handleDisplayPrefToggle(item.key)}
+                          className="mt-0.5 w-4 h-4 text-blue-600 rounded focus:ring-blue-500 cursor-pointer"
+                        />
+                        <div className="flex-1">
+                          <span className="text-xs font-semibold text-slate-700 block">{item.label}</span>
+                          <span className="text-[10px] text-slate-400">{item.desc}</span>
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Group 2: Earnings Component Breakdown */}
+              <div className="bg-slate-50/60 rounded-xl border border-slate-200 p-4 space-y-3">
+                <div className="border-b border-slate-200/80 pb-2">
+                  <h5 className="text-[11px] font-bold text-slate-800 uppercase tracking-wider">
+                    Earnings Breakdown
+                  </h5>
+                  <span className="text-[10px] text-slate-400">Controls basic salary, HRA, flexi, and custom allowances</span>
+                </div>
+                <div className="space-y-2.5">
+                  {[
+                    { key: 'showEarningsBreakdown', label: 'Earnings Component Breakdown Section', desc: 'Displays Basic Salary, HRA, Flexi/Special, and Custom Allowances' },
+                  ].map(item => {
+                    const isChecked = (form.displayPreferences || DEFAULT_DISPLAY_PREFERENCES)[item.key] !== false;
+                    return (
+                      <label key={item.key} className="flex items-start gap-2.5 p-2 rounded-lg hover:bg-white transition-colors cursor-pointer border border-transparent hover:border-slate-200/70">
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => handleDisplayPrefToggle(item.key)}
+                          className="mt-0.5 w-4 h-4 text-blue-600 rounded focus:ring-blue-500 cursor-pointer"
+                        />
+                        <div className="flex-1">
+                          <span className="text-xs font-semibold text-slate-700 block">{item.label}</span>
+                          <span className="text-[10px] text-slate-400">{item.desc}</span>
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Group 3: Employer Statutory & Benefits */}
+              <div className="bg-slate-50/60 rounded-xl border border-slate-200 p-4 space-y-3">
+                <div className="border-b border-slate-200/80 pb-2">
+                  <h5 className="text-[11px] font-bold text-slate-800 uppercase tracking-wider">
+                    Employer Statutory & Benefits (Company Cost)
+                  </h5>
+                  <span className="text-[10px] text-slate-400">Controls employer contributions in previews, CTC box & letter tables</span>
+                </div>
+                <div className="space-y-2.5">
+                  {[
+                    { key: 'showEmployerStatutory', label: 'Employer Statutory Section Header', desc: 'Master toggle for the Employer Statutory & Benefits block' },
+                    { key: 'showPFEmployer', label: 'PF Employer Cost', desc: 'Employer Provident Fund (12% up to ceiling or fixed amount)' },
+                    { key: 'showGratuity', label: 'Gratuity Provision', desc: 'Statutory gratuity provision (4.81% of Basic Salary)' },
+                    { key: 'showLWFEmployer', label: 'LWF Employer Share', desc: 'Labour Welfare Fund employer contribution' },
+                    { key: 'showInsurance', label: 'Corporate Health Insurance', desc: 'Default corporate health insurance amount' },
+                  ].map(item => {
+                    const isChecked = (form.displayPreferences || DEFAULT_DISPLAY_PREFERENCES)[item.key] !== false;
+                    return (
+                      <label key={item.key} className="flex items-start gap-2.5 p-2 rounded-lg hover:bg-white transition-colors cursor-pointer border border-transparent hover:border-slate-200/70">
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => handleDisplayPrefToggle(item.key)}
+                          className="mt-0.5 w-4 h-4 text-blue-600 rounded focus:ring-blue-500 cursor-pointer"
+                        />
+                        <div className="flex-1">
+                          <span className="text-xs font-semibold text-slate-700 block">{item.label}</span>
+                          <span className="text-[10px] text-slate-400">{item.desc}</span>
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Group 4: Employee Statutory & Deductions */}
+              <div className="bg-slate-50/60 rounded-xl border border-slate-200 p-4 space-y-3">
+                <div className="border-b border-slate-200/80 pb-2">
+                  <h5 className="text-[11px] font-bold text-slate-800 uppercase tracking-wider">
+                    Employee Statutory & Deductions
+                  </h5>
+                  <span className="text-[10px] text-slate-400">Controls employee deductions in previews & letter tables</span>
+                </div>
+                <div className="space-y-2.5">
+                  {[
+                    { key: 'showEmployeeDeductions', label: 'Employee Deductions Section Header', desc: 'Master toggle for the Employee Statutory & Deductions block' },
+                    { key: 'showPFEmployee', label: 'Employee PF (12%)', desc: 'Employee Provident Fund statutory deduction' },
+                    { key: 'showESIEmployee', label: 'Employee ESI (0.75%)', desc: 'Employee State Insurance deduction below threshold' },
+                    { key: 'showProfessionalTax', label: 'Professional Tax (PT)', desc: 'State-wise Professional Tax deduction (e.g. ₹200/mo)' },
+                    { key: 'showLWFEmployee', label: 'Employee LWF', desc: 'Labour Welfare Fund employee contribution' },
+                    { key: 'showTDS', label: 'Income Tax (TDS)', desc: 'TDS tax projection in letter tables & preview' },
+                  ].map(item => {
+                    const isChecked = (form.displayPreferences || DEFAULT_DISPLAY_PREFERENCES)[item.key] !== false;
+                    return (
+                      <label key={item.key} className="flex items-start gap-2.5 p-2 rounded-lg hover:bg-white transition-colors cursor-pointer border border-transparent hover:border-slate-200/70">
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => handleDisplayPrefToggle(item.key)}
+                          className="mt-0.5 w-4 h-4 text-blue-600 rounded focus:ring-blue-500 cursor-pointer"
+                        />
+                        <div className="flex-1">
+                          <span className="text-xs font-semibold text-slate-700 block">{item.label}</span>
+                          <span className="text-[10px] text-slate-400">{item.desc}</span>
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
           </div>
 
