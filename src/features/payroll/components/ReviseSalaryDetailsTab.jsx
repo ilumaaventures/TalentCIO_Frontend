@@ -7,6 +7,7 @@ import {
     User,
     Users,
     History,
+    Edit3,
     Calendar,
     DollarSign,
     Search,
@@ -329,6 +330,11 @@ const ReviseSalaryDetailsTab = () => {
     const [selectedEmployeeProfile, setSelectedEmployeeProfile] = useState(null);
     const [loadingProfile, setLoadingProfile] = useState(false);
     const [salaryDraft, setSalaryDraft] = useState(DEFAULT_SALARY_DRAFT);
+    const [showEditFormatModal, setShowEditFormatModal] = useState(false);
+    const [formatContent, setFormatContent] = useState('');
+    const [loadingTemplateContent, setLoadingTemplateContent] = useState(false);
+    const [customFormatsByTemplate, setCustomFormatsByTemplate] = useState({});
+    const employeeCustomFormat = customFormatsByTemplate[selectedTemplateId] || '';
     const [singleEffectiveDate, setSingleEffectiveDate] = useState(() => format(new Date(), 'yyyy-MM-dd'));
     const [singleReason, setSingleReason] = useState(REASON_TEMPLATES[0]);
     const [singleCustomReason, setSingleCustomReason] = useState('');
@@ -339,7 +345,7 @@ const ReviseSalaryDetailsTab = () => {
 
     // Single letter dispatch options
     const [singleGenerateLetter, setSingleGenerateLetter] = useState(true);
-    const [singleSendEmail, setSingleSendEmail] = useState(true);
+    const [singleSendEmail, setSingleSendEmail] = useState(false);
     const [singleSaveToDossier, setSingleSaveToDossier] = useState(true);
     const [actionLoadingRevId, setActionLoadingRevId] = useState(null);
 
@@ -716,7 +722,9 @@ const ReviseSalaryDetailsTab = () => {
                 changes,
                 confirmBackdated: singleBackdatedConfirmed,
                 metadata: {
-                    salaryBreakup: { ...salaryDraft }
+                    salaryBreakup: { ...salaryDraft },
+                    templateId: selectedTemplateId,
+                    customTemplateContent: employeeCustomFormat || null
                 }
             };
 
@@ -729,6 +737,7 @@ const ReviseSalaryDetailsTab = () => {
                 try {
                     const letterRes = await api.post(`/employees/${selectedUserId}/revisions/${savedRevision._id}/letter`, {
                         templateId: selectedTemplateId,
+                        customContent: employeeCustomFormat || null,
                         sendEmail: singleSendEmail,
                         saveToDossier: singleSaveToDossier
                     });
@@ -749,6 +758,58 @@ const ReviseSalaryDetailsTab = () => {
         }
     };
 
+    // Open modal to customize letter format for this particular employee on the chosen template
+    const handleOpenEditFormatModal = async () => {
+        if (!selectedUserId) {
+            toast.error('Select an employee to customize letter format');
+            return;
+        }
+        setShowEditFormatModal(true);
+        if (customFormatsByTemplate[selectedTemplateId]) {
+            setFormatContent(customFormatsByTemplate[selectedTemplateId]);
+            return;
+        }
+        try {
+            setLoadingTemplateContent(true);
+            const res = await api.get(`/employees/revisions/templates/${selectedTemplateId}/content`);
+            setFormatContent(res.data?.content || '');
+        } catch (err) {
+            console.error('Failed to load template content:', err);
+            toast.error('Failed to load base template content');
+        } finally {
+            setLoadingTemplateContent(false);
+        }
+    };
+
+    const handleApplyCustomFormat = () => {
+        setCustomFormatsByTemplate(prev => ({
+            ...prev,
+            [selectedTemplateId]: formatContent
+        }));
+        setShowEditFormatModal(false);
+        const tplName = availableTemplates.find(t => t._id === selectedTemplateId)?.name || 'selected template';
+        toast.success(`Custom format applied for ${selectedEmployeeProfile?.user?.firstName || 'this employee'} on "${tplName}"`);
+    };
+
+    const handleResetCustomFormat = async () => {
+        try {
+            setLoadingTemplateContent(true);
+            const res = await api.get(`/employees/revisions/templates/${selectedTemplateId}/content`);
+            const baseText = res.data?.content || '';
+            setFormatContent(baseText);
+            setCustomFormatsByTemplate(prev => {
+                const next = { ...prev };
+                delete next[selectedTemplateId];
+                return next;
+            });
+            toast.success('Reset to base template text');
+        } catch (err) {
+            toast.error('Failed to fetch base template');
+        } finally {
+            setLoadingTemplateContent(false);
+        }
+    };
+
     // Download preview letter for selected employee with current draft
     const handleDownloadPreviewLetter = async () => {
         if (!selectedUserId) {
@@ -757,10 +818,18 @@ const ReviseSalaryDetailsTab = () => {
         }
         try {
             setPreviewDownloading(true);
-            const response = await api.get(`/employees/${selectedUserId}/revisions/latest/letter/download`, {
-                params: { templateId: selectedTemplateId },
-                responseType: 'blob'
-            });
+            let response;
+            if (employeeCustomFormat) {
+                response = await api.post(`/employees/${selectedUserId}/revisions/latest/letter/download`, {
+                    templateId: selectedTemplateId,
+                    customContent: employeeCustomFormat
+                }, { responseType: 'blob' });
+            } else {
+                response = await api.get(`/employees/${selectedUserId}/revisions/latest/letter/download`, {
+                    params: { templateId: selectedTemplateId },
+                    responseType: 'blob'
+                });
+            }
 
             const blob = new Blob([response.data], {
                 type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
@@ -768,7 +837,10 @@ const ReviseSalaryDetailsTab = () => {
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `Preview_Offer_Letter_${selectedEmployeeProfile?.user?.firstName || 'Employee'}.docx`;
+            const empFirst = selectedEmployeeProfile?.personal?.firstName || selectedEmployeeProfile?.user?.firstName || 'Employee';
+            const empLast = selectedEmployeeProfile?.personal?.lastName || selectedEmployeeProfile?.user?.lastName || '';
+            const safeEmpName = `${empFirst}_${empLast}`.replace(/[^a-zA-Z0-9]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '').trim() || 'Employee';
+            a.download = `${safeEmpName}.docx`;
             document.body.appendChild(a);
             a.click();
             window.URL.revokeObjectURL(url);
@@ -798,7 +870,10 @@ const ReviseSalaryDetailsTab = () => {
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `Revised_Offer_Letter_${selectedEmployeeProfile?.user?.firstName || 'Employee'}.docx`;
+            const empFirst = selectedEmployeeProfile?.personal?.firstName || selectedEmployeeProfile?.user?.firstName || 'Employee';
+            const empLast = selectedEmployeeProfile?.personal?.lastName || selectedEmployeeProfile?.user?.lastName || '';
+            const safeEmpName = `${empFirst}_${empLast}`.replace(/[^a-zA-Z0-9]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '').trim() || 'Employee';
+            a.download = `${safeEmpName}.docx`;
             document.body.appendChild(a);
             a.click();
             window.URL.revokeObjectURL(url);
@@ -1478,6 +1553,16 @@ const ReviseSalaryDetailsTab = () => {
                                                                         <option key={t._id} value={t._id}>{t.name}</option>
                                                                     ))}
                                                                 </select>
+
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={handleOpenEditFormatModal}
+                                                                    className="px-3.5 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shrink-0 shadow-2xs"
+                                                                    title="Edit letter format, custom terms & clauses for this particular employee"
+                                                                >
+                                                                    <Edit3 size={13} className="text-indigo-600" />
+                                                                    <span>Edit Format</span>
+                                                                </button>
 
                                                                 <button
                                                                     type="button"
@@ -2589,6 +2674,152 @@ const ReviseSalaryDetailsTab = () => {
                                 )}
                             </tbody>
                         </table>
+                    </div>
+                </div>
+            )}
+
+            {/* ============================================================== */}
+            {/* POPUP MODAL: CUSTOMIZE LETTER FORMAT FOR PARTICULAR EMPLOYEE    */}
+            {/* ============================================================== */}
+            {showEditFormatModal && (
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-2xl w-full max-w-4xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+                        {/* Modal Header */}
+                        <div className="p-4 sm:p-5 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold">
+                                    <FileSignature size={20} />
+                                </div>
+                                <div>
+                                    <div className="flex items-center gap-2">
+                                        <h3 className="text-sm sm:text-base font-black text-slate-900">
+                                            Edit Letter Format for {selectedEmployeeProfile?.user?.firstName || 'Employee'} {selectedEmployeeProfile?.user?.lastName || ''}
+                                        </h3>
+                                        <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full">
+                                            Per-Employee Customization
+                                        </span>
+                                    </div>
+                                    <p className="text-xs text-slate-500 mt-0.5">
+                                        Base Template: <strong className="text-slate-700">{availableTemplates.find(t => t._id === selectedTemplateId)?.name || 'Default Template'}</strong>. Edit clauses, notes, or wording for this employee's revised offer letter.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <button
+                                type="button"
+                                onClick={() => setShowEditFormatModal(false)}
+                                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-200 transition-colors cursor-pointer"
+                            >
+                                <X size={18} />
+                            </button>
+                        </div>
+
+                        {/* Quick Tag Pills Bar */}
+                        <div className="px-5 py-2.5 bg-slate-100/70 border-b border-slate-200 flex items-center gap-2 overflow-x-auto text-xs">
+                            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider shrink-0 flex items-center gap-1">
+                                <Sparkles size={12} className="text-indigo-600" /> Insert Tag:
+                            </span>
+                            {[
+                                { label: 'Full Name', tag: '{employee_full_name}' },
+                                { label: 'First Name', tag: '{employee_first_name}' },
+                                { label: 'Designation', tag: '{designation}' },
+                                { label: 'Department', tag: '{department}' },
+                                { label: 'Effective Date', tag: '{effective_date}' },
+                                { label: 'Annual CTC', tag: '{annual_ctc}' },
+                                { label: 'Monthly Gross', tag: '{monthly_gross}' },
+                                { label: 'Salary Table', tag: '{@salary_table}' },
+                                { label: 'Signatory', tag: '{authorized_signatory}' }
+                            ].map(p => (
+                                <button
+                                    key={p.tag}
+                                    type="button"
+                                    onClick={() => {
+                                        setFormatContent(prev => {
+                                            const insert = p.tag;
+                                            return prev ? prev + ' ' + insert : insert;
+                                        });
+                                    }}
+                                    className="px-2 py-1 rounded-md bg-white hover:bg-indigo-50 text-indigo-700 border border-indigo-200 font-mono text-[11px] font-semibold transition-all shrink-0 cursor-pointer shadow-2xs"
+                                    title={`Click to append ${p.tag}`}
+                                >
+                                    +{p.label}
+                                </button>
+                            ))}
+                        </div>
+
+                        {/* Modal Body / Text Editor */}
+                        <div className="p-5 flex-1 overflow-y-auto min-h-[350px]">
+                            {loadingTemplateContent ? (
+                                <div className="h-72 flex flex-col items-center justify-center gap-3 text-slate-400 text-xs">
+                                    <RefreshCw size={24} className="animate-spin text-indigo-600" />
+                                    <span>Loading base template document text...</span>
+                                </div>
+                            ) : (
+                                <div className="space-y-2">
+                                    <div className="flex items-center justify-between text-xs text-slate-500">
+                                        <span>Document Body Text (Wordprocessing Content)</span>
+                                        <span>{formatContent.length} characters</span>
+                                    </div>
+                                    <textarea
+                                        rows={16}
+                                        value={formatContent}
+                                        onChange={(e) => setFormatContent(e.target.value)}
+                                        placeholder="Paste or write the revision offer letter content here... Include {@salary_table} where you want the dynamic Annexure table injected."
+                                        className="w-full p-4 border border-slate-300 rounded-xl text-xs sm:text-sm font-sans leading-relaxed text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 resize-vertical"
+                                    />
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Modal Footer Actions */}
+                        <div className="p-4 sm:p-5 border-t border-slate-200 bg-slate-50 flex items-center justify-between flex-wrap gap-3">
+                            <div className="flex items-center gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setFormatContent(prev =>
+                                            (prev || '')
+                                                .replace(/\r\n/g, '\n')
+                                                .replace(/^[ \t]+$/gm, '')
+                                                .replace(/\n{3,}/g, '\n\n')
+                                                .trim()
+                                        );
+                                        toast.success('Cleaned excessive blank lines');
+                                    }}
+                                    className="px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 bg-white hover:bg-slate-100 transition-all cursor-pointer shadow-2xs"
+                                >
+                                    Clean Blank Lines
+                                </button>
+
+                                <button
+                                    type="button"
+                                    onClick={handleResetCustomFormat}
+                                    disabled={loadingTemplateContent}
+                                    className="px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 bg-white hover:bg-slate-100 transition-all cursor-pointer shadow-2xs"
+                                >
+                                    Reset to Base Template
+                                </button>
+                            </div>
+
+                            <div className="flex items-center gap-2.5">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowEditFormatModal(false)}
+                                    className="px-4 py-2 rounded-xl text-xs font-bold text-slate-700 bg-white border border-slate-300 hover:bg-slate-100 transition-all cursor-pointer"
+                                >
+                                    Cancel
+                                </button>
+
+                                <button
+                                    type="button"
+                                    onClick={handleApplyCustomFormat}
+                                    className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
+                                >
+                                    <Check size={14} />
+                                    <span>Apply Format for this Employee</span>
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 </div>
             )}
