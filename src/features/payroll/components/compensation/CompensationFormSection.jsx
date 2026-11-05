@@ -63,14 +63,20 @@ const CompensationFormSection = ({ formData, calculateSalaryBreakdown, onChange,
     const isSalaried = !['piece_rate', 'flat_project', 'milestone', 'commission_only'].includes(compType);
 
     useEffect(() => {
-        if (!propConfig) {
+        const incoming = propConfig || propConfigAlt;
+        if (!incoming) {
             api.get('/payroll/config')
-                .then(res => setConfig(res.data))
+                .then(res => {
+                    if (res.data) {
+                        setConfig(res.data);
+                        onBreakdownChange({}, res.data);
+                    }
+                })
                 .catch(() => setConfig(null));
         } else {
-            setConfig(propConfig);
+            setConfig(incoming);
         }
-    }, [propConfig]);
+    }, [propConfig, propConfigAlt]);
 
     const basicPctDefault = Math.round((config?.basicPercent ?? 0.5) * 100);
     const hraPctDefault = Math.round((config?.hraPercent ?? 0.5) * 100);

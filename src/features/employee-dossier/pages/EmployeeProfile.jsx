@@ -1200,6 +1200,7 @@ const EmployeeProfile = () => {
                                             <CompensationFormSection
                                                 formData={formData}
                                                 calculateSalaryBreakdown={calculateSalaryBreakdown}
+                                                payrollConfig={payrollConfig}
                                             />
                                         </div>
                                     )}

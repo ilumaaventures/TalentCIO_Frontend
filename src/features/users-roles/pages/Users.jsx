@@ -1263,6 +1263,7 @@ const Users = () => {
                 showSalarySection={showSalarySection}
                 setShowSalarySection={setShowSalarySection}
                 calculateSalaryBreakdown={calculateSalaryBreakdown}
+                payrollConfig={payrollConfig}
             />
 
             {/* Impersonate Confirm Modal */}

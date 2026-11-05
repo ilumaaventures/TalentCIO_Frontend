@@ -424,9 +424,10 @@ export const buildMasterSalaryStructure = (source = {}, configInput = {}) => {
       pfEmployee = roundAmount(config.pfAmountEmployee);
       pfBase = pfEmployee;
     } else {
-      pfBase = roundAmount(Math.min(basicMaster, config.pfCap));
-      pfEmployer = roundAmount(pfBase * config.pfEmployerRate);
-      pfEmployee = roundAmount(pfBase * config.pfRate);
+      const cap = Number(config.pfCap) > 0 ? Number(config.pfCap) : (DEFAULT_PAYROLL_CONFIG.pfCap || 15000);
+      pfBase = roundAmount(Math.min(basicMaster, cap));
+      pfEmployer = roundAmount(pfBase * (Number(config.pfEmployerRate) || 0.12));
+      pfEmployee = roundAmount(pfBase * (Number(config.pfRate) || 0.12));
     }
   }
 

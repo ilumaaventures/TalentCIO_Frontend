@@ -34,6 +34,7 @@ const UserFormModal = ({
     showSalarySection,
     setShowSalarySection,
     calculateSalaryBreakdown,
+    payrollConfig,
 }) => {
     const navigate = useNavigate();
     const [managedDepartments, setManagedDepartments] = useState([]);
@@ -392,6 +393,7 @@ const UserFormModal = ({
                                 <CompensationFormSection
                                     formData={formData}
                                     calculateSalaryBreakdown={calculateSalaryBreakdown}
+                                    payrollConfig={payrollConfig}
                                 />
                             </div>
                         )}

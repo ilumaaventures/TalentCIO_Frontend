@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import api from '@/lib/apiClient';
 import { useAuth } from '@/features/auth/context/AuthContext';
 import {
@@ -208,7 +208,8 @@ export const RevisedDetailsTab = ({
     employeeId,
     profile,
     currentUserRoles = [],
-    onRevisionApplied
+    onRevisionApplied,
+    onUpdateSuccess
 }) => {
     const { user: currentUser, hasModule } = useAuth();
 
@@ -240,6 +241,11 @@ export const RevisedDetailsTab = ({
     const [roles, setRoles] = useState([]);
     const [allEmployees, setAllEmployees] = useState([]);
     const [payrollConfig, setPayrollConfig] = useState(null);
+    const payrollConfigRef = useRef(null);
+
+    useEffect(() => {
+        payrollConfigRef.current = payrollConfig;
+    }, [payrollConfig]);
     const [attendanceShifts, setAttendanceShifts] = useState([
         { code: 'general', name: 'General' },
         { code: 'any', name: 'Any Time' }
@@ -412,6 +418,7 @@ export const RevisedDetailsTab = ({
                 setAllEmployees(activeOnly);
             }
             if (configRes?.status === 'fulfilled' && configRes.value?.data) {
+                payrollConfigRef.current = configRes.value.data;
                 setPayrollConfig(configRes.value.data);
             }
             if (hasLeaveModule) {
@@ -547,7 +554,8 @@ export const RevisedDetailsTab = ({
     }, [profile, departments, designations, roles, allEmployees]);
 
     // Salary Calculator Helper
-    const calculateSalaryBreakdown = useCallback((updatedSalaryFields) => {
+    const calculateSalaryBreakdown = useCallback((updatedSalaryFields, configOverride) => {
+        const activeConfig = configOverride || payrollConfigRef.current || payrollConfig;
         setSalaryDraft(prev => {
             const mergedSalary = { ...prev, ...updatedSalaryFields };
             const payType = mergedSalary.payType || 'salaried';
@@ -555,9 +563,9 @@ export const RevisedDetailsTab = ({
             let annualCTC = parseFloat(String(mergedSalary.annualCTC || '').replace(/[^0-9.]/g, '')) || 0;
             let monthlyCTC = parseFloat(String(mergedSalary.monthlyCTC || '').replace(/[^0-9.]/g, '')) || 0;
 
-            if (annualCTC > 0 && !updatedSalaryFields.monthlyCTC) {
+            if (annualCTC > 0 && !updatedSalaryFields?.monthlyCTC) {
                 monthlyCTC = Math.round(annualCTC / 12);
-            } else if (monthlyCTC > 0 && !updatedSalaryFields.annualCTC) {
+            } else if (monthlyCTC > 0 && !updatedSalaryFields?.annualCTC) {
                 annualCTC = monthlyCTC * 12;
             }
 
@@ -603,8 +611,8 @@ export const RevisedDetailsTab = ({
                 rateCard: mergedSalary.rateCard || []
             };
 
-            if (payrollConfig?.salaryComponents) {
-                payrollConfig.salaryComponents.forEach(c => {
+            if (activeConfig?.salaryComponents) {
+                activeConfig.salaryComponents.forEach(c => {
                     if (c.linkedTo === 'fixed') {
                         const val = mergedSalary[c.id] !== undefined ? mergedSalary[c.id] : (c.linkValue || 0);
                         source[c.id] = parseFloat(String(val).replace(/[^0-9.]/g, '')) || 0;
@@ -612,7 +620,7 @@ export const RevisedDetailsTab = ({
                 });
             }
 
-            const master = buildMasterSalaryStructure(source, payrollConfig);
+            const master = buildMasterSalaryStructure(source, activeConfig);
             if (master) {
                 basicVal = String(master.basicMaster || 0);
                 grossVal = String(master.totalEarnings || 0);
@@ -643,6 +651,13 @@ export const RevisedDetailsTab = ({
             };
         });
     }, [payrollConfig]);
+
+    // Re-run breakdown calculation whenever payrollConfig resolves or changes
+    useEffect(() => {
+        if (payrollConfig) {
+            calculateSalaryBreakdown({}, payrollConfig);
+        }
+    }, [payrollConfig, calculateSalaryBreakdown]);
 
     // Leave Allocation State Helpers
     const updateLeaveAllocation = (leaveType, updates) => {
@@ -736,12 +751,13 @@ export const RevisedDetailsTab = ({
             roleId: currentEmployeeState.roleId || ''
         });
 
+        const activeConfig = payrollConfigRef.current || payrollConfig;
         const comp = profile?.employeeProfile?.compensation || profile?.compensation || {};
         const breakup = comp.salaryBreakup || {};
-        const defaultSal = createDefaultSalaryData(breakup, comp, profile, payrollConfig);
+        const defaultSal = createDefaultSalaryData(breakup, comp, profile, activeConfig);
 
         setSalaryDraft(defaultSal);
-        calculateSalaryBreakdown(defaultSal);
+        calculateSalaryBreakdown(defaultSal, activeConfig);
     };
 
     const handleOpenCreateModal = () => {
@@ -799,8 +815,9 @@ export const RevisedDetailsTab = ({
         }
 
         if (rev.metadata?.salaryBreakup) {
+            const activeConfig = payrollConfigRef.current || payrollConfig;
             setSalaryDraft(rev.metadata.salaryBreakup);
-            calculateSalaryBreakdown(rev.metadata.salaryBreakup);
+            calculateSalaryBreakdown(rev.metadata.salaryBreakup, activeConfig);
         }
 
         setSelectedModules(Array.from(activeModules));
@@ -1064,8 +1081,9 @@ export const RevisedDetailsTab = ({
             setShowCreateModal(false);
             await fetchRevisions();
 
-            if (onRevisionApplied && res.data?.isApplied) {
-                onRevisionApplied();
+            const notifyApplied = onRevisionApplied || onUpdateSuccess;
+            if (notifyApplied && res.data?.isApplied) {
+                notifyApplied();
             }
         } catch (error) {
             console.error('Failed to create revision:', error);
@@ -1103,8 +1121,9 @@ export const RevisedDetailsTab = ({
             toast.success(res.data?.message || 'Revision details updated successfully');
             setShowEditModal(false);
             await fetchRevisions();
-            if (onRevisionApplied) {
-                onRevisionApplied();
+            const notifyApplied = onRevisionApplied || onUpdateSuccess;
+            if (notifyApplied) {
+                notifyApplied();
             }
         } catch (error) {
             console.error('Failed to update revision:', error);

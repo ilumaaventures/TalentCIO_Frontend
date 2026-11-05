@@ -1003,6 +1003,7 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                             employeeId={userId}
                             profile={profile}
                             isCurrentUserAdmin={isCurrentUserAdmin}
+                            onRevisionApplied={fetchDossier}
                             onUpdateSuccess={fetchDossier}
                         />
                     )}
