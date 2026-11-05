@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   ResponsiveContainer,
   BarChart,
@@ -20,6 +20,7 @@ import {
   Filter,
   ExternalLink,
   ChevronRight,
+  ChevronLeft,
   Briefcase,
   AlertCircle,
   FileText,
@@ -27,10 +28,15 @@ import {
   Sparkles,
   Layers,
   Award,
-  Trash2,
-  MessageSquare
+  MessageSquare,
+  FileSpreadsheet,
+  Download,
+  X
 } from 'lucide-react';
-import { format, isToday, isYesterday, parseISO } from 'date-fns';
+import useDebouncedValue from '@/hooks/useDebouncedValue';
+import { format, isToday, isYesterday, parseISO, startOfMonth, endOfMonth, subDays, subMonths } from 'date-fns';
+import ExcelJS from 'exceljs';
+import { saveAs } from 'file-saver';
 import toast from 'react-hot-toast';
 import projectService from '../services/projectService';
 import { useAuth } from '@/features/auth/context/AuthContext';
@@ -84,8 +90,8 @@ export const UserPerformanceTrace = ({
 }) => {
   const { user: currentUser } = useAuth();
   const [selectedUserId, setSelectedUserId] = useState(propSelectedUserId || 'ALL');
-  const [logs, setLogs] = useState(() => Array.isArray(project?.workLogs) ? project.workLogs : []);
-  const [loading, setLoading] = useState(!Array.isArray(project?.workLogs) || project.workLogs.length === 0);
+  const [logs, setLogs] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   // Sync state if selectedUserId changes from parent
@@ -101,13 +107,6 @@ export const UserPerformanceTrace = ({
       onSelectUserId(id);
     }
   };
-
-  // Sync with project workLogs if updated from parent
-  useEffect(() => {
-    if (Array.isArray(project?.workLogs) && project.workLogs.length > 0) {
-      setLogs(project.workLogs);
-    }
-  }, [project?.workLogs]);
 
   // Filters
   const [searchQuery, setSearchQuery] = useState('');
@@ -161,49 +160,107 @@ export const UserPerformanceTrace = ({
     });
   }, [members, employees, project?.manager, logs]);
 
-  // Fetch all logs for this project (retains entire project dataset for all cards)
+  // Fetch all logs for this project (authoritative live dataset from server for cards & metrics)
   const fetchWorkLogs = useCallback(async () => {
     if (!projectId) return;
     try {
-      if (logs.length === 0 && (!project?.workLogs || project.workLogs.length === 0)) {
-        setLoading(true);
-      } else {
-        setRefreshing(true);
-      }
-
       const res = await projectService.getWorkLogs({ projectId });
-      const fetchedLogs = Array.isArray(res.data) ? res.data : [];
-      if (fetchedLogs.length > 0) {
-        setLogs(fetchedLogs);
-      } else if (Array.isArray(project?.workLogs) && project.workLogs.length > 0) {
-        setLogs(project.workLogs);
-      }
+      const fetchedLogs = Array.isArray(res.data)
+        ? res.data
+        : (Array.isArray(res.data?.logs) ? res.data.logs : []);
+      setLogs(fetchedLogs);
     } catch (err) {
       console.error('Failed to load project work logs:', err);
-      if (Array.isArray(project?.workLogs) && project.workLogs.length > 0) {
-        setLogs(project.workLogs);
-      }
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [projectId, project?.workLogs, logs.length]);
+  }, [projectId]);
 
   useEffect(() => {
     fetchWorkLogs();
   }, [fetchWorkLogs]);
 
-  // Delete work log handler
-  const handleDeleteLog = async (logId) => {
-    if (!window.confirm('Are you sure you want to delete this work log?')) return;
+  // Feed backend pagination state (20 entries per page)
+  const feedSectionRef = useRef(null);
+  const [feedLogs, setFeedLogs] = useState([]);
+  const [feedTotal, setFeedTotal] = useState(0);
+  const [feedPage, setFeedPage] = useState(1);
+  const [feedTotalPages, setFeedTotalPages] = useState(1);
+  const [feedLoading, setFeedLoading] = useState(false);
+  const pageSize = 20;
+
+  const debouncedSearch = useDebouncedValue(searchQuery, 350);
+
+  const fetchFeedLogs = useCallback(async (page = 1) => {
+    if (!projectId) return;
     try {
-      await projectService.deleteWorkLog(logId);
-      toast.success('Work log removed');
-      setLogs(prev => prev.filter(l => l._id !== logId));
+      setFeedLoading(true);
+      const params = {
+        projectId,
+        page,
+        limit: pageSize,
+        paginate: 'true'
+      };
+
+      if (selectedUserId && selectedUserId !== 'ALL') {
+        params.userId = selectedUserId;
+      }
+      if (statusFilter && statusFilter !== 'all') {
+        params.status = statusFilter;
+      }
+      if (dateRange && dateRange !== 'all') {
+        params.dateRange = dateRange;
+      }
+      if (debouncedSearch && debouncedSearch.trim()) {
+        params.search = debouncedSearch.trim();
+      }
+
+      const res = await projectService.getWorkLogs(params);
+      if (res.data && res.data.logs !== undefined) {
+        setFeedLogs(Array.isArray(res.data.logs) ? res.data.logs : []);
+        setFeedTotal(Number(res.data.total) || 0);
+        setFeedTotalPages(Number(res.data.totalPages) || 1);
+        setFeedPage(Number(res.data.page) || page);
+      } else if (Array.isArray(res.data)) {
+        setFeedLogs(res.data.slice((page - 1) * pageSize, page * pageSize));
+        setFeedTotal(res.data.length);
+        setFeedTotalPages(Math.ceil(res.data.length / pageSize) || 1);
+        setFeedPage(page);
+      }
     } catch (err) {
-      toast.error('Failed to delete work log');
+      console.error('Failed to load paginated feed logs:', err);
+    } finally {
+      setFeedLoading(false);
     }
+  }, [projectId, selectedUserId, statusFilter, dateRange, debouncedSearch, pageSize]);
+
+  // When filters or selected member change, reset to page 1 and fetch feed + refresh metrics logs
+  useEffect(() => {
+    setFeedPage(1);
+    fetchFeedLogs(1);
+    fetchWorkLogs();
+  }, [fetchFeedLogs, fetchWorkLogs]);
+
+  const handlePageChange = (newPage) => {
+    if (newPage < 1 || newPage > feedTotalPages || newPage === feedPage) return;
+    setFeedPage(newPage);
+    fetchFeedLogs(newPage);
+    feedSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
+
+  const paginationRange = useMemo(() => {
+    if (feedTotalPages <= 7) {
+      return Array.from({ length: feedTotalPages }, (_, i) => i + 1);
+    }
+    if (feedPage <= 4) {
+      return [1, 2, 3, 4, 5, '...', feedTotalPages];
+    }
+    if (feedPage >= feedTotalPages - 3) {
+      return [1, '...', feedTotalPages - 4, feedTotalPages - 3, feedTotalPages - 2, feedTotalPages - 1, feedTotalPages];
+    }
+    return [1, '...', feedPage - 1, feedPage, feedPage + 1, '...', feedTotalPages];
+  }, [feedPage, feedTotalPages]);
 
   // Map each member's assigned tasks from the project tasks prop
   const memberTaskStats = useMemo(() => {
@@ -301,11 +358,11 @@ export const UserPerformanceTrace = ({
     });
   }, [logs, selectedUserId, searchQuery, dateRange, statusFilter]);
 
-  // Group filtered logs date-wise (descending order)
+  // Group feed logs date-wise (descending order)
   const groupedLogs = useMemo(() => {
     const groups = {};
 
-    filteredLogs.forEach(log => {
+    feedLogs.forEach(log => {
       if (!log.date) return;
       const dateKey = format(new Date(log.date), 'yyyy-MM-dd');
       if (!groups[dateKey]) {
@@ -321,7 +378,7 @@ export const UserPerformanceTrace = ({
     });
 
     return Object.values(groups).sort((a, b) => b.dateObj - a.dateObj);
-  }, [filteredLogs]);
+  }, [feedLogs]);
 
   // Performance analytics for the currently selected user (or all members combined)
   const activeMetrics = useMemo(() => {
@@ -404,6 +461,324 @@ export const UserPerformanceTrace = ({
     if (selectedUserId === 'ALL') return null;
     return resolvedMembers.find(m => m._id === selectedUserId);
   }, [selectedUserId, resolvedMembers]);
+
+  // Timesheet Export Modal State
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [exportUserId, setExportUserId] = useState('ALL');
+  const [exportDatePreset, setExportDatePreset] = useState('all'); // 'all', 'thisMonth', 'lastMonth', '30d', '14d', '7d', 'custom'
+  const [exportStartDate, setExportStartDate] = useState('');
+  const [exportEndDate, setExportEndDate] = useState('');
+  const [exportStatus, setExportStatus] = useState('all');
+  const [isExporting, setIsExporting] = useState(false);
+
+  const handleOpenExportModal = () => {
+    setExportUserId(selectedUserId || 'ALL');
+    setExportDatePreset('all');
+    setExportStartDate('');
+    setExportEndDate('');
+    setExportStatus('all');
+    setShowExportModal(true);
+  };
+
+  const handlePresetChange = (preset) => {
+    setExportDatePreset(preset);
+    const now = new Date();
+    if (preset === 'all') {
+      setExportStartDate('');
+      setExportEndDate('');
+    } else if (preset === 'thisMonth') {
+      const s = startOfMonth(now);
+      const e = endOfMonth(now);
+      setExportStartDate(format(s, 'yyyy-MM-dd'));
+      setExportEndDate(format(e, 'yyyy-MM-dd'));
+    } else if (preset === 'lastMonth') {
+      const lm = subMonths(now, 1);
+      const s = startOfMonth(lm);
+      const e = endOfMonth(lm);
+      setExportStartDate(format(s, 'yyyy-MM-dd'));
+      setExportEndDate(format(e, 'yyyy-MM-dd'));
+    } else if (preset === '30d') {
+      setExportStartDate(format(subDays(now, 30), 'yyyy-MM-dd'));
+      setExportEndDate(format(now, 'yyyy-MM-dd'));
+    } else if (preset === '14d') {
+      setExportStartDate(format(subDays(now, 14), 'yyyy-MM-dd'));
+      setExportEndDate(format(now, 'yyyy-MM-dd'));
+    } else if (preset === '7d') {
+      setExportStartDate(format(subDays(now, 7), 'yyyy-MM-dd'));
+      setExportEndDate(format(now, 'yyyy-MM-dd'));
+    }
+  };
+
+  // Filter logs for export
+  const exportMatchingLogs = useMemo(() => {
+    return logs.filter(log => {
+      // 1. User filter
+      if (exportUserId !== 'ALL') {
+        const uId = String(log.user?._id || log.user);
+        if (uId !== exportUserId) return false;
+      }
+
+      // 2. Status filter
+      if (exportStatus !== 'all') {
+        if ((log.status || 'PENDING') !== exportStatus) return false;
+      }
+
+      // 3. Date range filter
+      if (log.date) {
+        const logDateStr = format(new Date(log.date), 'yyyy-MM-dd');
+        if (exportStartDate && logDateStr < exportStartDate) return false;
+        if (exportEndDate && logDateStr > exportEndDate) return false;
+      }
+
+      return true;
+    }).sort((a, b) => new Date(a.date) - new Date(b.date)); // Chronological order
+  }, [logs, exportUserId, exportStatus, exportStartDate, exportEndDate]);
+
+  // Total time in project for the export target user
+  const userTotalTimeInProject = useMemo(() => {
+    if (exportUserId === 'ALL') {
+      return logs.reduce((sum, l) => sum + (Number(l.hours) || 0), 0);
+    }
+    return logs
+      .filter(l => String(l.user?._id || l.user) === exportUserId)
+      .reduce((sum, l) => sum + (Number(l.hours) || 0), 0);
+  }, [logs, exportUserId]);
+
+  const exportPeriodHours = useMemo(() => {
+    return exportMatchingLogs.reduce((sum, l) => sum + (Number(l.hours) || 0), 0);
+  }, [exportMatchingLogs]);
+
+  // Excel Timesheet Export Handler
+  const handleExportExcel = async () => {
+    if (exportMatchingLogs.length === 0) {
+      toast.error('No work logs found for the selected date range and user');
+      return;
+    }
+
+    try {
+      setIsExporting(true);
+
+      const targetUserObj = exportUserId !== 'ALL'
+        ? resolvedMembers.find(m => m._id === exportUserId)
+        : null;
+
+      const targetUserName = targetUserObj
+        ? `${targetUserObj.firstName || ''} ${targetUserObj.lastName || ''}`.trim() || targetUserObj.email || 'User'
+        : 'All Team Members';
+
+      const projectName = project?.name || 'Project';
+      const clientName = project?.client?.name || (typeof project?.client === 'string' ? project.client : 'N/A');
+
+      const workbook = new ExcelJS.Workbook();
+      workbook.creator = 'Talentcio HRMS';
+      workbook.created = new Date();
+
+      const sheet = workbook.addWorksheet('User Timesheet', {
+        views: [{ showGridLines: true }]
+      });
+
+      // ── 1. REPORT TITLE BANNER ──
+      sheet.mergeCells('A1:J1');
+      const titleCell = sheet.getCell('A1');
+      titleCell.value = 'PROJECT USER TIMESHEET REPORT';
+      titleCell.font = { name: 'Calibri', size: 15, bold: true, color: { argb: 'FFFFFFFF' } };
+      titleCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E40AF' } }; // Blue-800
+      titleCell.alignment = { horizontal: 'center', vertical: 'middle' };
+      sheet.getRow(1).height = 34;
+
+      // ── 2. METADATA SUMMARY BLOCK ──
+      const dateRangeDisplay = (exportStartDate && exportEndDate)
+        ? `${exportStartDate} to ${exportEndDate}`
+        : (exportStartDate ? `From ${exportStartDate}` : (exportEndDate ? `Until ${exportEndDate}` : 'All Time'));
+
+      const metaInfo = [
+        ['Project Name:', projectName, '', 'Date Range:', dateRangeDisplay],
+        ['Client Name:', clientName, '', 'Period Logged Hours:', `${exportPeriodHours.toFixed(2)} hrs`],
+        ['Team Member:', targetUserName, '', 'Total Time in Project:', `${userTotalTimeInProject.toFixed(2)} hrs`],
+        ['User Email:', targetUserObj?.email || 'N/A', '', 'Log Entries Count:', `${exportMatchingLogs.length} entries`],
+        ['Generated On:', format(new Date(), 'MMM dd, yyyy HH:mm'), '', 'Status Filter:', exportStatus === 'all' ? 'All Statuses' : exportStatus]
+      ];
+
+      metaInfo.forEach((rowVals, idx) => {
+        const rowNum = idx + 2;
+        const r = sheet.getRow(rowNum);
+        r.height = 20;
+
+        // Label 1 (Col A)
+        const cA = sheet.getCell(`A${rowNum}`);
+        cA.value = rowVals[0];
+        cA.font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FF475569' } };
+        cA.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } };
+
+        // Value 1 (Col B:C)
+        sheet.mergeCells(`B${rowNum}:C${rowNum}`);
+        const cB = sheet.getCell(`B${rowNum}`);
+        cB.value = rowVals[1];
+        cB.font = { name: 'Calibri', size: 10, bold: idx === 0 || idx === 2, color: { argb: 'FF0F172A' } };
+
+        // Label 2 (Col D:E)
+        sheet.mergeCells(`D${rowNum}:E${rowNum}`);
+        const cD = sheet.getCell(`D${rowNum}`);
+        cD.value = rowVals[3];
+        cD.font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FF475569' } };
+        cD.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } };
+
+        // Value 2 (Col F:J)
+        sheet.mergeCells(`F${rowNum}:J${rowNum}`);
+        const cF = sheet.getCell(`F${rowNum}`);
+        cF.value = rowVals[4];
+        cF.font = { name: 'Calibri', size: 10, bold: idx === 1 || idx === 2, color: { argb: idx === 1 || idx === 2 ? 'FF1E40AF' : 'FF0F172A' } };
+      });
+
+      // Row 7 blank
+      sheet.getRow(7).height = 10;
+
+      // ── 3. TABLE COLUMN HEADERS (Row 8) ──
+      const headers = [
+        'Date',
+        'Day',
+        'User Name',
+        'Module',
+        'Task Key',
+        'Task / Activity',
+        'Priority',
+        'Status',
+        'Hours',
+        'Description / Notes'
+      ];
+
+      sheet.columns = [
+        { key: 'date', width: 14 },
+        { key: 'day', width: 13 },
+        { key: 'userName', width: 22 },
+        { key: 'module', width: 20 },
+        { key: 'taskKey', width: 12 },
+        { key: 'taskName', width: 32 },
+        { key: 'priority', width: 12 },
+        { key: 'status', width: 13 },
+        { key: 'hours', width: 12 },
+        { key: 'description', width: 45 }
+      ];
+
+      const headerRow = sheet.getRow(8);
+      headerRow.values = headers;
+      headerRow.height = 26;
+      headerRow.font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FFFFFFFF' } };
+      headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF334155' } };
+      headerRow.alignment = { horizontal: 'center', vertical: 'middle' };
+
+      // ── 4. TABLE DATA ROWS ──
+      let currentRowNum = 9;
+      exportMatchingLogs.forEach((log, index) => {
+        const logDate = log.date ? new Date(log.date) : null;
+        const dateStr = logDate ? format(logDate, 'yyyy-MM-dd') : '-';
+        const dayStr = logDate ? format(logDate, 'EEEE') : '-';
+        const logUser = log.user || {};
+        const uName = `${logUser.firstName || ''} ${logUser.lastName || ''}`.trim() || logUser.email || 'User';
+        const taskObj = log.task || {};
+        const moduleName = taskObj.module?.name || log.module?.name || '-';
+        const taskKey = taskObj.taskKey || taskObj.key || '-';
+        const taskName = taskObj.name || (log.discussion?.title ? `Discussion: ${log.discussion.title}` : 'Direct Project Work');
+        const priority = taskObj.priority || '-';
+        const status = log.status || 'PENDING';
+        const hours = Number(log.hours) || 0;
+        const description = log.description || '-';
+
+        const row = sheet.getRow(currentRowNum);
+        row.values = [
+          dateStr,
+          dayStr,
+          uName,
+          moduleName,
+          taskKey,
+          taskName,
+          priority,
+          status,
+          hours,
+          description
+        ];
+        row.height = 22;
+
+        const isEven = index % 2 === 0;
+        const rowBg = isEven ? 'FFFFFFFF' : 'FFF8FAFC';
+
+        row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+          cell.font = { name: 'Calibri', size: 9 };
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: rowBg } };
+          cell.border = {
+            top: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+            bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+            left: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+            right: { style: 'thin', color: { argb: 'FFE2E8F0' } }
+          };
+
+          if (colNumber === 1 || colNumber === 2 || colNumber === 5 || colNumber === 7 || colNumber === 8) {
+            cell.alignment = { horizontal: 'center', vertical: 'middle' };
+          } else if (colNumber === 9) {
+            cell.alignment = { horizontal: 'right', vertical: 'middle' };
+            cell.numFmt = '0.00';
+            cell.font = { name: 'Calibri', size: 9, bold: true, color: { argb: 'FF1E40AF' } };
+          } else {
+            cell.alignment = { horizontal: 'left', vertical: 'middle', wrapText: colNumber === 10 };
+          }
+        });
+
+        currentRowNum++;
+      });
+
+      // ── 5. TOTAL ROW AT BOTTOM ──
+      const totalRow = sheet.getRow(currentRowNum);
+      totalRow.height = 26;
+      sheet.mergeCells(`A${currentRowNum}:H${currentRowNum}`);
+      const totalLabelCell = sheet.getCell(`A${currentRowNum}`);
+      totalLabelCell.value = 'TOTAL HOURS LOGGED:';
+      totalLabelCell.font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FF1E3A8A' } };
+      totalLabelCell.alignment = { horizontal: 'right', vertical: 'middle' };
+      totalLabelCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE0E7FF' } };
+
+      const totalHoursCell = sheet.getCell(`I${currentRowNum}`);
+      totalHoursCell.value = {
+        formula: `SUM(I9:I${currentRowNum - 1})`,
+        result: exportPeriodHours
+      };
+      totalHoursCell.numFmt = '0.00';
+      totalHoursCell.font = { name: 'Calibri', size: 11, bold: true, color: { argb: 'FF1E3A8A' } };
+      totalHoursCell.alignment = { horizontal: 'right', vertical: 'middle' };
+      totalHoursCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE0E7FF' } };
+
+      const totalDescCell = sheet.getCell(`J${currentRowNum}`);
+      totalDescCell.value = `${exportMatchingLogs.length} entries in range`;
+      totalDescCell.font = { name: 'Calibri', size: 9, italic: true, color: { argb: 'FF64748B' } };
+      totalDescCell.alignment = { horizontal: 'left', vertical: 'middle' };
+      totalDescCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE0E7FF' } };
+
+      ['A', 'I', 'J'].forEach(col => {
+        const c = sheet.getCell(`${col}${currentRowNum}`);
+        c.border = {
+          top: { style: 'medium', color: { argb: 'FF6366F1' } },
+          bottom: { style: 'medium', color: { argb: 'FF6366F1' } }
+        };
+      });
+
+      const buffer = await workbook.xlsx.writeBuffer();
+      const sanitize = (s) => String(s || '').replace(/[^a-zA-Z0-9_-]/g, '_');
+      const cleanProj = sanitize(projectName);
+      const cleanUser = sanitize(targetUserName);
+      const rangeTag = (exportStartDate && exportEndDate)
+        ? `${exportStartDate}_to_${exportEndDate}`
+        : (exportStartDate ? `from_${exportStartDate}` : (exportEndDate ? `until_${exportEndDate}` : 'all_time'));
+
+      const filename = `${cleanProj}_${cleanUser}_timesheet_${rangeTag}.xlsx`;
+      saveAs(new Blob([buffer]), filename);
+      toast.success(`Timesheet exported: ${filename}`);
+      setShowExportModal(false);
+    } catch (err) {
+      console.error('Failed to export timesheet:', err);
+      toast.error('Failed to generate timesheet export');
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -658,7 +1033,7 @@ export const UserPerformanceTrace = ({
       )}
 
       {/* Date-wise Work Logs Feed Section */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
+      <div ref={feedSectionRef} className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden scroll-mt-6">
         {/* Feed Header with Search & Filters */}
         <div className="p-4 border-b border-slate-200/80 bg-slate-50/60 flex flex-col md:flex-row md:items-center justify-between gap-3">
           <div>
@@ -712,11 +1087,51 @@ export const UserPerformanceTrace = ({
               <option value="PENDING">Pending</option>
               <option value="REJECTED">Rejected</option>
             </select>
+
+            {/* Export User Timesheet Button */}
+            <button
+              type="button"
+              onClick={handleOpenExportModal}
+              className="flex items-center gap-1.5 px-3 py-1 text-[11px] font-semibold bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg shadow-xs hover:shadow-sm transition-all cursor-pointer shrink-0"
+              title="Export user timesheet for custom date range to Excel"
+            >
+              <FileSpreadsheet size={13} />
+              <span>Export Timesheet</span>
+            </button>
+
+            {/* Header Previous / Next Page Navigations (Only shown when there are multiple pages) */}
+            {feedTotalPages > 1 && (
+              <div className="flex items-center border border-slate-200 rounded-lg bg-white overflow-hidden shadow-2xs shrink-0">
+                <button
+                  type="button"
+                  onClick={() => handlePageChange(feedPage - 1)}
+                  disabled={feedPage <= 1 || feedLoading}
+                  className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                  title="Previous Page"
+                >
+                  <ChevronLeft size={13} />
+                  <span>Prev Page</span>
+                </button>
+                <span className="px-2.5 py-1 text-[11px] font-bold text-slate-700 select-none border-x border-slate-100 bg-slate-50/50">
+                  Page {feedPage} of {feedTotalPages}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => handlePageChange(feedPage + 1)}
+                  disabled={feedPage >= feedTotalPages || feedLoading}
+                  className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                  title="Next Page"
+                >
+                  <span>Next Page</span>
+                  <ChevronRight size={13} />
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
         {/* Date Grouped Content */}
-        {loading ? (
+        {loading || (feedLoading && feedLogs.length === 0) ? (
           <div className="p-5 space-y-3">
             <Skeleton className="h-14 w-full rounded-xl" />
             <Skeleton className="h-14 w-full rounded-xl" />
@@ -735,7 +1150,7 @@ export const UserPerformanceTrace = ({
             </p>
           </div>
         ) : (
-          <div className="divide-y divide-slate-100">
+          <div className={`divide-y divide-slate-100 transition-opacity duration-150 ${feedLoading ? 'opacity-50 pointer-events-none' : ''}`}>
             {groupedLogs.map(group => {
               const headingText = formatDateHeading(group.dateObj);
               const formattedDateString = format(group.dateObj, 'MMM d, yyyy');
@@ -772,8 +1187,6 @@ export const UserPerformanceTrace = ({
                       const logUserName = `${logUser.firstName || ''} ${logUser.lastName || ''}`.trim() || 'User';
                       const taskObj = log.task || {};
                       const moduleName = taskObj.module?.name || log.module?.name;
-                      const isOwner = String(logUser._id || log.user) === currentUserId;
-                      const canDelete = isOwner || isAdmin;
 
                       return (
                         <div
@@ -858,16 +1271,6 @@ export const UserPerformanceTrace = ({
                             }`}>
                               {log.status || 'PENDING'}
                             </span>
-
-                            {canDelete && (
-                              <button
-                                onClick={() => handleDeleteLog(log._id)}
-                                className="p-0.5 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
-                                title="Delete Log"
-                              >
-                                <Trash2 size={13} />
-                              </button>
-                            )}
                           </div>
                         </div>
                       );
@@ -878,7 +1281,281 @@ export const UserPerformanceTrace = ({
             })}
           </div>
         )}
+
+        {/* Feed Pagination Footer (Only shown when there are multiple pages) */}
+        {feedTotalPages > 1 && (
+          <div className="p-4 border-t border-slate-200/80 bg-slate-50/70 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="text-xs text-slate-500">
+              Showing <strong className="font-bold text-slate-800">{(feedPage - 1) * pageSize + 1}</strong> to{' '}
+              <strong className="font-bold text-slate-800">{Math.min(feedPage * pageSize, feedTotal)}</strong> of{' '}
+              <strong className="font-bold text-slate-800">{feedTotal}</strong> work log entries
+              {selectedMemberObj && (
+                <span> for <strong className="text-blue-600">{selectedMemberObj.firstName} {selectedMemberObj.lastName}</strong></span>
+              )}
+              <span className="ml-1.5 text-[11px] text-slate-400 font-medium">(20 entries per page)</span>
+            </div>
+
+            <div className="flex items-center gap-1.5 self-center sm:self-auto">
+              {/* Previous Page Button */}
+              <button
+                type="button"
+                onClick={() => handlePageChange(feedPage - 1)}
+                disabled={feedPage <= 1 || feedLoading}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 hover:text-slate-900 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer shadow-2xs"
+                title="Go to previous page"
+              >
+                <ChevronLeft size={14} />
+                <span>Previous Page</span>
+              </button>
+
+              {/* Page Numbers */}
+              <div className="flex items-center gap-1">
+                {paginationRange.map((p, idx) => {
+                  if (p === '...') {
+                    return (
+                      <span key={`dots-${idx}`} className="px-1 text-xs font-bold text-slate-400 select-none">
+                        ...
+                      </span>
+                    );
+                  }
+                  const isCurrent = p === feedPage;
+                  return (
+                    <button
+                      key={`page-${p}`}
+                      type="button"
+                      onClick={() => handlePageChange(p)}
+                      disabled={feedLoading}
+                      className={`min-w-8 h-8 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        isCurrent
+                          ? 'bg-blue-600 text-white shadow-2xs'
+                          : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 hover:text-slate-900'
+                      }`}
+                    >
+                      {p}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Next Page Button */}
+              <button
+                type="button"
+                onClick={() => handlePageChange(feedPage + 1)}
+                disabled={feedPage >= feedTotalPages || feedLoading}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 hover:text-slate-900 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer shadow-2xs"
+                title="Go to next page"
+              >
+                <span>Next Page</span>
+                <ChevronRight size={14} />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
+
+      {/* ── TIMESHEET EXPORT MODAL ── */}
+      {showExportModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            {/* Modal Header */}
+            <div className="px-6 py-4 bg-gradient-to-r from-slate-900 to-indigo-950 text-white flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center border border-emerald-500/30">
+                  <FileSpreadsheet size={20} />
+                </div>
+                <div>
+                  <h3 className="font-bold text-base text-white">Export User Timesheet</h3>
+                  <p className="text-xs text-slate-300">Date-wise logs & project time report in Excel (.xlsx)</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowExportModal(false)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-white/10 transition-colors cursor-pointer"
+                title="Close"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 space-y-4 text-xs">
+              {/* Project Badge */}
+              <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-200">
+                <div className="min-w-0">
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">Project</span>
+                  <span className="font-bold text-slate-800 text-sm truncate block">{project?.name || 'Project'}</span>
+                </div>
+                {project?.client?.name && (
+                  <span className="text-right">
+                    <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">Client</span>
+                    <span className="font-semibold text-slate-700">{project.client.name}</span>
+                  </span>
+                )}
+              </div>
+
+              {/* User Selection */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  Select Team Member <span className="text-rose-500">*</span>
+                </label>
+                <select
+                  value={exportUserId}
+                  onChange={(e) => setExportUserId(e.target.value)}
+                  className="w-full py-2 px-3 bg-white border border-slate-200 rounded-xl text-slate-800 font-semibold focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-xs shadow-2xs"
+                >
+                  <option value="ALL">All Team Members (Consolidated Timesheet)</option>
+                  {resolvedMembers.map(m => {
+                    const uName = `${m.firstName || ''} ${m.lastName || ''}`.trim() || 'Member';
+                    const metrics = memberMetrics[m._id] || { totalHours: 0 };
+                    return (
+                      <option key={m._id} value={m._id}>
+                        {uName} {m.isManager ? '(Manager)' : ''} — {metrics.totalHours.toFixed(1)} hrs logged
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+
+              {/* Date Presets */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  Date Range Selection
+                </label>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {[
+                    { key: 'all', label: 'All Time' },
+                    { key: 'thisMonth', label: 'This Month' },
+                    { key: 'lastMonth', label: 'Last Month' },
+                    { key: '30d', label: 'Last 30 Days' },
+                    { key: '14d', label: 'Last 14 Days' },
+                    { key: '7d', label: 'Last 7 Days' },
+                    { key: 'custom', label: 'Custom Range' }
+                  ].map(p => (
+                    <button
+                      key={p.key}
+                      type="button"
+                      onClick={() => handlePresetChange(p.key)}
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all cursor-pointer ${
+                        exportDatePreset === p.key
+                          ? 'bg-indigo-600 text-white shadow-2xs'
+                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                      }`}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Custom Date Pickers */}
+              <div className="grid grid-cols-2 gap-3 pt-1">
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                    Start Date
+                  </label>
+                  <input
+                    type="date"
+                    value={exportStartDate}
+                    onChange={(e) => {
+                      setExportStartDate(e.target.value);
+                      setExportDatePreset('custom');
+                    }}
+                    className="w-full py-1.5 px-3 bg-white border border-slate-200 rounded-lg text-slate-800 text-xs focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                    End Date
+                  </label>
+                  <input
+                    type="date"
+                    value={exportEndDate}
+                    onChange={(e) => {
+                      setExportEndDate(e.target.value);
+                      setExportDatePreset('custom');
+                    }}
+                    className="w-full py-1.5 px-3 bg-white border border-slate-200 rounded-lg text-slate-800 text-xs focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                  />
+                </div>
+              </div>
+
+              {/* Status Filter */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  Approval Status
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { key: 'all', label: 'All Statuses' },
+                    { key: 'APPROVED', label: 'Approved Only' },
+                    { key: 'PENDING', label: 'Pending Only' }
+                  ].map(st => (
+                    <button
+                      key={st.key}
+                      type="button"
+                      onClick={() => setExportStatus(st.key)}
+                      className={`py-1.5 px-2 rounded-lg text-xs font-semibold border transition-all text-center cursor-pointer ${
+                        exportStatus === st.key
+                          ? 'bg-indigo-50 border-indigo-300 text-indigo-700'
+                          : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                      }`}
+                    >
+                      {st.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Live Preview Summary Card */}
+              <div className="p-3.5 rounded-xl bg-gradient-to-br from-indigo-50/60 to-purple-50/60 border border-indigo-100 space-y-2">
+                <span className="text-[10px] uppercase font-bold text-indigo-900 tracking-wider block">
+                  Export Summary Preview
+                </span>
+                <div className="grid grid-cols-3 gap-2 text-center">
+                  <div className="bg-white/80 p-2 rounded-lg border border-indigo-50">
+                    <span className="text-[10px] text-slate-400 block font-medium">Period Hours</span>
+                    <span className="text-sm font-extrabold text-indigo-700">{exportPeriodHours.toFixed(1)}h</span>
+                  </div>
+                  <div className="bg-white/80 p-2 rounded-lg border border-indigo-50">
+                    <span className="text-[10px] text-slate-400 block font-medium">Log Entries</span>
+                    <span className="text-sm font-extrabold text-slate-800">{exportMatchingLogs.length}</span>
+                  </div>
+                  <div className="bg-white/80 p-2 rounded-lg border border-indigo-50">
+                    <span className="text-[10px] text-slate-400 block font-medium">Total Project Time</span>
+                    <span className="text-sm font-extrabold text-purple-700">{userTotalTimeInProject.toFixed(1)}h</span>
+                  </div>
+                </div>
+                {exportMatchingLogs.length === 0 && (
+                  <p className="text-[11px] text-amber-700 bg-amber-50 p-2 rounded-lg border border-amber-200 text-center font-medium">
+                    ⚠️ No work logs found matching the selected dates and user. Adjust dates to export.
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="px-6 py-3.5 bg-slate-50 border-t border-slate-200 flex items-center justify-between">
+              <button
+                type="button"
+                onClick={() => setShowExportModal(false)}
+                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 hover:bg-slate-200/60 rounded-xl transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleExportExcel}
+                disabled={isExporting || exportMatchingLogs.length === 0}
+                className="flex items-center gap-2 px-5 py-2 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl shadow-xs transition-all cursor-pointer"
+              >
+                <FileSpreadsheet size={15} />
+                <span>{isExporting ? 'Generating Excel...' : 'Export Timesheet (.xlsx)'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

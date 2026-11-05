@@ -7,6 +7,7 @@ import { useAuth } from '@/features/auth/context/AuthContext';
 import ClientTADashboard from '@/features/talent-acquisition/pages/ClientTADashboard';
 import ClientForm from '@/features/clients/pages/ClientForm';
 import ClientPortalUsersTab from '@/features/clients/components/ClientPortalUsersTab';
+import ClientProjectSnapshotTab from '@/features/clients/components/ClientProjectSnapshotTab';
 
 const Field = ({ label, value, icon: Icon }) => (
     <div>
@@ -42,7 +43,7 @@ const ClientView = () => {
 
     useEffect(() => {
         const tab = searchParams.get('tab');
-        if (tab && (tab === 'details' || tab === 'ta' || tab === 'portal')) {
+        if (tab && (tab === 'details' || tab === 'snapshot' || tab === 'ta' || tab === 'portal')) {
             setActiveTab(tab);
         }
     }, [searchParams]);
@@ -174,7 +175,20 @@ const ClientView = () => {
                         }}
                         className={`pb-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'details' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'}`}
                     >
-                        Project Details
+                        Client Details
+                    </button>
+                    <button
+                        onClick={() => {
+                            setActiveTab('snapshot');
+                            setSearchParams(prev => {
+                                const next = new URLSearchParams(prev);
+                                next.set('tab', 'snapshot');
+                                return next;
+                            }, { replace: true });
+                        }}
+                        className={`pb-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'snapshot' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'}`}
+                    >
+                        Project Snapshot
                     </button>
                     {(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.view')) && (
                         <button
@@ -308,7 +322,7 @@ const ClientView = () => {
                             <div className="divide-y divide-slate-100">
                                 {projects.length > 0 ? (
                                     projects.map(project => (
-                                        <div key={project._id} className="p-6 flex flex-col md:flex-row md:items-center justify-between gap-4 hover:bg-slate-50 transition-colors cursor-pointer" onClick={() => navigate(`/projects/${project._id}`)}>
+                                        <div key={project._id} className="p-6 flex flex-col md:flex-row md:items-center justify-between gap-4 hover:bg-slate-50 transition-colors cursor-pointer" onClick={() => navigate(`/projects/${project._id}?from=client&clientId=${encodeURIComponent(id)}`, { state: { from: `/clients/${id}/view` } })}>
                                             <div className="space-y-1">
                                                 <h3 className="font-semibold text-slate-800 flex items-center space-x-2">
                                                     <span>{project.name}</span>
@@ -357,6 +371,10 @@ const ClientView = () => {
                             You do not have permission to view TA performance analytics for this client.
                         </div>
                     )
+                )}
+
+                {activeTab === 'snapshot' && (
+                    <ClientProjectSnapshotTab clientId={client._id} clientName={client.name} />
                 )}
 
                 {activeTab === 'portal' && (

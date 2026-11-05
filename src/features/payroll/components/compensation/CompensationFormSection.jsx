@@ -50,10 +50,11 @@ const parseBool = (val, def = true) => {
 
 const fmtMoney = (val) => `₹${parseFloat(val || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
 
-const CompensationFormSection = ({ formData, calculateSalaryBreakdown, payrollConfig: propConfig }) => {
+const CompensationFormSection = ({ formData, calculateSalaryBreakdown, onChange, payrollConfig: propConfig, config: propConfigAlt }) => {
     const [ctcPeriod, setCtcPeriod] = useState('monthly');
-    const [config, setConfig] = useState(propConfig || null);
-    const salary = formData?.salary || {};
+    const [config, setConfig] = useState(propConfig || propConfigAlt || null);
+    const salary = (formData && formData.salary) ? formData.salary : (formData || {});
+    const onBreakdownChange = calculateSalaryBreakdown || onChange || (() => {});
     const compType = salary.compensationType || 'monthly_salary';
     const isEditing = Boolean(formData?.id || formData?._id || formData?.isEdit);
 
@@ -97,14 +98,14 @@ const CompensationFormSection = ({ formData, calculateSalaryBreakdown, payrollCo
                             <div className="grid grid-cols-2 gap-1 p-1 bg-slate-100 rounded-xl border border-slate-200">
                                 <button
                                     type="button"
-                                    onClick={() => calculateSalaryBreakdown({ useSalaryComponents: true })}
+                                    onClick={() => onBreakdownChange({ useSalaryComponents: true })}
                                     className={`py-1.5 px-2 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${useComponents ? 'bg-white text-indigo-700 shadow-2xs border border-slate-200/80 font-extrabold' : 'text-slate-500 hover:text-slate-800'}`}
                                 >
                                     Structured
                                 </button>
                                 <button
                                     type="button"
-                                    onClick={() => calculateSalaryBreakdown({ useSalaryComponents: false })}
+                                    onClick={() => onBreakdownChange({ useSalaryComponents: false })}
                                     className={`py-1.5 px-2 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${!useComponents ? 'bg-white text-amber-700 shadow-2xs border border-slate-200/80 font-extrabold' : 'text-slate-500 hover:text-slate-800'}`}
                                 >
                                     Non-Structured
@@ -119,7 +120,7 @@ const CompensationFormSection = ({ formData, calculateSalaryBreakdown, payrollCo
                                 onChange={(e) => {
                                     const newType = e.target.value;
                                     const defaultAttMode = newType === 'hourly' ? 'timesheet' : newType === 'piece_rate' ? 'unit_count' : newType === 'flat_project' || newType === 'milestone' || newType === 'commission_only' ? 'none' : 'attendance';
-                                    calculateSalaryBreakdown({ compensationType: newType, attendanceMode: defaultAttMode });
+                                    onBreakdownChange({ compensationType: newType, attendanceMode: defaultAttMode });
                                 }}
                                 className="zoho-input"
                             >
@@ -138,7 +139,7 @@ const CompensationFormSection = ({ formData, calculateSalaryBreakdown, payrollCo
                             <label className="block text-[11px] font-bold text-slate-600 mb-1">Attendance Mode *</label>
                             <select
                                 value={salary.attendanceMode || 'attendance'}
-                                onChange={(e) => calculateSalaryBreakdown({ attendanceMode: e.target.value })}
+                                onChange={(e) => onBreakdownChange({ attendanceMode: e.target.value })}
                                 className="zoho-input"
                             >
                                 <option value="attendance">Attendance Based (paidDays / workingDays)</option>
@@ -194,7 +195,7 @@ const CompensationFormSection = ({ formData, calculateSalaryBreakdown, payrollCo
                                     type="number"
                                     min="0"
                                     value={salary.hourlyRate || ''}
-                                    onChange={(e) => calculateSalaryBreakdown({ hourlyRate: e.target.value })}
+                                    onChange={(e) => onBreakdownChange({ hourlyRate: e.target.value })}
                                     placeholder="e.g. 500"
                                     className="zoho-input"
                                 />
@@ -205,7 +206,7 @@ const CompensationFormSection = ({ formData, calculateSalaryBreakdown, payrollCo
                                     type="number"
                                     min="0"
                                     value={salary.standardHours || 160}
-                                    onChange={(e) => calculateSalaryBreakdown({ standardHours: e.target.value })}
+                                    onChange={(e) => onBreakdownChange({ standardHours: e.target.value })}
                                     className="zoho-input"
                                 />
                             </div>
@@ -217,7 +218,7 @@ const CompensationFormSection = ({ formData, calculateSalaryBreakdown, payrollCo
                                 type="number"
                                 min="0"
                                 value={salary.dailyRate || ''}
-                                onChange={(e) => calculateSalaryBreakdown({ dailyRate: e.target.value })}
+                                onChange={(e) => onBreakdownChange({ dailyRate: e.target.value })}
                                 placeholder="e.g. 1000"
                                 className="zoho-input"
                             />
@@ -229,13 +230,13 @@ const CompensationFormSection = ({ formData, calculateSalaryBreakdown, payrollCo
                                 type="number"
                                 min="0"
                                 value={salary.weeklyRate || ''}
-                                onChange={(e) => calculateSalaryBreakdown({ weeklyRate: e.target.value })}
+                                onChange={(e) => onBreakdownChange({ weeklyRate: e.target.value })}
                                 placeholder="e.g. 5000"
                                 className="zoho-input"
                             />
                         </div>
                     ) : compType === 'piece_rate' ? (
-                        <DeliverableRateCardEditor formData={formData} calculateSalaryBreakdown={calculateSalaryBreakdown} />
+                        <DeliverableRateCardEditor formData={formData} calculateSalaryBreakdown={onBreakdownChange} />
                     ) : compType === 'flat_project' ? (
                         <div>
                             <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Agreed Flat Project Fee (₹) *</label>
@@ -243,7 +244,7 @@ const CompensationFormSection = ({ formData, calculateSalaryBreakdown, payrollCo
                                 type="number"
                                 min="0"
                                 value={salary.projectFee || salary.monthlyCTC || ''}
-                                onChange={(e) => calculateSalaryBreakdown({ projectFee: e.target.value, monthlyCTC: e.target.value })}
+                                onChange={(e) => onBreakdownChange({ projectFee: e.target.value, monthlyCTC: e.target.value })}
                                 placeholder="e.g. 50000"
                                 className="zoho-input"
                             />
@@ -255,7 +256,7 @@ const CompensationFormSection = ({ formData, calculateSalaryBreakdown, payrollCo
                                 type="number"
                                 min="0"
                                 value={salary.milestoneAmount || salary.monthlyCTC || ''}
-                                onChange={(e) => calculateSalaryBreakdown({ milestoneAmount: e.target.value, monthlyCTC: e.target.value })}
+                                onChange={(e) => onBreakdownChange({ milestoneAmount: e.target.value, monthlyCTC: e.target.value })}
                                 placeholder="e.g. 25000"
                                 className="zoho-input"
                             />
@@ -266,7 +267,7 @@ const CompensationFormSection = ({ formData, calculateSalaryBreakdown, payrollCo
                             <textarea
                                 rows={2}
                                 value={salary.commissionNotes || ''}
-                                onChange={(e) => calculateSalaryBreakdown({ commissionNotes: e.target.value })}
+                                onChange={(e) => onBreakdownChange({ commissionNotes: e.target.value })}
                                 placeholder="e.g. 5% of direct sales volume"
                                 className="zoho-input"
                             />
@@ -281,16 +282,21 @@ const CompensationFormSection = ({ formData, calculateSalaryBreakdown, payrollCo
                                 min="0"
                                 value={
                                     ctcPeriod === 'monthly'
-                                        ? (salary.monthlyCTC || '')
-                                        : Math.round((parseFloat(salary.monthlyCTC || 0) * 12))
+                                        ? (salary.monthlyCTC !== undefined && salary.monthlyCTC !== null ? salary.monthlyCTC : '')
+                                        : (salary.annualCTC !== undefined && salary.annualCTC !== null ? salary.annualCTC : (salary.monthlyCTC ? Math.round(parseFloat(salary.monthlyCTC) * 12) : ''))
                                 }
                                 onChange={(e) => {
                                     const val = e.target.value;
-                                    const monthly = ctcPeriod === 'monthly' ? val : Math.round((parseFloat(val || 0) / 12) * 100) / 100;
-                                    const annual = ctcPeriod === 'monthly' ? (val !== '' ? Math.round(parseFloat(val || 0) * 12) : '') : val;
-                                    calculateSalaryBreakdown({ monthlyCTC: monthly, annualCTC: annual });
+                                    if (val === '') {
+                                        onBreakdownChange({ monthlyCTC: '', annualCTC: '' });
+                                        return;
+                                    }
+                                    const num = parseFloat(val) || 0;
+                                    const monthly = ctcPeriod === 'monthly' ? val : String(Math.round((num / 12) * 100) / 100);
+                                    const annual = ctcPeriod === 'monthly' ? String(Math.round(num * 12)) : val;
+                                    onBreakdownChange({ monthlyCTC: monthly, annualCTC: annual });
                                 }}
-                                placeholder="e.g. 50,000"
+                                placeholder={ctcPeriod === 'monthly' ? 'e.g. 50,000' : 'e.g. 6,00,000'}
                                 className="zoho-input"
                             />
                         </div>
@@ -354,7 +360,7 @@ const CompensationFormSection = ({ formData, calculateSalaryBreakdown, payrollCo
                                         min="1"
                                         max="100"
                                         value={salary.basicPercent !== undefined && salary.basicPercent !== null ? salary.basicPercent : ''}
-                                        onChange={(e) => calculateSalaryBreakdown({ basicPercent: e.target.value })}
+                                        onChange={(e) => onBreakdownChange({ basicPercent: e.target.value })}
                                         className="zoho-input pr-7"
                                         placeholder={`Company Default: ${basicPctDefault}%`}
                                     />
@@ -369,7 +375,7 @@ const CompensationFormSection = ({ formData, calculateSalaryBreakdown, payrollCo
                                         min="1"
                                         max="100"
                                         value={salary.hraPercent !== undefined && salary.hraPercent !== null ? salary.hraPercent : ''}
-                                        onChange={(e) => calculateSalaryBreakdown({ hraPercent: e.target.value })}
+                                        onChange={(e) => onBreakdownChange({ hraPercent: e.target.value })}
                                         className="zoho-input pr-7"
                                         placeholder={`Company Default: ${hraPctDefault}%`}
                                     />
@@ -384,7 +390,7 @@ const CompensationFormSection = ({ formData, calculateSalaryBreakdown, payrollCo
                                         min="0"
                                         max="100"
                                         value={salary.vpfPercent !== undefined && salary.vpfPercent !== null ? salary.vpfPercent : ''}
-                                        onChange={(e) => calculateSalaryBreakdown({ vpfPercent: e.target.value })}
+                                        onChange={(e) => onBreakdownChange({ vpfPercent: e.target.value })}
                                         className="zoho-input pr-7"
                                         placeholder="Company Default: 0%"
                                     />
@@ -420,7 +426,7 @@ const CompensationFormSection = ({ formData, calculateSalaryBreakdown, payrollCo
                                     <input
                                         type="checkbox"
                                         checked={parseBool(salary.pfEnabled, true)}
-                                        onChange={(e) => calculateSalaryBreakdown({ pfEnabled: e.target.checked })}
+                                        onChange={(e) => onBreakdownChange({ pfEnabled: e.target.checked })}
                                         className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500 cursor-pointer"
                                     />
                                 </div>
@@ -436,7 +442,7 @@ const CompensationFormSection = ({ formData, calculateSalaryBreakdown, payrollCo
                                         <input
                                             type="checkbox"
                                             checked={!!salary.includePfInCTC}
-                                            onChange={(e) => calculateSalaryBreakdown({ includePfInCTC: e.target.checked })}
+                                            onChange={(e) => onBreakdownChange({ includePfInCTC: e.target.checked })}
                                             className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500 cursor-pointer"
                                         />
                                     </div>
@@ -457,7 +463,7 @@ const CompensationFormSection = ({ formData, calculateSalaryBreakdown, payrollCo
                                     <input
                                         type="checkbox"
                                         checked={parseBool(salary.esiEnabled, true)}
-                                        onChange={(e) => calculateSalaryBreakdown({ esiEnabled: e.target.checked })}
+                                        onChange={(e) => onBreakdownChange({ esiEnabled: e.target.checked })}
                                         className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500 cursor-pointer"
                                     />
                                 </div>
@@ -485,7 +491,7 @@ const CompensationFormSection = ({ formData, calculateSalaryBreakdown, payrollCo
                                     <input
                                         type="checkbox"
                                         checked={parseBool(salary.gratuityEnabled, true)}
-                                        onChange={(e) => calculateSalaryBreakdown({ gratuityEnabled: e.target.checked })}
+                                        onChange={(e) => onBreakdownChange({ gratuityEnabled: e.target.checked })}
                                         className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500 cursor-pointer"
                                     />
                                 </div>
@@ -501,7 +507,7 @@ const CompensationFormSection = ({ formData, calculateSalaryBreakdown, payrollCo
                                         <input
                                             type="checkbox"
                                             checked={parseBool(salary.includeGratuityInCTC, true)}
-                                            onChange={(e) => calculateSalaryBreakdown({ includeGratuityInCTC: e.target.checked })}
+                                            onChange={(e) => onBreakdownChange({ includeGratuityInCTC: e.target.checked })}
                                             className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500 cursor-pointer"
                                         />
                                     </div>
@@ -522,7 +528,7 @@ const CompensationFormSection = ({ formData, calculateSalaryBreakdown, payrollCo
                                     <input
                                         type="checkbox"
                                         checked={parseBool(salary.lwfEnabled, true)}
-                                        onChange={(e) => calculateSalaryBreakdown({ lwfEnabled: e.target.checked })}
+                                        onChange={(e) => onBreakdownChange({ lwfEnabled: e.target.checked })}
                                         className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500 cursor-pointer"
                                     />
                                 </div>
@@ -546,7 +552,7 @@ const CompensationFormSection = ({ formData, calculateSalaryBreakdown, payrollCo
                                 <input
                                     type="checkbox"
                                     checked={parseBool(salary.ptEnabled, true)}
-                                    onChange={(e) => calculateSalaryBreakdown({ ptEnabled: e.target.checked })}
+                                    onChange={(e) => onBreakdownChange({ ptEnabled: e.target.checked })}
                                     className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500 cursor-pointer"
                                 />
                             </div>
@@ -563,7 +569,7 @@ const CompensationFormSection = ({ formData, calculateSalaryBreakdown, payrollCo
                                         <div className="flex-1">
                                             <select
                                                 value={salary.ptState || 'MH'}
-                                                onChange={(e) => calculateSalaryBreakdown({ ptState: e.target.value })}
+                                                onChange={(e) => onBreakdownChange({ ptState: e.target.value })}
                                                 className="w-full p-1.5 border border-slate-300 rounded-lg text-xs outline-none bg-white text-slate-700"
                                             >
                                                 <optgroup label="── No PT / Manual">
@@ -588,7 +594,7 @@ const CompensationFormSection = ({ formData, calculateSalaryBreakdown, payrollCo
                                                 <input
                                                     type="number"
                                                     value={salary.professionalTax || 0}
-                                                    onChange={(e) => calculateSalaryBreakdown({ professionalTax: e.target.value })}
+                                                    onChange={(e) => onBreakdownChange({ professionalTax: e.target.value })}
                                                     className="w-full p-1.5 border border-slate-300 rounded-lg text-xs outline-none text-slate-700 font-bold"
                                                     placeholder="Amount"
                                                 />
@@ -626,7 +632,7 @@ const CompensationFormSection = ({ formData, calculateSalaryBreakdown, payrollCo
                             <input
                                 type="checkbox"
                                 checked={parseBool(salary.tdsEnabled, true)}
-                                onChange={(e) => calculateSalaryBreakdown({ tdsEnabled: e.target.checked })}
+                                onChange={(e) => onBreakdownChange({ tdsEnabled: e.target.checked })}
                                 className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500 cursor-pointer"
                             />
                         </div>
@@ -663,7 +669,7 @@ const CompensationFormSection = ({ formData, calculateSalaryBreakdown, payrollCo
                             <input
                                 type="checkbox"
                                 checked={parseBool(salary.tdsEnabled, true)}
-                                onChange={(e) => calculateSalaryBreakdown({ tdsEnabled: e.target.checked })}
+                                onChange={(e) => onBreakdownChange({ tdsEnabled: e.target.checked })}
                                 className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500 cursor-pointer"
                             />
                         </div>
@@ -729,7 +735,7 @@ const CompensationFormSection = ({ formData, calculateSalaryBreakdown, payrollCo
                                                 value={currentFreq}
                                                 onChange={(e) => {
                                                     const freqs = { ...(salary.componentFrequencies || {}), [c.id]: e.target.value };
-                                                    calculateSalaryBreakdown({ componentFrequencies: freqs });
+                                                    onBreakdownChange({ componentFrequencies: freqs });
                                                 }}
                                                 className="text-[10px] bg-white border border-slate-300 rounded px-1.5 py-0.5 text-slate-700 font-semibold outline-none cursor-pointer"
                                             >
@@ -744,7 +750,7 @@ const CompensationFormSection = ({ formData, calculateSalaryBreakdown, payrollCo
                                             <input
                                                 type="number"
                                                 value={value || ''}
-                                                onChange={(e) => calculateSalaryBreakdown({ [c.id]: e.target.value })}
+                                                onChange={(e) => onBreakdownChange({ [c.id]: e.target.value })}
                                                 className="zoho-input text-xs"
                                                 placeholder="0"
                                             />
@@ -762,13 +768,13 @@ const CompensationFormSection = ({ formData, calculateSalaryBreakdown, payrollCo
                 )}
 
                 {/* Custom Allowances Section */}
-                <CustomAllowancesEditor formData={formData} calculateSalaryBreakdown={calculateSalaryBreakdown} />
+                <CustomAllowancesEditor formData={formData} calculateSalaryBreakdown={onBreakdownChange} />
 
                 {/* Custom Deductions Section */}
-                <CustomDeductionsEditor formData={formData} calculateSalaryBreakdown={calculateSalaryBreakdown} />
+                <CustomDeductionsEditor formData={formData} calculateSalaryBreakdown={onBreakdownChange} />
 
                 {/* Additional Benefits & One-Time Pay */}
-                <AdditionalBenefitsEditor formData={formData} calculateSalaryBreakdown={calculateSalaryBreakdown} />
+                <AdditionalBenefitsEditor formData={formData} calculateSalaryBreakdown={onBreakdownChange} />
             </div>
 
             {/* Right Side: Live Salary Structure Preview / Strategy Snapshot */}

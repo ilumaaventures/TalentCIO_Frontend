@@ -830,7 +830,7 @@ const Projects = () => {
                                         return (
                                             <tr
                                                 key={project._id}
-                                                onClick={() => navigate(`/projects/${project._id}`)}
+                                                onClick={() => navigate(`/projects/${project._id}`, { state: { from: '/projects' } })}
                                                 className="hover:bg-blue-50/40 cursor-pointer transition-colors group"
                                             >
                                                 <td className="px-6 py-3 font-medium text-slate-800">
@@ -999,7 +999,7 @@ const Projects = () => {
                             <button
                                 onClick={() => {
                                     setOpenMenuId(null);
-                                    navigate(`/projects/${project._id}`);
+                                    navigate(`/projects/${project._id}`, { state: { from: '/projects' } });
                                 }}
                                 className="w-full text-left px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 hover:text-blue-600 flex items-center gap-2"
                             >

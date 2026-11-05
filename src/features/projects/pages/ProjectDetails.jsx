@@ -1,5 +1,5 @@
 import React, { useCallback, useState, useEffect, useMemo } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
 import api from '@/lib/apiClient';
@@ -37,18 +37,54 @@ const getLocalDateInputValue = (dateValue = new Date()) => format(new Date(dateV
 const ProjectDetails = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
   const { user } = useAuth();
+
+  const urlViewMode = searchParams.get('view') || location.state?.viewMode;
+  const urlUserId = searchParams.get('userId') || location.state?.traceUserId;
 
   const [project, setProject] = useState(null);
   const [modules, setModules] = useState([]);
   const [tasks, setTasks] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [viewMode, setViewMode] = useState('overview'); // 'overview', 'board', 'hierarchy', 'performance', 'user-trace', 'discussions'
-  const [traceUserId, setTraceUserId] = useState('ALL');
+  const [viewMode, setViewMode] = useState(urlViewMode || 'overview'); // 'overview', 'board', 'hierarchy', 'performance', 'user-trace', 'discussions'
+  const [traceUserId, setTraceUserId] = useState(urlUserId || 'ALL');
   const [discussionsCount, setDiscussionsCount] = useState(0);
   const [selectedDiscussionModuleId, setSelectedDiscussionModuleId] = useState('all');
   const hasModules = project?.hasModules !== false;
+
+  // Sync viewMode and traceUserId whenever searchParams or location.state change
+  useEffect(() => {
+    const viewParam = searchParams.get('view') || location.state?.viewMode;
+    const userParam = searchParams.get('userId') || location.state?.traceUserId;
+    if (viewParam) {
+      setViewMode(viewParam);
+    }
+    if (userParam) {
+      setTraceUserId(userParam);
+    }
+  }, [searchParams, location.state]);
+
+  const handleBack = useCallback(() => {
+    const fromPath = location.state?.from;
+    if (fromPath) {
+      navigate(fromPath);
+      return;
+    }
+    const fromParam = searchParams.get('from');
+    if (fromParam === 'client') {
+      const cId = searchParams.get('clientId') || project?.client?._id || (typeof project?.client === 'string' ? project.client : null);
+      if (cId) {
+        navigate(`/clients/${cId}/view?tab=snapshot`);
+        return;
+      }
+      navigate('/clients');
+      return;
+    }
+    navigate('/projects');
+  }, [location.state?.from, searchParams, project?.client, navigate]);
 
   const handleOpenDiscussions = useCallback((targetModuleId) => {
     if (targetModuleId && typeof targetModuleId === 'string') {
@@ -908,6 +944,7 @@ const ProjectDetails = () => {
           canExportReport={canExportReport}
           onSelectMember={handleSelectMemberTrace}
           discussionsCount={discussionsCount}
+          onBack={handleBack}
         />
 
         {/* Dynamic View Content */}
