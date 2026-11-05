@@ -2,11 +2,14 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     AlertCircle,
+    Check,
     CheckCircle2,
     ChevronLeft,
     ChevronRight,
     Eye,
+    FileCheck,
     FileText,
+    FolderArchive,
     Loader,
     Mail,
     Paperclip,
@@ -87,6 +90,16 @@ const HREmailSend = () => {
     const [contextMenu, setContextMenu] = useState(null);
     const [editingEmailId, setEditingEmailId] = useState(null);
 
+    // Dossier Document Tab attachments state
+    const [recipientDossierDocs, setRecipientDossierDocs] = useState({}); // { [userId]: [doc, ...] }
+    const [commonDossierCategory, setCommonDossierCategory] = useState(''); // Category attached for all
+    const [availableRecipientDocs, setAvailableRecipientDocs] = useState({ documentsByUser: {}, availableCategories: [] });
+    const [loadingRecipientDocs, setLoadingRecipientDocs] = useState(false);
+    const [showDossierDocModal, setShowDossierDocModal] = useState(false);
+    const [activeModalTab, setActiveModalTab] = useState('all'); // 'all' | 'individual'
+    const [selectedUserForModal, setSelectedUserForModal] = useState('');
+    const [dossierDocSearch, setDossierDocSearch] = useState('');
+
     useEffect(() => {
         const timer = window.setTimeout(async () => {
             setLoadingEmployees(true);
@@ -146,6 +159,55 @@ const HREmailSend = () => {
         window.addEventListener('click', closeMenu);
         return () => window.removeEventListener('click', closeMenu);
     }, []);
+    const fetchRecipientDocuments = async () => {
+        if (selectedEmployees.length === 0) return;
+        setLoadingRecipientDocs(true);
+        try {
+            const userIds = selectedEmployees.map((e) => e._id).join(',');
+            const res = await api.get('/hr-email/recipient-documents', { params: { userIds } });
+            setAvailableRecipientDocs(res.data || { documentsByUser: {}, availableCategories: [] });
+            if (!selectedUserForModal && selectedEmployees.length > 0) {
+                setSelectedUserForModal(String(selectedEmployees[0]._id));
+            }
+        } catch (err) {
+            console.error('Failed to fetch recipient documents:', err);
+            toast.error('Failed to load documents from employee dossiers');
+        } finally {
+            setLoadingRecipientDocs(false);
+        }
+    };
+
+    const handleToggleDossierDoc = (userId, doc) => {
+        setRecipientDossierDocs((prev) => {
+            const currentList = prev[userId] || [];
+            const exists = currentList.some((d) => String(d._id) === String(doc._id));
+            let nextList;
+            if (exists) {
+                nextList = currentList.filter((d) => String(d._id) !== String(doc._id));
+            } else {
+                nextList = [...currentList, doc];
+            }
+            return {
+                ...prev,
+                [userId]: nextList
+            };
+        });
+    };
+
+    const handleRemoveDossierDoc = (userId, docId) => {
+        setRecipientDossierDocs((prev) => {
+            const currentList = prev[userId] || [];
+            return {
+                ...prev,
+                [userId]: currentList.filter((d) => String(d._id) !== String(docId))
+            };
+        });
+    };
+
+    const totalPerUserDossierDocsCount = useMemo(() => {
+        return Object.values(recipientDossierDocs).reduce((sum, list) => sum + (Array.isArray(list) ? list.length : 0), 0);
+    }, [recipientDossierDocs]);
+
 
     const selectedEmployeeMap = useMemo(() => (
         new Map(selectedEmployees.map((employee) => [String(employee._id), employee]))
@@ -293,6 +355,8 @@ const HREmailSend = () => {
         setNotes('');
         setResult(null);
         setCustomEmails({});
+        setRecipientDossierDocs({});
+        setCommonDossierCategory('');
     };
 
     const handleSend = async () => {
@@ -336,6 +400,12 @@ const HREmailSend = () => {
         formData.append('dossierCategory', dossierCategory);
         formData.append('notes', notes);
         attachmentFiles.forEach((file) => formData.append('attachments', file));
+        if (Object.keys(recipientDossierDocs).length > 0) {
+            formData.append('recipientDossierDocs', JSON.stringify(recipientDossierDocs));
+        }
+        if (commonDossierCategory) {
+            formData.append('commonDossierCategory', commonDossierCategory);
+        }
 
         setSending(true);
         try {
@@ -818,13 +888,34 @@ const HREmailSend = () => {
                         <Upload size={20} className="mx-auto text-slate-400" />
                         <h3 className="mt-2 text-sm font-bold text-slate-900">Drop files here or browse</h3>
                         <p className="mt-1 text-[11px] text-slate-500">PDF, DOC, DOCX, and image files are supported. Maximum 5 files, 10MB each.</p>
-                        <button
-                            type="button"
-                            onClick={() => fileInputRef.current?.click()}
-                            className="mt-3 rounded-lg bg-slate-900 px-3.5 py-1.5 text-xs font-semibold text-white transition hover:bg-slate-800 cursor-pointer"
-                        >
-                            Choose Files
-                        </button>
+                        
+                        <div className="mt-3.5 flex flex-wrap items-center justify-center gap-2.5">
+                            <button
+                                type="button"
+                                onClick={() => fileInputRef.current?.click()}
+                                className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3.5 py-1.5 text-xs font-semibold text-white transition hover:bg-slate-800 cursor-pointer shadow-xs"
+                            >
+                                <Upload size={13} />
+                                Choose Files from Device
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    fetchRecipientDocuments();
+                                    setShowDossierDocModal(true);
+                                }}
+                                className="inline-flex items-center gap-1.5 rounded-lg border border-blue-600 bg-blue-50 px-3.5 py-1.5 text-xs font-bold text-blue-700 transition hover:bg-blue-100 cursor-pointer shadow-xs"
+                            >
+                                <FileText size={13} className="text-blue-600" />
+                                Select from Document Tab (Dossier)
+                                {(commonDossierCategory || totalPerUserDossierDocsCount > 0) && (
+                                    <span className="ml-1 rounded-full bg-blue-600 px-1.5 py-0.2 text-[9.5px] font-bold text-white">
+                                        {commonDossierCategory ? `All (${commonDossierCategory})` : `${totalPerUserDossierDocsCount} docs`}
+                                    </span>
+                                )}
+                            </button>
+                        </div>
+
                         <input
                             ref={fileInputRef}
                             type="file"
@@ -835,14 +926,28 @@ const HREmailSend = () => {
                         />
                     </div>
 
-                    {attachmentFiles.length > 0 && (
+                    {/* Active Attachments List (Uploads + Dossier Documents) */}
+                    {(attachmentFiles.length > 0 || commonDossierCategory || totalPerUserDossierDocsCount > 0) && (
                         <div className="mt-4 space-y-2">
+                            <div className="flex items-center justify-between px-1 text-[10.5px] font-bold uppercase tracking-wider text-slate-400">
+                                <span>Attached Files ({attachmentFiles.length + (commonDossierCategory ? selectedEmployees.length : totalPerUserDossierDocsCount)})</span>
+                                <span className="text-blue-600 font-semibold lowercase">
+                                    {commonDossierCategory ? 'category-matched per employee' : totalPerUserDossierDocsCount > 0 ? 'custom per recipient' : 'device uploads'}
+                                </span>
+                            </div>
+
+                            {/* 1. Device Uploads */}
                             {attachmentFiles.map((file, index) => (
-                                <div key={`${file.name}-${index}`} className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                                <div key={`${file.name}-${index}`} className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2">
                                     <div className="flex min-w-0 items-center gap-2.5">
                                         <Paperclip size={14} className="text-slate-400 shrink-0" />
                                         <div className="min-w-0">
-                                            <div className="truncate text-xs font-bold text-slate-800">{file.name}</div>
+                                            <div className="flex items-center gap-2">
+                                                <span className="truncate text-xs font-bold text-slate-800">{file.name}</span>
+                                                <span className="rounded-md bg-slate-200 px-1.5 py-0.2 text-[9.5px] font-semibold text-slate-700">
+                                                    Device Upload
+                                                </span>
+                                            </div>
                                             <div className="text-[10.5px] text-slate-500">{formatFileSize(file.size)}</div>
                                         </div>
                                     </div>
@@ -851,6 +956,77 @@ const HREmailSend = () => {
                                     </button>
                                 </div>
                             ))}
+
+                            {/* 2. Common Dossier Category attached for all */}
+                            {commonDossierCategory && (
+                                <div className="flex items-center justify-between rounded-xl border border-blue-200 bg-blue-50/70 px-3.5 py-2.5">
+                                    <div className="flex min-w-0 items-center gap-2.5">
+                                        <FolderArchive size={16} className="text-blue-600 shrink-0" />
+                                        <div className="min-w-0">
+                                            <div className="flex items-center gap-2">
+                                                <span className="truncate text-xs font-bold text-blue-900">
+                                                    Document Tab: {commonDossierCategory}
+                                                </span>
+                                                <span className="rounded-md bg-blue-100 px-1.5 py-0.5 text-[9.5px] font-bold text-blue-700">
+                                                    Attached for All ({selectedEmployees.length} recipients)
+                                                </span>
+                                            </div>
+                                            <div className="text-[10.5px] text-blue-600 mt-0.5">
+                                                Each employee will automatically receive their respective {commonDossierCategory} from their Document tab
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setCommonDossierCategory('')}
+                                        className="rounded-lg p-1.5 text-blue-400 transition hover:bg-white hover:text-blue-700 cursor-pointer"
+                                        title="Remove"
+                                    >
+                                        <X size={14} />
+                                    </button>
+                                </div>
+                            )}
+
+                            {/* 3. Individual Dossier Documents */}
+                            {Object.entries(recipientDossierDocs).map(([uid, docs]) => {
+                                const emp = selectedEmployeeMap.get(uid);
+                                if (!docs || docs.length === 0) return null;
+                                return docs.map((doc) => (
+                                    <div key={`${uid}-${doc._id}`} className="flex items-center justify-between rounded-xl border border-emerald-200 bg-emerald-50/60 px-3.5 py-2">
+                                        <div className="flex min-w-0 items-center gap-2.5">
+                                            <FileText size={15} className="text-emerald-600 shrink-0" />
+                                            <div className="min-w-0">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="truncate text-xs font-bold text-slate-800">{doc.title || doc.fileName}</span>
+                                                    <span className="rounded-md bg-emerald-100 px-1.5 py-0.2 text-[9.5px] font-bold text-emerald-800">
+                                                        {emp?.firstName || 'Employee'} • {doc.category || 'Document Tab'}
+                                                    </span>
+                                                </div>
+                                                <div className="text-[10.5px] text-slate-500 truncate">{doc.fileName}</div>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-1.5">
+                                            <a
+                                                href={doc.url}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="rounded-lg p-1.5 text-slate-400 hover:text-blue-600 hover:bg-white transition cursor-pointer"
+                                                title="View Document"
+                                            >
+                                                <Eye size={13} />
+                                            </a>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleRemoveDossierDoc(uid, doc._id)}
+                                                className="rounded-lg p-1.5 text-slate-400 hover:text-rose-600 hover:bg-white transition cursor-pointer"
+                                                title="Remove"
+                                            >
+                                                <X size={13} />
+                                            </button>
+                                        </div>
+                                    </div>
+                                ));
+                            })}
                         </div>
                     )}
 
@@ -955,7 +1131,14 @@ const HREmailSend = () => {
                                 <div><span className="font-bold text-slate-900">Sender:</span> {(emailAccounts.find((account) => account._id === selectedAccountId)?.name) || 'TalentCIO Platform'}</div>
                                 <div><span className="font-bold text-slate-900">Template:</span> {(templates.find((template) => String(template._id) === String(selectedTemplateId))?.name) || 'Custom'}</div>
                                 <div><span className="font-bold text-slate-900">Subject:</span> {previewSubject || subject}</div>
-                                <div><span className="font-bold text-slate-900">Attachments:</span> {attachmentFiles.length > 0 ? attachmentFiles.map((file) => file.name).join(', ') : 'None'}</div>
+                                <div>
+    <span className="font-bold text-slate-900">Attachments:</span>{' '}
+    {[
+        attachmentFiles.length > 0 ? `${attachmentFiles.length} file(s) from device` : null,
+        commonDossierCategory ? `Document Tab '${commonDossierCategory}' for all recipients` : null,
+        totalPerUserDossierDocsCount > 0 ? `${totalPerUserDossierDocsCount} respective dossier doc(s)` : null
+    ].filter(Boolean).join(' • ') || 'None'}
+</div>
                                 <div><span className="font-bold text-slate-900">Dossier:</span> {dossierSave ? `On · ${dossierCategory}` : 'Off'}</div>
                             </div>
                         </div>
@@ -1008,6 +1191,387 @@ const HREmailSend = () => {
                     >
                         Change email address
                     </button>
+                </div>
+            )}
+
+            {/* Modal: Select Attachments from Document Tab */}
+            {showDossierDocModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4">
+                    <div className="flex flex-col w-full max-w-3xl max-h-[85vh] rounded-2xl bg-white shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+                        {/* Modal Header */}
+                        <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4 bg-slate-50/80">
+                            <div className="flex items-center gap-2.5">
+                                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-100 text-blue-600">
+                                    <FileText size={18} />
+                                </div>
+                                <div>
+                                    <h3 className="text-sm font-bold text-slate-900">
+                                        Select Attachments from Employee Document Tab
+                                    </h3>
+                                    <p className="text-[11px] text-slate-500">
+                                        Attach files from employee dossiers to this email dispatch
+                                    </p>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setShowDossierDocModal(false)}
+                                className="rounded-lg p-1.5 text-slate-400 hover:bg-white hover:text-slate-700 transition cursor-pointer"
+                            >
+                                <X size={16} />
+                            </button>
+                        </div>
+
+                        {/* Mode Selector Tabs (if > 1 employee selected) */}
+                        {selectedEmployees.length > 1 && (
+                            <div className="flex border-b border-slate-200 bg-white px-5 pt-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setActiveModalTab('all')}
+                                    className={`flex items-center gap-2 border-b-2 px-4 py-2 text-xs font-bold transition cursor-pointer ${
+                                        activeModalTab === 'all'
+                                            ? 'border-blue-600 text-blue-600'
+                                            : 'border-transparent text-slate-500 hover:text-slate-800'
+                                    }`}
+                                >
+                                    <Users size={14} />
+                                    Attach for All Recipients ({selectedEmployees.length})
+                                    {commonDossierCategory && (
+                                        <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] text-blue-700">
+                                            {commonDossierCategory}
+                                        </span>
+                                    )}
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setActiveModalTab('individual')}
+                                    className={`flex items-center gap-2 border-b-2 px-4 py-2 text-xs font-bold transition cursor-pointer ${
+                                        activeModalTab === 'individual'
+                                            ? 'border-blue-600 text-blue-600'
+                                            : 'border-transparent text-slate-500 hover:text-slate-800'
+                                    }`}
+                                >
+                                    <Paperclip size={14} />
+                                    Customize Respectively Per Recipient
+                                    {totalPerUserDossierDocsCount > 0 && (
+                                        <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] text-emerald-700">
+                                            {totalPerUserDossierDocsCount} docs
+                                        </span>
+                                    )}
+                                </button>
+                            </div>
+                        )}
+
+                        {/* Modal Body */}
+                        <div className="flex-1 overflow-y-auto p-5">
+                            {loadingRecipientDocs ? (
+                                <div className="flex flex-col items-center justify-center py-12 text-slate-500">
+                                    <Loader size={24} className="animate-spin text-blue-600" />
+                                    <p className="mt-2 text-xs font-medium">Loading documents from employee dossiers...</p>
+                                </div>
+                            ) : (
+                                <>
+                                    {/* TAB 1: ALL RECIPIENTS (BY CATEGORY) */}
+                                    {activeModalTab === 'all' && selectedEmployees.length > 1 && (
+                                        <div className="space-y-4">
+                                            <div className="rounded-xl border border-blue-100 bg-blue-50/70 p-3.5">
+                                                <h4 className="text-xs font-bold text-blue-900">
+                                                    Attach Each Employee's Respective Document from their Document Tab
+                                                </h4>
+                                                <p className="mt-1 text-[11px] text-blue-700 leading-relaxed">
+                                                    When you choose a category (e.g. <strong>Offer Letter</strong> or <strong>Relieving Letter</strong>), TalentCIO matches and attaches each employee's corresponding file from their own document tab.
+                                                </p>
+                                            </div>
+
+                                            <div>
+                                                <label className="block text-xs font-bold text-slate-800 mb-2">
+                                                    Available Document Categories Across Recipients
+                                                </label>
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
+                                                    {availableRecipientDocs.availableCategories.length === 0 ? (
+                                                        <div className="col-span-full py-8 text-center text-xs text-slate-400">
+                                                            No documents found in the selected employees' document tabs.
+                                                        </div>
+                                                    ) : (
+                                                        availableRecipientDocs.availableCategories.map((category) => {
+                                                            const matchCount = selectedEmployees.filter((emp) =>
+                                                                (availableRecipientDocs.documentsByUser[emp._id] || []).some(
+                                                                    (d) => String(d.category || '').toLowerCase() === category.toLowerCase() ||
+                                                                           String(d.title || '').toLowerCase().includes(category.toLowerCase())
+                                                                )
+                                                            ).length;
+                                                            const isSelected = commonDossierCategory === category;
+
+                                                            return (
+                                                                <div
+                                                                    key={category}
+                                                                    onClick={() => setCommonDossierCategory(isSelected ? '' : category)}
+                                                                    className={`flex flex-col justify-between p-3 rounded-xl border transition cursor-pointer ${
+                                                                        isSelected
+                                                                            ? 'border-blue-600 bg-blue-50/90 ring-2 ring-blue-500/20 shadow-xs'
+                                                                            : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
+                                                                    }`}
+                                                                >
+                                                                    <div className="flex items-start justify-between">
+                                                                        <div className="font-bold text-xs text-slate-900 flex items-center gap-1.5">
+                                                                            <FolderArchive size={14} className={isSelected ? 'text-blue-600' : 'text-slate-400'} />
+                                                                            {category}
+                                                                        </div>
+                                                                        {isSelected ? (
+                                                                            <span className="flex h-4 w-4 items-center justify-center rounded-full bg-blue-600 text-white">
+                                                                                <Check size={10} strokeWidth={3} />
+                                                                            </span>
+                                                                        ) : (
+                                                                            <span className="h-4 w-4 rounded-full border border-slate-300 bg-white" />
+                                                                        )}
+                                                                    </div>
+                                                                    <div className="mt-2 text-[10.5px] font-medium text-slate-500">
+                                                                        Available for <strong className="text-slate-800">{matchCount}</strong> of {selectedEmployees.length} employees
+                                                                    </div>
+                                                                </div>
+                                                            );
+                                                        })
+                                                    )}
+                                                </div>
+                                            </div>
+
+                                            {commonDossierCategory && (
+                                                <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3.5">
+                                                    <div className="text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-2">
+                                                        Recipient Document Resolution Preview
+                                                    </div>
+                                                    <div className="max-h-48 overflow-y-auto space-y-1.5 divide-y divide-slate-100 pr-1">
+                                                        {selectedEmployees.map((emp) => {
+                                                            const matchedDoc = (availableRecipientDocs.documentsByUser[emp._id] || []).find(
+                                                                (d) => String(d.category || '').toLowerCase() === commonDossierCategory.toLowerCase() ||
+                                                                       String(d.title || '').toLowerCase().includes(commonDossierCategory.toLowerCase())
+                                                            );
+
+                                                            return (
+                                                                <div key={emp._id} className="pt-1.5 flex items-center justify-between text-xs">
+                                                                    <span className="font-semibold text-slate-800">
+                                                                        {emp.firstName} {emp.lastName} <span className="text-slate-400 font-normal">({emp.employeeCode || emp.email})</span>
+                                                                    </span>
+                                                                    {matchedDoc ? (
+                                                                        <span className="flex items-center gap-1 text-[11px] font-medium text-emerald-600 truncate max-w-[200px]" title={matchedDoc.fileName}>
+                                                                            <Check size={12} />
+                                                                            {matchedDoc.fileName || matchedDoc.title}
+                                                                        </span>
+                                                                    ) : (
+                                                                        <span className="text-[11px] font-medium text-amber-600">
+                                                                            No matching document in dossier
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {/* TAB 2: INDIVIDUAL PER RECIPIENT */}
+                                    {(activeModalTab === 'individual' || selectedEmployees.length === 1) && (
+                                        <div className="grid grid-cols-1 md:grid-cols-12 gap-4 min-h-[300px]">
+                                            {/* Recipient Selector Sidebar (if > 1 employee) */}
+                                            {selectedEmployees.length > 1 && (
+                                                <div className="md:col-span-4 border-r border-slate-200 pr-3 space-y-1 max-h-[360px] overflow-y-auto">
+                                                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1 px-2">
+                                                        Select Recipient
+                                                    </div>
+                                                    {selectedEmployees.map((emp) => {
+                                                        const isCurrent = String(emp._id) === String(selectedUserForModal || selectedEmployees[0]?._id);
+                                                        const docCount = (availableRecipientDocs.documentsByUser[emp._id] || []).length;
+                                                        const selectedCount = (recipientDossierDocs[emp._id] || []).length;
+
+                                                        return (
+                                                            <button
+                                                                key={emp._id}
+                                                                type="button"
+                                                                onClick={() => setSelectedUserForModal(String(emp._id))}
+                                                                className={`w-full text-left px-2.5 py-2 rounded-xl text-xs transition cursor-pointer flex items-center justify-between ${
+                                                                    isCurrent
+                                                                        ? 'bg-blue-600 text-white font-bold shadow-xs'
+                                                                        : 'hover:bg-slate-100 text-slate-700'
+                                                                }`}
+                                                            >
+                                                                <div className="truncate min-w-0 pr-1">
+                                                                    <div className="truncate">{emp.firstName} {emp.lastName}</div>
+                                                                    <div className={`text-[10px] truncate ${isCurrent ? 'text-blue-100' : 'text-slate-400'}`}>
+                                                                        {emp.department || emp.designation || 'Employee'}
+                                                                    </div>
+                                                                </div>
+                                                                <div className="shrink-0 flex items-center gap-1">
+                                                                    {selectedCount > 0 && (
+                                                                        <span className={`px-1.5 py-0.2 rounded-full text-[9.5px] font-bold ${
+                                                                            isCurrent ? 'bg-white text-blue-600' : 'bg-emerald-100 text-emerald-700'
+                                                                        }`}>
+                                                                            {selectedCount}
+                                                                        </span>
+                                                                    )}
+                                                                    <span className={`text-[10px] ${isCurrent ? 'text-blue-200' : 'text-slate-400'}`}>
+                                                                        ({docCount})
+                                                                    </span>
+                                                                </div>
+                                                            </button>
+                                                        );
+                                                    })}
+                                                </div>
+                                            )}
+
+                                            {/* Documents list for active recipient */}
+                                            <div className={selectedEmployees.length > 1 ? 'md:col-span-8 space-y-3' : 'col-span-full space-y-3'}>
+                                                {(() => {
+                                                    const currentEmpId = selectedEmployees.length === 1 ? selectedEmployees[0]._id : (selectedUserForModal || selectedEmployees[0]?._id);
+                                                    const currentEmp = selectedEmployeeMap.get(String(currentEmpId));
+                                                    const docs = availableRecipientDocs.documentsByUser[currentEmpId] || [];
+                                                    const selectedForCurrent = recipientDossierDocs[currentEmpId] || [];
+
+                                                    const filteredDocs = docs.filter((d) => {
+                                                        if (!dossierDocSearch) return true;
+                                                        const q = dossierDocSearch.toLowerCase();
+                                                        return (d.title && d.title.toLowerCase().includes(q)) ||
+                                                               (d.fileName && d.fileName.toLowerCase().includes(q)) ||
+                                                               (d.category && d.category.toLowerCase().includes(q));
+                                                    });
+
+                                                    return (
+                                                        <>
+                                                            <div className="flex items-center justify-between gap-2 pb-2 border-b border-slate-100">
+                                                                <div>
+                                                                    <div className="text-xs font-bold text-slate-900">
+                                                                        {currentEmp?.firstName} {currentEmp?.lastName}'s Document Tab
+                                                                    </div>
+                                                                    <div className="text-[10.5px] text-slate-500">
+                                                                        {selectedForCurrent.length} of {docs.length} documents attached
+                                                                    </div>
+                                                                </div>
+                                                                <div className="flex items-center gap-2">
+                                                                    {docs.length > 0 && (
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => {
+                                                                                if (selectedForCurrent.length === docs.length) {
+                                                                                    setRecipientDossierDocs((prev) => ({ ...prev, [currentEmpId]: [] }));
+                                                                                } else {
+                                                                                    setRecipientDossierDocs((prev) => ({ ...prev, [currentEmpId]: [...docs] }));
+                                                                                }
+                                                                            }}
+                                                                            className="text-[11px] font-bold text-blue-600 hover:text-blue-800 cursor-pointer"
+                                                                        >
+                                                                            {selectedForCurrent.length === docs.length ? 'Clear All' : 'Select All'}
+                                                                        </button>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+
+                                                            {docs.length > 4 && (
+                                                                <div className="relative">
+                                                                    <Search size={13} className="absolute left-2.5 top-2.5 text-slate-400" />
+                                                                    <input
+                                                                        type="text"
+                                                                        value={dossierDocSearch}
+                                                                        onChange={(e) => setDossierDocSearch(e.target.value)}
+                                                                        placeholder="Filter documents..."
+                                                                        className="w-full rounded-lg border border-slate-200 bg-slate-50 pl-8 pr-3 py-1.5 text-xs outline-none focus:bg-white focus:border-blue-400"
+                                                                    />
+                                                                </div>
+                                                            )}
+
+                                                            {docs.length === 0 ? (
+                                                                <div className="py-12 text-center text-xs text-slate-400">
+                                                                    No documents uploaded in this employee's Document Tab.
+                                                                </div>
+                                                            ) : filteredDocs.length === 0 ? (
+                                                                <div className="py-8 text-center text-xs text-slate-400">
+                                                                    No documents match your filter.
+                                                                </div>
+                                                            ) : (
+                                                                <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
+                                                                    {filteredDocs.map((doc) => {
+                                                                        const isChecked = selectedForCurrent.some((d) => String(d._id) === String(doc._id));
+
+                                                                        return (
+                                                                            <div
+                                                                                key={doc._id}
+                                                                                onClick={() => handleToggleDossierDoc(currentEmpId, doc)}
+                                                                                className={`flex items-center justify-between p-2.5 rounded-xl border transition cursor-pointer ${
+                                                                                    isChecked
+                                                                                        ? 'border-blue-500 bg-blue-50/70 shadow-2xs'
+                                                                                        : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
+                                                                                }`}
+                                                                            >
+                                                                                <div className="flex items-center gap-2.5 min-w-0">
+                                                                                    <input
+                                                                                        type="checkbox"
+                                                                                        checked={isChecked}
+                                                                                        onChange={() => {}}
+                                                                                        className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer h-4 w-4 shrink-0"
+                                                                                    />
+                                                                                    <div className="min-w-0">
+                                                                                        <div className="text-xs font-bold text-slate-900 truncate">
+                                                                                            {doc.title || doc.fileName}
+                                                                                        </div>
+                                                                                        <div className="flex items-center gap-2 text-[10px] text-slate-500">
+                                                                                            <span className="font-semibold text-slate-700 bg-slate-100 px-1.5 py-0.2 rounded">
+                                                                                                {doc.category || 'General'}
+                                                                                            </span>
+                                                                                            <span className="truncate">{doc.fileName}</span>
+                                                                                        </div>
+                                                                                    </div>
+                                                                                </div>
+                                                                                <div className="flex items-center gap-2 shrink-0">
+                                                                                    <a
+                                                                                        href={doc.url}
+                                                                                        target="_blank"
+                                                                                        rel="noopener noreferrer"
+                                                                                        onClick={(e) => e.stopPropagation()}
+                                                                                        className="rounded-lg p-1.5 text-slate-400 hover:text-blue-600 hover:bg-white transition cursor-pointer"
+                                                                                        title="Preview document"
+                                                                                    >
+                                                                                        <Eye size={13} />
+                                                                                    </a>
+                                                                                </div>
+                                                                            </div>
+                                                                        );
+                                                                    })}
+                                                                </div>
+                                                            )}
+                                                        </>
+                                                    );
+                                                })()}
+                                            </div>
+                                        </div>
+                                    )}
+                                </>
+                            )}
+                        </div>
+
+                        {/* Modal Footer */}
+                        <div className="flex items-center justify-between border-t border-slate-200 px-5 py-3.5 bg-slate-50">
+                            <div className="text-xs text-slate-600 font-medium">
+                                {commonDossierCategory ? (
+                                    <span>
+                                        Category <strong className="text-blue-600">{commonDossierCategory}</strong> will be attached for all recipients.
+                                    </span>
+                                ) : totalPerUserDossierDocsCount > 0 ? (
+                                    <span>
+                                        <strong className="text-blue-600">{totalPerUserDossierDocsCount}</strong> document(s) selected respectively across recipients.
+                                    </span>
+                                ) : (
+                                    <span>No dossier documents selected.</span>
+                                )}
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setShowDossierDocModal(false)}
+                                className="rounded-xl bg-blue-600 px-4 py-2 text-xs font-bold text-white transition hover:bg-blue-700 cursor-pointer shadow-xs"
+                            >
+                                Apply & Close
+                            </button>
+                        </div>
+                    </div>
                 </div>
             )}
         </div>
