@@ -538,7 +538,7 @@ const SalaryPreviewCard = ({ formData, config }) => {
                                     </div>
                                 ))}
                                 {(config?.salaryComponents || [])
-                                    .filter(c => c.type === 'deduction')
+                                    .filter(c => c.type === 'deduction' && !c.deductFromFlexi && !c.includeInCTC)
                                     .map(c => {
                                         const val = parseFloat(salary[c.id] || 0);
                                         if (val <= 0) return null;
@@ -551,6 +551,23 @@ const SalaryPreviewCard = ({ formData, config }) => {
                                                     </span>
                                                 </span>
                                                 <span className="font-semibold text-rose-600">-₹{val.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+                                            </div>
+                                        );
+                                    })}
+                                {(config?.salaryComponents || [])
+                                    .filter(c => c.type === 'deduction' && (c.deductFromFlexi || c.includeInCTC))
+                                    .map(c => {
+                                        const val = parseFloat(salary[c.id] || 0);
+                                        if (val <= 0) return null;
+                                        return (
+                                            <div key={`flexi-${c.id}`} className="flex justify-between items-center py-1 border-b border-slate-50">
+                                                <span className="text-slate-600 flex items-center gap-1.5">
+                                                    {c.name}
+                                                    <span className="text-[9px] font-semibold text-blue-600 bg-blue-50 px-1.5 py-0.2 rounded border border-blue-200">
+                                                        From Flexi
+                                                    </span>
+                                                </span>
+                                                <span className="font-medium text-slate-500">₹{val.toLocaleString('en-IN', { maximumFractionDigits: 0 })} (Pre-tax)</span>
                                             </div>
                                         );
                                     })}
