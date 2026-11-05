@@ -750,6 +750,7 @@ const Projects = () => {
                     <TeamPerformanceTracer
                         employees={performanceEmployees}
                         projects={projects}
+                        clients={clients}
                         onBackToProjects={() => {
                             setViewMode('projects');
                             const newParams = new URLSearchParams(searchParams);
