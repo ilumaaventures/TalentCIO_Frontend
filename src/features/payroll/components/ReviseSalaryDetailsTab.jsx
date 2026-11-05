@@ -308,7 +308,7 @@ const ReviseSalaryDetailsTab = () => {
             const annualCTC = comp.ctc ? String(comp.ctc * 12) : (breakup.annualCTC ? String(breakup.annualCTC) : '600000');
             const monthlyCTC = comp.ctc ? String(comp.ctc) : (breakup.monthlyCTC ? String(breakup.monthlyCTC) : String(Math.round(Number(annualCTC) / 12)));
 
-            setSalaryDraft({
+            const initialDraft = {
                 ...DEFAULT_SALARY_DRAFT,
                 ...breakup,
                 compensationType: comp.compensationType || breakup.compensationType || 'monthly_salary',
@@ -333,7 +333,10 @@ const ReviseSalaryDetailsTab = () => {
                 ptState: breakup.ptState || 'MH',
                 customAllowances: Array.isArray(breakup.customAllowances) ? breakup.customAllowances : [],
                 customDeductions: Array.isArray(breakup.customDeductions) ? breakup.customDeductions : []
-            });
+            };
+
+            setSalaryDraft(initialDraft);
+            calculateSalaryBreakdown(initialDraft);
 
             // Default to Step 1 (Salary) when employee loads
             setSingleStep('salary');
@@ -351,26 +354,79 @@ const ReviseSalaryDetailsTab = () => {
         fetchEmployeeDossier(userId);
     };
 
-    // Recalculate salary structure
-    const handleSalaryChange = useCallback((updater) => {
+    // Salary Calculator Helper
+    const calculateSalaryBreakdown = useCallback((updatedSalaryFields) => {
         setSalaryDraft(prev => {
-            const next = typeof updater === 'function' ? updater(prev) : { ...prev, ...updater };
-            const mergedSalary = { ...DEFAULT_SALARY_DRAFT, ...next };
+            const mergedSalary = { ...prev, ...updatedSalaryFields };
+            const payType = mergedSalary.payType || 'salaried';
 
-            const rawAnnual = parseFloat(String(mergedSalary.annualCTC || '0').replace(/[^0-9.]/g, '')) || 0;
-            const annualCTC = Math.max(0, rawAnnual);
-            const monthlyCTC = annualCTC ? Math.round(annualCTC / 12) : 0;
+            let annualCTC = parseFloat(String(mergedSalary.annualCTC || '').replace(/[^0-9.]/g, '')) || 0;
+            let monthlyCTC = parseFloat(String(mergedSalary.monthlyCTC || '').replace(/[^0-9.]/g, '')) || 0;
 
-            const structure = buildMasterSalaryStructure(
-                mergedSalary,
-                payrollConfig,
+            if (updatedSalaryFields.monthlyCTC !== undefined && updatedSalaryFields.annualCTC === undefined) {
+                annualCTC = monthlyCTC * 12;
+            } else if (updatedSalaryFields.annualCTC !== undefined && updatedSalaryFields.monthlyCTC === undefined) {
+                monthlyCTC = annualCTC ? Math.round(annualCTC / 12) : 0;
+            }
+
+            let basicVal = '0';
+            let grossVal = '0';
+
+            const source = {
+                ...mergedSalary,
                 annualCTC,
                 monthlyCTC,
-                {}
-            );
+                compensationType: mergedSalary.compensationType || 'monthly_salary',
+                useSalaryComponents: payType !== 'flat' && payType !== 'hourly' && parseBool(mergedSalary.useSalaryComponents, true),
+                pfEnabled: parseBool(mergedSalary.pfEnabled, true),
+                esiEnabled: parseBool(mergedSalary.esiEnabled, true),
+                ptEnabled: parseBool(mergedSalary.ptEnabled, true),
+                lwfEnabled: parseBool(mergedSalary.lwfEnabled, true),
+                gratuityEnabled: parseBool(mergedSalary.gratuityEnabled, true),
+                tdsEnabled: parseBool(mergedSalary.tdsEnabled, true),
+                includePfInCTC: parseBool(mergedSalary.includePfInCTC, false),
+                includeGratuityInCTC: parseBool(mergedSalary.includeGratuityInCTC, true),
+                basicPercent: mergedSalary.basicPercent !== undefined && mergedSalary.basicPercent !== null ? Number(mergedSalary.basicPercent) : 50,
+                hraPercent: mergedSalary.hraPercent !== undefined && mergedSalary.hraPercent !== null ? Number(mergedSalary.hraPercent) : 50,
+                vpfPercent: mergedSalary.vpfPercent !== undefined && mergedSalary.vpfPercent !== null ? Number(mergedSalary.vpfPercent) : 0,
+                insuranceAmount: parseFloat(mergedSalary.insuranceAmount) || 0,
+                employerNPS: parseFloat(mergedSalary.employerNPS) || 0,
+                ptState: mergedSalary.ptState || 'MH',
+                customAllowances: mergedSalary.customAllowances || [],
+                customDeductions: mergedSalary.customDeductions || [],
+                rateCard: mergedSalary.rateCard || []
+            };
 
-            const basicVal = structure.basicMaster ? String(structure.basicMaster) : mergedSalary.basic;
-            const grossVal = structure.totalEarnings ? String(structure.totalEarnings) : mergedSalary.monthlyGross;
+            if (payrollConfig?.salaryComponents) {
+                payrollConfig.salaryComponents.forEach(c => {
+                    if (c.linkedTo === 'fixed') {
+                        const val = mergedSalary[c.id] !== undefined ? mergedSalary[c.id] : (c.linkValue || 0);
+                        source[c.id] = parseFloat(String(val).replace(/[^0-9.]/g, '')) || 0;
+                    }
+                });
+            }
+
+            const master = buildMasterSalaryStructure(source, payrollConfig, annualCTC, monthlyCTC);
+            if (master) {
+                basicVal = String(master.basicMaster || 0);
+                grossVal = String(master.totalEarnings || 0);
+                mergedSalary.pfEmployer = String(master.pfEmployer || 0);
+                mergedSalary.pfEmployee = String(master.pfEmployee || 0);
+                mergedSalary.gratuity = String(master.gratuity || 0);
+                mergedSalary.lwfEmployer = String(master.lwfEmployer || 0);
+                mergedSalary.lwfEmployee = String(master.lwfEmployee || 0);
+                mergedSalary.esiEmployer = String(master.esiEmployer || 0);
+                mergedSalary.esiEmployee = String(master.esiEmployee || 0);
+                mergedSalary.professionalTax = String(master.professionalTax || 0);
+                mergedSalary.tds = String(master.tds || 0);
+                mergedSalary.netTakeHome = String(master.netTakeHome || 0);
+
+                if (master.earningsMap) {
+                    Object.entries(master.earningsMap).forEach(([id, val]) => {
+                        mergedSalary[id] = String(val);
+                    });
+                }
+            }
 
             return {
                 ...mergedSalary,
@@ -478,7 +534,8 @@ const ReviseSalaryDetailsTab = () => {
                     toast.success(letterRes.data?.message || 'Revised offer letter generated successfully!');
                 } catch (letterErr) {
                     console.error('Letter generation error:', letterErr);
-                    toast.error('Revision saved, but failed to generate/email offer letter');
+                    const serverMsg = letterErr.response?.data?.message;
+                    toast.error(serverMsg ? `Revision saved, but letter notice: ${serverMsg}` : 'Revision saved, but failed to generate/email offer letter');
                 }
             }
 
@@ -1059,11 +1116,9 @@ const ReviseSalaryDetailsTab = () => {
                                         </div>
 
                                         <CompensationFormSection
-                                            formData={salaryDraft}
-                                            onChange={handleSalaryChange}
-                                            config={payrollConfig}
-                                            readOnly={false}
-                                            hideAttendanceOptions={false}
+                                            formData={{ salary: salaryDraft }}
+                                            calculateSalaryBreakdown={calculateSalaryBreakdown}
+                                            payrollConfig={payrollConfig}
                                         />
 
                                         {/* Bottom Action Strip in Salary Step */}
