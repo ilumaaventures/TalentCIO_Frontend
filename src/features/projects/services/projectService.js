@@ -45,7 +45,10 @@ export const projectService = {
   // Performance
   getProjectPerformance: (projectId) => api.get(`/projects/${projectId}/performance`),
   getMemberPerformance: (projectId, userId) => api.get(`/projects/${projectId}/performance/${userId}`),
-  getEmployeePerformance: (userId, range = '30d') => api.get(`/users/${userId}/performance`, { params: { range } })
+  getEmployeePerformance: (userId, params = '30d') => {
+    const queryParams = typeof params === 'string' ? { range: params } : params;
+    return api.get(`/users/${userId}/performance`, { params: queryParams });
+  }
 };
 
 export default projectService;

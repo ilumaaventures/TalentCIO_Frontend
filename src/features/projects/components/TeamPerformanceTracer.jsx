@@ -9,21 +9,116 @@ import {
   X,
   FolderGit2,
   Table as TableIcon,
-  LayoutGrid
+  LayoutGrid,
+  Filter,
+  ChevronDown
 } from 'lucide-react';
 import EmployeePerformance from './EmployeePerformance';
 
 export const TeamPerformanceTracer = ({
   employees = [],
   projects = [],
+  clients = [],
   onBackToProjects = null,
   initialUserId = null
 }) => {
   const [selectedUserId, setSelectedUserId] = useState(initialUserId);
+  const [selectedClient, setSelectedClient] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [viewFormat, setViewFormat] = useState('table'); // 'table' | 'grid'
 
+  // Extract and deduplicate clients from props and referenced projects
+  const resolvedClients = useMemo(() => {
+    const clientMap = new Map();
+
+    if (Array.isArray(clients)) {
+      clients.forEach(c => {
+        if (c && c._id) {
+          clientMap.set(String(c._id), {
+            _id: String(c._id),
+            name: c.name || 'Client'
+          });
+        }
+      });
+    }
+
+    projects.forEach(p => {
+      if (p.client) {
+        const cId = String(p.client._id || p.client);
+        if (cId && !clientMap.has(cId)) {
+          clientMap.set(cId, {
+            _id: cId,
+            name: p.client.name || 'Client'
+          });
+        }
+      }
+    });
+
+    return Array.from(clientMap.values()).sort((a, b) =>
+      String(a.name || '').localeCompare(String(b.name || ''))
+    );
+  }, [clients, projects]);
+
+  const hasInternalProjects = useMemo(() => {
+    return projects.some(p => !p.client);
+  }, [projects]);
+
+  const selectedClientObj = useMemo(() => {
+    if (selectedClient === 'all') return null;
+    if (selectedClient === '__internal__') return { name: 'Internal (No Client)' };
+    return resolvedClients.find(c => String(c._id) === String(selectedClient)) || null;
+  }, [selectedClient, resolvedClients]);
+
+  // Projects under the selected client
+  const clientProjects = useMemo(() => {
+    if (selectedClient === 'all') return projects;
+    if (selectedClient === '__internal__') {
+      return projects.filter(p => !p.client);
+    }
+    return projects.filter(p => {
+      const cId = String(p.client?._id || p.client || '');
+      return cId === String(selectedClient);
+    });
+  }, [projects, selectedClient]);
+
+  // Set of user IDs assigned to projects under the selected client
+  const clientAssignedUserIds = useMemo(() => {
+    if (selectedClient === 'all') return null; // No client restriction
+    const set = new Set();
+
+    clientProjects.forEach(proj => {
+      // 1. Manager
+      if (proj.manager) {
+        const mgrId = String(proj.manager._id || proj.manager);
+        if (mgrId) set.add(mgrId);
+      }
+
+      // 2. Members
+      if (Array.isArray(proj.members)) {
+        proj.members.forEach(m => {
+          const mId = String(m?._id || m);
+          if (mId) set.add(mId);
+        });
+      }
+
+      // 3. Task assignees (if populated)
+      if (Array.isArray(proj.tasks)) {
+        proj.tasks.forEach(t => {
+          if (Array.isArray(t.assignees)) {
+            t.assignees.forEach(a => {
+              const aId = String(a?._id || a);
+              if (aId) set.add(aId);
+            });
+          }
+        });
+      }
+    });
+
+    return set;
+  }, [clientProjects, selectedClient]);
+
   // Map each employee to their allocated projects count, managed count, and project names
+  // When a client is selected, calculates project allocation under that client
   const employeeProjectStats = useMemo(() => {
     const map = new Map();
 
@@ -37,7 +132,9 @@ export const TeamPerformanceTracer = ({
       });
     });
 
-    projects.forEach((proj) => {
+    const targetProjects = selectedClient === 'all' ? projects : clientProjects;
+
+    targetProjects.forEach((proj) => {
       const isProjActive = proj.status === 'Active' || proj.isActive !== false;
 
       // Check manager
@@ -66,21 +163,53 @@ export const TeamPerformanceTracer = ({
           }
         });
       }
+
+      // Check task assignees
+      if (Array.isArray(proj.tasks)) {
+        proj.tasks.forEach(t => {
+          if (Array.isArray(t.assignees)) {
+            t.assignees.forEach(a => {
+              const aId = String(a?._id || a);
+              if (aId && map.has(aId)) {
+                const stats = map.get(aId);
+                if (!stats.projectNames.includes(proj.name)) {
+                  stats.allocatedCount++;
+                  stats.projectNames.push(proj.name);
+                  if (isProjActive) stats.activeCount++;
+                }
+              }
+            });
+          }
+        });
+      }
     });
 
     return map;
-  }, [employees, projects]);
+  }, [employees, projects, clientProjects, selectedClient]);
 
   const filteredEmployees = useMemo(() => {
     const q = searchQuery.toLowerCase().trim();
-    if (!q) return employees;
     return employees.filter((emp) => {
-      const fullName = `${emp.firstName || ''} ${emp.lastName || ''}`.toLowerCase();
-      const email = (emp.email || '').toLowerCase();
-      const dept = (emp.department || '').toLowerCase();
-      return fullName.includes(q) || email.includes(q) || dept.includes(q);
+      const eId = String(emp._id);
+
+      // Client filter: only show users assigned to projects under that selected client
+      if (clientAssignedUserIds !== null && !clientAssignedUserIds.has(eId)) {
+        return false;
+      }
+
+      // Search query filter
+      if (q) {
+        const fullName = `${emp.firstName || ''} ${emp.lastName || ''}`.toLowerCase();
+        const email = (emp.email || '').toLowerCase();
+        const dept = (emp.department || '').toLowerCase();
+        if (!fullName.includes(q) && !email.includes(q) && !dept.includes(q)) {
+          return false;
+        }
+      }
+
+      return true;
     });
-  }, [employees, searchQuery]);
+  }, [employees, clientAssignedUserIds, searchQuery]);
 
   const selectedEmployee = useMemo(() => {
     if (!selectedUserId) return null;
@@ -153,7 +282,7 @@ export const TeamPerformanceTracer = ({
           </div>
         </div>
 
-        {/* Search Input, View Format Toggle & Action */}
+        {/* Search Input, Client Filter, View Format Toggle & Action */}
         <div className="flex flex-wrap items-center gap-2.5 w-full lg:w-auto">
           {/* Search Bar */}
           <div className="relative flex-1 sm:w-60">
@@ -173,6 +302,48 @@ export const TeamPerformanceTracer = ({
               >
                 <X size={13} />
               </button>
+            )}
+          </div>
+
+          {/* Client Filter Dropdown */}
+          <div className="relative">
+            <select
+              value={selectedClient}
+              onChange={(e) => setSelectedClient(e.target.value)}
+              className={`text-xs h-9 pl-8 pr-8 bg-slate-50 border rounded-xl outline-none transition-all cursor-pointer font-medium appearance-none ${
+                selectedClient !== 'all'
+                  ? 'border-blue-500 bg-blue-50/70 text-blue-700 font-bold ring-2 ring-blue-500/10'
+                  : 'border-slate-200 text-slate-600 hover:border-slate-300 focus:bg-white focus:border-blue-500'
+              }`}
+              title="Filter Users by Client"
+            >
+              <option value="all">All Clients ({resolvedClients.length})</option>
+              {resolvedClients.map((c) => (
+                <option key={c._id} value={c._id}>
+                  {c.name}
+                </option>
+              ))}
+              {hasInternalProjects && (
+                <option value="__internal__">Internal (No Client)</option>
+              )}
+            </select>
+            <Filter
+              size={12}
+              className={`absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none transition-colors ${
+                selectedClient !== 'all' ? 'text-blue-600' : 'text-slate-400'
+              }`}
+            />
+            {selectedClient !== 'all' ? (
+              <button
+                type="button"
+                onClick={() => setSelectedClient('all')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-blue-500 hover:text-blue-700 p-0.5 rounded-full hover:bg-blue-100/60 transition-colors cursor-pointer"
+                title="Clear Client Filter"
+              >
+                <X size={12} />
+              </button>
+            ) : (
+              <ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
             )}
           </div>
 
@@ -217,6 +388,27 @@ export const TeamPerformanceTracer = ({
           )}
         </div>
       </div>
+
+      {/* Active Client Filter Chip Bar */}
+      {selectedClient !== 'all' && (
+        <div className="flex items-center gap-2 px-4 py-2 bg-blue-50/90 border border-blue-200/80 rounded-xl text-xs text-blue-900 animate-in fade-in duration-150">
+          <Filter size={13} className="text-blue-600 shrink-0" />
+          <span>Filtered by Client:</span>
+          <span className="font-bold bg-white px-2.5 py-0.5 rounded-md border border-blue-200 text-blue-800 shadow-2xs">
+            {selectedClientObj?.name || 'Selected Client'}
+          </span>
+          <span className="text-blue-700 font-medium">
+            – Showing <strong>{filteredEmployees.length}</strong> {filteredEmployees.length === 1 ? 'user' : 'users'} assigned to {selectedClient === '__internal__' ? 'internal projects' : 'projects under this client'}
+          </span>
+          <button
+            type="button"
+            onClick={() => setSelectedClient('all')}
+            className="ml-auto inline-flex items-center gap-1 text-[11px] font-bold text-blue-700 hover:text-blue-900 bg-white hover:bg-blue-100/80 px-2 py-0.5 rounded-md border border-blue-200 transition-colors cursor-pointer shadow-2xs"
+          >
+            <X size={11} /> Clear
+          </button>
+        </div>
+      )}
 
       {/* TABLE FORMAT (DEFAULT) */}
       {viewFormat === 'table' ? (
@@ -417,12 +609,26 @@ export const TeamPerformanceTracer = ({
       )}
 
       {filteredEmployees.length === 0 && (
-        <div className="bg-white p-12 rounded-2xl border border-slate-200/80 text-center shadow-xs space-y-2">
+        <div className="bg-white p-12 rounded-2xl border border-slate-200/80 text-center shadow-xs space-y-2.5">
           <Users size={36} className="text-slate-300 mx-auto" />
           <h4 className="font-bold text-slate-700">No team members found</h4>
-          <p className="text-xs text-slate-400">
-            No users matched &ldquo;{searchQuery}&rdquo;.
+          <p className="text-xs text-slate-400 max-w-md mx-auto">
+            {selectedClient !== 'all'
+              ? `No users are assigned to any projects under "${selectedClientObj?.name || 'this client'}"${searchQuery ? ` matching "${searchQuery}"` : ''}.`
+              : `No users matched "${searchQuery}".`}
           </p>
+          {(selectedClient !== 'all' || searchQuery) && (
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedClient('all');
+                setSearchQuery('');
+              }}
+              className="mt-1 inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors cursor-pointer"
+            >
+              <X size={12} /> Clear all filters
+            </button>
+          )}
         </div>
       )}
     </div>

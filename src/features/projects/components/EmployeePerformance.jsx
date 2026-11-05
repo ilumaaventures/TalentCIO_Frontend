@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   CheckCircle2,
@@ -10,56 +10,153 @@ import {
   FolderGit2,
   MessageSquare,
   CheckSquare,
-  Download
+  Download,
+  CalendarRange,
+  FileSpreadsheet,
+  X
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { saveAs } from 'file-saver';
+import { format, startOfMonth, endOfMonth, subDays, subMonths } from 'date-fns';
 import api from '@/lib/apiClient';
-import { buildBulkTimesheetWorkbook } from '@/features/users-roles/utils/userExportUtils';
+import { buildUserProjectWiseTimesheetWorkbook } from '../utils/projectTimesheetExportUtils';
 import projectService from '../services/projectService';
 import Skeleton from '@/components/ui/Skeleton';
 
 export const EmployeePerformance = ({ userId, employee: initialEmployee = null, onBack = null }) => {
   const navigate = useNavigate();
-  const [range, setRange] = useState('all'); // '7d', '30d', '90d', 'all'
+  const [range, setRange] = useState('all'); // 'all', 'this_month', 'this_week', 'custom', '7d', '30d'
+  const [customStart, setCustomStart] = useState('');
+  const [customEnd, setCustomEnd] = useState('');
+  const [appliedCustomStart, setAppliedCustomStart] = useState('');
+  const [appliedCustomEnd, setAppliedCustomEnd] = useState('');
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const hasLoadedRef = useRef(false);
 
-  const handleExportTimesheet = async () => {
+  const handleRangeChange = (newRange) => {
+    setRange(newRange);
+    if (newRange === 'custom') {
+      if (!customStart || !customEnd) {
+        const now = new Date();
+        const pad = (n) => String(n).padStart(2, '0');
+        const s = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-01`;
+        const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+        const e = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(lastDay)}`;
+        setCustomStart(s);
+        setCustomEnd(e);
+        setAppliedCustomStart(s);
+        setAppliedCustomEnd(e);
+      }
+    }
+  };
+
+  const handleApplyCustom = () => {
+    if (!customStart || !customEnd) {
+      toast.error('Please select both start date and end date');
+      return;
+    }
+    if (new Date(customStart) > new Date(customEnd)) {
+      toast.error('Start date cannot be after end date');
+      return;
+    }
+    setAppliedCustomStart(customStart);
+    setAppliedCustomEnd(customEnd);
+  };
+
+  // Timesheet Export Modal State
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [exportTimeframe, setExportTimeframe] = useState('all'); // 'all' | 'thisMonth' | 'custom'
+  const [exportStartDate, setExportStartDate] = useState('');
+  const [exportEndDate, setExportEndDate] = useState('');
+
+  const handleExecuteExport = async () => {
     if (!userId) return;
-    const toastId = toast.loading('Generating Timesheet Report...');
+
+    let payload = { userIds: [userId] };
+    let periodLabel = 'All Time';
+
+    if (exportTimeframe === 'all') {
+      payload.range = 'all';
+      payload.month = 'all';
+      periodLabel = 'All Time';
+    } else if (exportTimeframe === 'thisMonth') {
+      const curMonthKey = format(new Date(), 'yyyy-MM');
+      payload.month = curMonthKey;
+      periodLabel = format(new Date(), 'MMMM yyyy');
+    } else if (exportTimeframe === 'custom') {
+      if (!exportStartDate || !exportEndDate) {
+        toast.error('Please select both start date and end date.');
+        return;
+      }
+      if (new Date(exportStartDate) > new Date(exportEndDate)) {
+        toast.error('Start date cannot be after end date.');
+        return;
+      }
+      payload.fromDate = exportStartDate;
+      payload.toDate = exportEndDate;
+      periodLabel = `${format(new Date(exportStartDate), 'dd MMM yyyy')} - ${format(new Date(exportEndDate), 'dd MMM yyyy')}`;
+    }
+
+    const toastId = toast.loading('Generating project timesheet workbook...');
     setExporting(true);
+
     try {
-      const res = await api.post('/timesheet/team-report', {
-        range: range === 'all' ? 'all' : undefined,
-        month: range === 'all' ? 'all' : undefined,
-        userIds: [userId]
+      const res = await api.post('/timesheet/team-report', payload);
+      const {
+        teamMembers = [],
+        workLogsByUser = {},
+        assignedProjectsByUser = {},
+        startDate,
+        endDate
+      } = res.data;
+
+      const targetMember =
+        teamMembers.find(m => String(m._id) === String(userId)) ||
+        data?.user ||
+        initialEmployee ||
+        { firstName: 'Team Member' };
+
+      const userLogs = workLogsByUser[String(userId)] || [];
+      const projectsFromApi = assignedProjectsByUser[String(userId)] || [];
+      const currentAllocated = data?.projectsAllocated?.list || [];
+
+      // Merge assigned projects
+      const mergedProjectsMap = new Map();
+      currentAllocated.forEach(p => {
+        if (p && p._id) mergedProjectsMap.set(String(p._id), p);
       });
+      projectsFromApi.forEach(p => {
+        const pId = String(p?._id || p);
+        if (!mergedProjectsMap.has(pId)) {
+          mergedProjectsMap.set(pId, p);
+        } else {
+          mergedProjectsMap.set(pId, { ...p, ...mergedProjectsMap.get(pId) });
+        }
+      });
+      const mergedAssignedProjects = Array.from(mergedProjectsMap.values());
 
-      const { teamMembers, workLogsByUser, timesheets, startDate, endDate, assignedProjectsByUser, isAllTime } = res.data;
-
-      if (!teamMembers || teamMembers.length === 0) {
-        toast.error('No timesheet data found for this employee.', { id: toastId });
+      if (userLogs.length === 0 && mergedAssignedProjects.length === 0) {
+        toast.error('No project work logs or allocations found for this employee.', { id: toastId });
         return;
       }
 
-      const { buffer, fileName } = await buildBulkTimesheetWorkbook({
-        month: range === 'all' ? 'All Time' : undefined,
-        teamMembers,
-        workLogsByUser,
-        timesheets,
-        startDate,
-        endDate,
-        assignedProjectsByUser,
-        isAllTime: isAllTime || range === 'all'
+      const { buffer, fileName } = await buildUserProjectWiseTimesheetWorkbook({
+        employee: targetMember,
+        periodLabel,
+        startDate: exportTimeframe === 'custom' ? exportStartDate : startDate,
+        endDate: exportTimeframe === 'custom' ? exportEndDate : endDate,
+        workLogs: userLogs,
+        assignedProjects: mergedAssignedProjects
       });
 
-      saveAs(new Blob([buffer]), fileName);
-      toast.success('Timesheet Excel downloaded!', { id: toastId });
+      saveAs(new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), fileName);
+      toast.success('Project-wise timesheet Excel downloaded!', { id: toastId });
+      setShowExportModal(false);
     } catch (err) {
-      console.error('Failed to export employee timesheet:', err);
+      console.error('Failed to export employee project timesheet:', err);
       toast.error('Failed to export timesheet report', { id: toastId });
     } finally {
       setExporting(false);
@@ -69,10 +166,17 @@ export const EmployeePerformance = ({ userId, employee: initialEmployee = null, 
   const fetchPerformance = useCallback(async (selectedRange) => {
     if (!userId) return;
     try {
-      if (!data) setLoading(true);
+      if (!hasLoadedRef.current) setLoading(true);
       else setRefreshing(true);
 
-      const res = await projectService.getEmployeePerformance(userId, selectedRange);
+      const params = { range: selectedRange };
+      if (selectedRange === 'custom') {
+        if (appliedCustomStart) params.startDate = appliedCustomStart;
+        if (appliedCustomEnd) params.endDate = appliedCustomEnd;
+      }
+
+      const res = await projectService.getEmployeePerformance(userId, params);
+      hasLoadedRef.current = true;
       setData(res.data);
     } catch (err) {
       console.error('Failed to load employee performance:', err);
@@ -81,7 +185,7 @@ export const EmployeePerformance = ({ userId, employee: initialEmployee = null, 
       setLoading(false);
       setRefreshing(false);
     }
-  }, [userId]);
+  }, [userId, appliedCustomStart, appliedCustomEnd]);
 
   useEffect(() => {
     fetchPerformance(range);
@@ -137,12 +241,8 @@ export const EmployeePerformance = ({ userId, employee: initialEmployee = null, 
   const {
     user = initialEmployee,
     delivery = {},
-    timing = {},
     estimation = {},
-    rework = {},
-    trend = [],
     projectsAllocated = { totalAllocated: 0, totalActiveAllocated: 0, list: [] },
-    recentLogs = [],
     discussions = { created: 0, completed: 0 }
   } = data;
 
@@ -197,17 +297,19 @@ export const EmployeePerformance = ({ userId, employee: initialEmployee = null, 
         </div>
 
         {/* Range Buttons & Refresh */}
-        <div className="flex items-center gap-2.5 self-start md:self-auto">
-          <div className="flex bg-slate-100 p-0.5 rounded-xl border border-slate-200 text-xs font-semibold">
+        <div className="flex items-center gap-2.5 flex-wrap self-start md:self-auto">
+          <div className="flex bg-slate-100 p-0.5 rounded-xl border border-slate-200 text-xs font-semibold flex-wrap">
             {[
+              { id: 'all', label: 'All Time' },
+              { id: 'this_month', label: 'This Month' },
+              { id: 'this_week', label: 'This Week' },
+              { id: 'custom', label: 'Custom' },
               { id: '7d', label: '7 Days' },
               { id: '30d', label: '30 Days' },
-              { id: '90d', label: '90 Days' },
-              { id: 'all', label: 'All Time' }
             ].map((r) => (
               <button
                 key={r.id}
-                onClick={() => setRange(r.id)}
+                onClick={() => handleRangeChange(r.id)}
                 className={`px-3 py-1.5 rounded-lg transition-colors cursor-pointer ${
                   range === r.id
                     ? 'bg-white text-blue-600 shadow-2xs font-bold'
@@ -218,6 +320,34 @@ export const EmployeePerformance = ({ userId, employee: initialEmployee = null, 
               </button>
             ))}
           </div>
+
+          {range === 'custom' && (
+            <div className="flex items-center gap-1.5 bg-blue-50/70 border border-blue-200 rounded-xl px-2.5 py-1 text-xs">
+              <span className="text-[10px] font-semibold text-blue-700">From:</span>
+              <input
+                type="date"
+                value={customStart}
+                onChange={(e) => setCustomStart(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleApplyCustom(); }}
+                className="bg-white border border-slate-200 rounded px-1.5 py-0.5 text-xs text-slate-700 focus:outline-hidden focus:ring-1 focus:ring-blue-500"
+              />
+              <span className="text-[10px] font-semibold text-blue-700">To:</span>
+              <input
+                type="date"
+                value={customEnd}
+                onChange={(e) => setCustomEnd(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleApplyCustom(); }}
+                className="bg-white border border-slate-200 rounded px-1.5 py-0.5 text-xs text-slate-700 focus:outline-hidden focus:ring-1 focus:ring-blue-500"
+              />
+              <button
+                type="button"
+                onClick={handleApplyCustom}
+                className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-2.5 py-0.5 rounded text-xs transition shadow-2xs cursor-pointer"
+              >
+                Apply
+              </button>
+            </div>
+          )}
 
           <button
             type="button"
@@ -231,7 +361,7 @@ export const EmployeePerformance = ({ userId, employee: initialEmployee = null, 
 
           <button
             type="button"
-            onClick={handleExportTimesheet}
+            onClick={() => setShowExportModal(true)}
             disabled={exporting}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-semibold transition cursor-pointer"
             title="Download Timesheet Excel"
@@ -431,6 +561,175 @@ export const EmployeePerformance = ({ userId, employee: initialEmployee = null, 
         )}
       </div>
 
+      {/* Timesheet Export Modal */}
+      {showExportModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl shadow-xl border border-slate-200 w-full max-w-lg overflow-hidden flex flex-col">
+            {/* Modal Header */}
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-xl bg-blue-50 text-blue-600 border border-blue-100">
+                  <FileSpreadsheet size={20} />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-900 text-base">Export User Timesheet</h3>
+                  <p className="text-xs text-slate-500">
+                    {fullName} &bull; Separate worksheet per project
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowExportModal(false)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 space-y-5">
+              {/* Timeframe Options */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+                  Select Timeframe
+                </label>
+                <div className="grid grid-cols-3 gap-2.5">
+                  {[
+                    { id: 'all', title: 'All Time', desc: 'Complete history' },
+                    { id: 'thisMonth', title: 'This Month', desc: format(new Date(), 'MMM yyyy') },
+                    { id: 'custom', title: 'Custom', desc: 'Custom date range' }
+                  ].map(opt => (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => {
+                        setExportTimeframe(opt.id);
+                        if (opt.id === 'thisMonth') {
+                          setExportStartDate(format(startOfMonth(new Date()), 'yyyy-MM-dd'));
+                          setExportEndDate(format(endOfMonth(new Date()), 'yyyy-MM-dd'));
+                        }
+                      }}
+                      className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                        exportTimeframe === opt.id
+                          ? 'border-blue-600 bg-blue-50/60 shadow-2xs ring-1 ring-blue-600'
+                          : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50/60'
+                      }`}
+                    >
+                      <div className="font-bold text-xs text-slate-900">{opt.title}</div>
+                      <div className="text-[11px] text-slate-500 mt-1">{opt.desc}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Custom Date Range Picker */}
+              {exportTimeframe === 'custom' && (
+                <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 space-y-3 animate-in fade-in duration-150">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                      <CalendarRange size={14} className="text-blue-600" />
+                      Date Range
+                    </span>
+                    <span className="text-[11px] text-slate-400">Quick presets</span>
+                  </div>
+
+                  {/* Preset Pills */}
+                  <div className="flex flex-wrap gap-1.5">
+                    {[
+                      { label: 'Last 7 Days', getDates: () => [format(subDays(new Date(), 6), 'yyyy-MM-dd'), format(new Date(), 'yyyy-MM-dd')] },
+                      { label: 'Last 14 Days', getDates: () => [format(subDays(new Date(), 13), 'yyyy-MM-dd'), format(new Date(), 'yyyy-MM-dd')] },
+                      { label: 'Last 30 Days', getDates: () => [format(subDays(new Date(), 29), 'yyyy-MM-dd'), format(new Date(), 'yyyy-MM-dd')] },
+                      { label: 'This Month', getDates: () => [format(startOfMonth(new Date()), 'yyyy-MM-dd'), format(endOfMonth(new Date()), 'yyyy-MM-dd')] },
+                      { label: 'Last Month', getDates: () => [format(startOfMonth(subMonths(new Date(), 1)), 'yyyy-MM-dd'), format(endOfMonth(subMonths(new Date(), 1)), 'yyyy-MM-dd')] }
+                    ].map(preset => (
+                      <button
+                        key={preset.label}
+                        type="button"
+                        onClick={() => {
+                          const [s, e] = preset.getDates();
+                          setExportStartDate(s);
+                          setExportEndDate(e);
+                        }}
+                        className="px-2.5 py-1 text-[11px] font-medium rounded-lg bg-white border border-slate-200 text-slate-600 hover:text-blue-600 hover:border-blue-300 hover:bg-blue-50/50 transition-colors cursor-pointer"
+                      >
+                        {preset.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Date Input Fields */}
+                  <div className="grid grid-cols-2 gap-3 pt-1">
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                        Start Date
+                      </label>
+                      <input
+                        type="date"
+                        value={exportStartDate}
+                        onChange={(e) => setExportStartDate(e.target.value)}
+                        className="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                        End Date
+                      </label>
+                      <input
+                        type="date"
+                        value={exportEndDate}
+                        onChange={(e) => setExportEndDate(e.target.value)}
+                        className="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Multi-Sheet Structure Notice */}
+              <div className="p-3.5 rounded-xl bg-blue-50/70 border border-blue-100 flex items-start gap-2.5 text-xs text-blue-900">
+                <FolderGit2 size={16} className="text-blue-600 shrink-0 mt-0.5" />
+                <div className="space-y-0.5">
+                  <span className="font-semibold block text-blue-950">Multi-Sheet Project Structure</span>
+                  <span className="text-blue-700/90 text-[11px] leading-relaxed block">
+                    The exported Excel workbook generates a <strong>Master Summary Sheet</strong> followed by a <strong>separate worksheet for every project</strong> detailing date-wise work logs, tasks, modules, hours, and status.
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="px-6 py-3.5 border-t border-slate-100 bg-slate-50/50 flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => setShowExportModal(false)}
+                disabled={exporting}
+                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleExecuteExport}
+                disabled={exporting}
+                className="flex items-center gap-2 px-5 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl shadow-xs transition-colors cursor-pointer"
+              >
+                {exporting ? (
+                  <>
+                    <RefreshCw size={14} className="animate-spin" />
+                    <span>Generating Excel...</span>
+                  </>
+                ) : (
+                  <>
+                    <Download size={14} />
+                    <span>Export Timesheet (.xlsx)</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

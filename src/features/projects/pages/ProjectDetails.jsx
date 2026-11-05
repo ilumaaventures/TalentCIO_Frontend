@@ -923,8 +923,8 @@ const ProjectDetails = () => {
   if (!project) return <div className="p-8 text-center text-slate-500">Project not found</div>;
 
   return (
-    <div className="min-h-screen bg-slate-50 font-sans p-4 md:p-8 space-y-6">
-      <div className="max-w-7xl mx-auto space-y-6">
+    <div className="min-h-screen bg-slate-50 font-sans p-3.5 sm:p-5 md:p-6 space-y-4">
+      <div className="max-w-7xl mx-auto space-y-4">
         {/* Project Header Component */}
         <ProjectHeader
           project={project}
