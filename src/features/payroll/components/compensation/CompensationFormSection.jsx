@@ -769,8 +769,12 @@ const CompensationFormSection = ({ formData, calculateSalaryBreakdown, onChange,
                                                     {c.name} {formulaLabel && <span className="text-[10px] font-normal text-slate-500">({formulaLabel})</span>}
                                                 </label>
                                                 {isDeduction ? (
-                                                    <span className="text-[9px] font-extrabold text-rose-600 bg-rose-100/70 border border-rose-200 px-1.5 py-0.2 rounded uppercase">
-                                                        Deduction
+                                                    <span className={`text-[9px] font-extrabold px-1.5 py-0.2 rounded uppercase border ${
+                                                        c.deductFromFlexi || c.includeInCTC
+                                                            ? 'text-blue-700 bg-blue-100/70 border-blue-200'
+                                                            : 'text-rose-600 bg-rose-100/70 border-rose-200'
+                                                    }`}>
+                                                        {c.deductFromFlexi || c.includeInCTC ? 'Deduction (From Flexi)' : 'Deduction (From Gross)'}
                                                     </span>
                                                 ) : (
                                                     c.includeInCTC !== false ? (
