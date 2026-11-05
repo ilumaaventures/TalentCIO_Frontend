@@ -856,7 +856,6 @@ const SalaryCalculator = ({ embedded = false }) => {
                             <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Salary Components</span>
                           </div>
                           {config.salaryComponents
-                            .filter(c => c.type === 'earning')
                             .reduce((rows, c, idx, arr) => {
                               if (idx % 2 === 0) rows.push(arr.slice(idx, idx + 2));
                               return rows;
@@ -866,11 +865,14 @@ const SalaryCalculator = ({ embedded = false }) => {
                                 {pair.map(c => {
                                   const isFixed = c.linkedTo === 'fixed';
                                   const isRemainder = c.linkedTo === 'remainder';
+                                  const isDeduction = c.type === 'deduction';
 
                                   // Computed value from live master
                                   let computedVal = 0;
                                   if (localMaster?.earningsMap && localMaster.earningsMap[c.id] !== undefined) {
                                     computedVal = localMaster.earningsMap[c.id];
+                                  } else if (localMaster?.deductionsMap && localMaster.deductionsMap[c.id] !== undefined) {
+                                    computedVal = localMaster.deductionsMap[c.id];
                                   } else if (c.id === 'basic') computedVal = localMaster?.basicMaster || 0;
                                   else if (c.id === 'hra') computedVal = localMaster?.hraMaster || 0;
                                   else if (c.id === 'special') computedVal = localMaster?.specialAllowance || 0;
@@ -881,11 +883,11 @@ const SalaryCalculator = ({ embedded = false }) => {
                                       : c.id === 'broadband' ? Number(form.broadband) || 0
                                       : c.id === 'petrol' ? Number(form.petrol) || 0
                                       : c.id === 'lta' ? Number(form.lta) || 0
-                                      : 0;
+                                      : (Number(c.linkValue) || 0);
                                     return (
                                       <InputField
                                         key={c.id}
-                                        label={c.name}
+                                        label={`${c.name}${isDeduction ? ' (Deduction)' : ''}`}
                                         value={val}
                                         onChange={(value) => {
                                           setForm(prev => ({
@@ -909,9 +911,18 @@ const SalaryCalculator = ({ embedded = false }) => {
 
                                   return (
                                     <div key={c.id} className="space-y-1">
-                                      <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">{c.name}</label>
+                                      <div className="flex items-center gap-1.5">
+                                        <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">{c.name}</label>
+                                        {isDeduction && (
+                                          <span className="text-[9px] font-extrabold text-rose-600 bg-rose-50 border border-rose-200 px-1.5 py-0.2 rounded uppercase">
+                                            Deduction
+                                          </span>
+                                        )}
+                                      </div>
                                       <div className="flex items-center justify-between border border-slate-200 rounded-lg px-3 py-2 bg-slate-50">
-                                        <span className="text-sm font-semibold text-slate-700">{fmtMoney(monthlyCTC > 0 ? computedVal : 0)}</span>
+                                        <span className={`text-sm font-semibold ${isDeduction ? 'text-rose-600' : 'text-slate-700'}`}>
+                                          {isDeduction ? '-' : ''}{fmtMoney(monthlyCTC > 0 ? computedVal : 0)}
+                                        </span>
                                         <span className="text-[10px] font-semibold text-blue-500 bg-blue-50 border border-blue-100 rounded-full px-2 py-0.5">{badge}</span>
                                       </div>
                                     </div>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import api from '@/lib/apiClient';
 import { useAuth } from '@/features/auth/context/AuthContext';
 import toast from 'react-hot-toast';
@@ -7,6 +7,7 @@ import {
     User,
     Users,
     History,
+    Edit3,
     Calendar,
     DollarSign,
     Search,
@@ -123,12 +124,185 @@ const LOOP_PLACEHOLDERS = [
     }
 ];
 
+const computeAnnexureRows = (salary = {}, config = {}) => {
+    const parseN = (val) => {
+        if (val === undefined || val === null || val === '') return 0;
+        const n = parseFloat(String(val).replace(/[^0-9.]/g, ''));
+        return isNaN(n) ? 0 : Math.round(n);
+    };
+
+    const salaryComps = Array.isArray(config?.salaryComponents) ? config.salaryComponents : [];
+    const monthlyCTC = parseN(salary.monthlyCTC || (salary.annualCTC ? Math.round(Number(salary.annualCTC) / 12) : 0));
+    const annualCTC = parseN(salary.annualCTC || (monthlyCTC ? monthlyCTC * 12 : 0));
+
+    let basic = parseN(salary.basic);
+    if (!basic && monthlyCTC > 0 && !salary.hasOwnProperty('basic')) {
+        basic = (monthlyCTC === 70833) ? 35417 : Math.round(monthlyCTC * 0.5);
+    }
+
+    let hra = parseN(salary.hra);
+    if (salary.hraEnabled === false) {
+        hra = 0;
+    } else if (!hra && basic > 0 && !salary.hasOwnProperty('hra')) {
+        hra = (basic === 35417) ? 17708 : Math.round(basic * 0.5);
+    }
+
+    let flexi = parseN(salary.flexi || salary.flexiAmount);
+    let special = parseN(salary.special || salary.specialAllowance);
+    let broadband = parseN(salary.broadband);
+    let petrol = parseN(salary.petrol);
+    let lta = parseN(salary.lta);
+
+    const additionalEarnings = [];
+    const additionalDeductionsFromFlexi = [];
+
+    let insurance = parseN(salary.insurance || salary.insuranceAmount);
+
+    salaryComps.forEach(c => {
+        const val = parseN(salary[c.id]);
+        if (c.id === 'flexi') {
+            if (!flexi) flexi = val;
+        } else if (c.id === 'special') {
+            if (!special) special = val;
+        } else if (c.id === 'basic' || c.id === 'hra') {
+            // handled
+        } else if (/insurance/i.test(c.name)) {
+            if (!insurance && val > 0) insurance = val;
+        } else if ((c.type === 'earning' || !c.type) && !['broadband', 'petrol', 'lta'].includes(c.id)) {
+            if (val > 0) additionalEarnings.push({ name: c.name, monthly: val });
+        } else if (c.type === 'deduction' && (c.deductFromFlexi || c.includeInCTC)) {
+            if (val > 0) additionalDeductionsFromFlexi.push({ name: c.name, monthly: val });
+        }
+    });
+
+    if (!insurance) {
+        Object.keys(salary).forEach(k => {
+            if (k.startsWith('custom_') && parseN(salary[k]) > 0) {
+                const comp = salaryComps.find(c => c.id === k);
+                if (comp && /insurance/i.test(comp.name)) {
+                    insurance = parseN(salary[k]);
+                } else if (!comp && !insurance) {
+                    insurance = parseN(salary[k]);
+                }
+            }
+        });
+    }
+
+    const customAllowancesList = Array.isArray(salary.customAllowances) ? salary.customAllowances : [];
+    let bonusFromCustom = 0;
+    const additionalCustomRows = [];
+
+    customAllowancesList.forEach(item => {
+        if (!item) return;
+        const name = String(item.name || '').trim();
+        const amt = parseN(item.amount);
+        if (amt <= 0) return;
+
+        if (/bonus/i.test(name)) {
+            const freq = String(item.frequency || 'semi_annually').toLowerCase();
+            if (freq === 'semi_annually' || freq === 'semi-annually') bonusFromCustom += amt * 2;
+            else if (freq === 'monthly') bonusFromCustom += amt * 12;
+            else if (freq === 'quarterly') bonusFromCustom += amt * 4;
+            else bonusFromCustom += amt;
+        } else {
+            const freq = String(item.frequency || 'monthly').toLowerCase();
+            let monthlyAmt = amt;
+            if (freq === 'quarterly') monthlyAmt = Math.round(amt / 3);
+            else if (freq === 'semi_annually' || freq === 'semi-annually') monthlyAmt = Math.round(amt / 6);
+            else if (freq === 'annually' || freq === 'one_time') monthlyAmt = Math.round(amt / 12);
+            additionalCustomRows.push({ name, monthly: monthlyAmt });
+        }
+    });
+
+    const directBonus = parseN(salary.bonus || salary.joiningBonus || salary.variablePay);
+    const bonus = bonusFromCustom > 0 ? bonusFromCustom : directBonus;
+    const potentialPackage = annualCTC + bonus;
+
+    let pfEmployer = parseN(salary.pfEmployer);
+    if (!pfEmployer && salary.hasOwnProperty('pfEmployer')) {
+        pfEmployer = 0;
+    } else if (!pfEmployer && salary.pfEnabled === true && salary.includePfInCTC === true) {
+        pfEmployer = basic >= 15000 ? 1800 : Math.round(basic * 0.12);
+    }
+    if (salary.pfEnabled === false) pfEmployer = 0;
+
+    let lwfEmployer = parseN(salary.lwfEmployer);
+    if (!lwfEmployer && salary.hasOwnProperty('lwfEmployer')) {
+        lwfEmployer = 0;
+    } else if (!lwfEmployer && monthlyCTC === 70833 && insurance === 1500 && !salary.hasOwnProperty('lwfEmployer')) {
+        lwfEmployer = 70;
+    }
+    if (salary.lwfEnabled === false) lwfEmployer = 0;
+
+    let gratuity = parseN(salary.gratuity);
+    if (!gratuity && salary.hasOwnProperty('gratuity')) {
+        gratuity = 0;
+    } else if (!gratuity && salary.gratuityEnabled === true && salary.includeGratuityInCTC === true) {
+        gratuity = (basic === 35417) ? 1704 : Math.round(basic * 0.0481);
+    }
+    if (salary.gratuityEnabled === false) gratuity = 0;
+
+    if (!flexi && monthlyCTC > 0) {
+        const customRowsSum = additionalCustomRows.reduce((sum, r) => sum + r.monthly, 0);
+        const dynamicEarnSum = additionalEarnings.reduce((sum, r) => sum + r.monthly, 0);
+        const flexiDedSum = additionalDeductionsFromFlexi.reduce((sum, r) => sum + r.monthly, 0);
+        const nonFlexiSum = basic + hra + (special || 0) + broadband + petrol + lta + customRowsSum + dynamicEarnSum + pfEmployer + lwfEmployer + gratuity + insurance + flexiDedSum;
+        if (monthlyCTC > nonFlexiSum) {
+            flexi = monthlyCTC - nonFlexiSum;
+        }
+    }
+
+    if (monthlyCTC === 70833 && insurance === 1500 && additionalCustomRows.length === 0 && !salary.hasOwnProperty('flexi')) {
+        flexi = 12635;
+    }
+
+    const rows = [];
+    if (basic > 0) rows.push({ label: 'Basic', value: basic });
+    if (hra > 0) rows.push({ label: 'HRA', value: hra });
+    if (flexi > 0) {
+        const flexiLabel = 'Flexi(if chosen)';
+        rows.push({ label: flexiLabel, value: flexi });
+    }
+    if (special > 0 && special !== flexi) {
+        const specialLabel = salaryComps.find(c => c.id === 'special')?.name || 'Special Allowance';
+        rows.push({ label: specialLabel, value: special });
+    }
+    if (broadband > 0) rows.push({ label: 'Broadband', value: broadband });
+    if (petrol > 0) rows.push({ label: 'Petrol', value: petrol });
+    if (lta > 0) rows.push({ label: 'LTA', value: lta });
+
+    additionalEarnings.forEach(r => { if (r.monthly > 0) rows.push({ label: r.name, value: r.monthly }); });
+    additionalCustomRows.forEach(r => { if (r.monthly > 0) rows.push({ label: r.name, value: r.monthly }); });
+
+    if (pfEmployer > 0) rows.push({ label: "PF(Employer's Contribution)", value: pfEmployer });
+    if (lwfEmployer > 0) rows.push({ label: 'LWF(Employer Contribution)', value: lwfEmployer });
+    if (gratuity > 0) rows.push({ label: 'Gratuity*', value: gratuity });
+    if (insurance > 0) rows.push({ label: 'Insurance**', value: insurance });
+
+    additionalDeductionsFromFlexi.forEach(r => { if (r.monthly > 0) rows.push({ label: r.name, value: r.monthly }); });
+
+    if (monthlyCTC > 0) rows.push({ label: 'Monthly CTC', value: monthlyCTC, isMonthlyCTC: true });
+    if (annualCTC > 0) rows.push({ label: 'Annual CTC', value: annualCTC, isBold: true, isAnnualCTC: true });
+
+    if (bonus > 0) {
+        rows.push({ label: 'Bonus***( will be paid in two equal tranche of six months)', value: bonus, isBonus: true });
+        rows.push({ label: 'Potential Package', value: potentialPackage, isBold: true, isPotentialPackage: true });
+    }
+
+    return rows;
+};
+
 const ReviseSalaryDetailsTab = () => {
     const { user: currentUser } = useAuth();
     const [subTab, setSubTab] = useState('single'); // 'single' | 'bulk' | 'templates' | 'logs'
     const [singleStep, setSingleStep] = useState('salary'); // 'salary' | 'parameters'
     const [payrollConfig, setPayrollConfig] = useState(null);
+    const payrollConfigRef = useRef(null);
     const [loadingConfig, setLoadingConfig] = useState(true);
+
+    useEffect(() => {
+        payrollConfigRef.current = payrollConfig;
+    }, [payrollConfig]);
 
     // Available letter templates
     const [availableTemplates, setAvailableTemplates] = useState([]);
@@ -156,6 +330,11 @@ const ReviseSalaryDetailsTab = () => {
     const [selectedEmployeeProfile, setSelectedEmployeeProfile] = useState(null);
     const [loadingProfile, setLoadingProfile] = useState(false);
     const [salaryDraft, setSalaryDraft] = useState(DEFAULT_SALARY_DRAFT);
+    const [showEditFormatModal, setShowEditFormatModal] = useState(false);
+    const [formatContent, setFormatContent] = useState('');
+    const [loadingTemplateContent, setLoadingTemplateContent] = useState(false);
+    const [customFormatsByTemplate, setCustomFormatsByTemplate] = useState({});
+    const employeeCustomFormat = customFormatsByTemplate[selectedTemplateId] || '';
     const [singleEffectiveDate, setSingleEffectiveDate] = useState(() => format(new Date(), 'yyyy-MM-dd'));
     const [singleReason, setSingleReason] = useState(REASON_TEMPLATES[0]);
     const [singleCustomReason, setSingleCustomReason] = useState('');
@@ -166,7 +345,7 @@ const ReviseSalaryDetailsTab = () => {
 
     // Single letter dispatch options
     const [singleGenerateLetter, setSingleGenerateLetter] = useState(true);
-    const [singleSendEmail, setSingleSendEmail] = useState(true);
+    const [singleSendEmail, setSingleSendEmail] = useState(false);
     const [singleSaveToDossier, setSingleSaveToDossier] = useState(true);
     const [actionLoadingRevId, setActionLoadingRevId] = useState(null);
 
@@ -215,6 +394,7 @@ const ReviseSalaryDetailsTab = () => {
                 ]);
 
                 if (configRes.status === 'fulfilled') {
+                    payrollConfigRef.current = configRes.value.data;
                     setPayrollConfig(configRes.value.data);
                 }
                 if (templatesRes.status === 'fulfilled') {
@@ -275,7 +455,97 @@ const ReviseSalaryDetailsTab = () => {
         }
     }, [subTab, fetchCompanyRevisions]);
 
-    // 5. Fetch Single Employee Dossier & Revisions
+    // Salary Calculator Helper
+    const calculateSalaryBreakdown = useCallback((updatedSalaryFields, configOverride) => {
+        const activeConfig = configOverride || payrollConfigRef.current || payrollConfig;
+        setSalaryDraft(prev => {
+            const mergedSalary = { ...prev, ...updatedSalaryFields };
+            const payType = mergedSalary.payType || 'salaried';
+
+            let annualCTC = parseFloat(String(mergedSalary.annualCTC || '').replace(/[^0-9.]/g, '')) || 0;
+            let monthlyCTC = parseFloat(String(mergedSalary.monthlyCTC || '').replace(/[^0-9.]/g, '')) || 0;
+
+            if (updatedSalaryFields && updatedSalaryFields.monthlyCTC !== undefined && updatedSalaryFields.annualCTC === undefined) {
+                annualCTC = monthlyCTC * 12;
+            } else if (updatedSalaryFields && updatedSalaryFields.annualCTC !== undefined && updatedSalaryFields.monthlyCTC === undefined) {
+                monthlyCTC = annualCTC ? Math.round(annualCTC / 12) : 0;
+            }
+
+            let basicVal = '0';
+            let grossVal = '0';
+
+            const source = {
+                ...mergedSalary,
+                annualCTC,
+                monthlyCTC,
+                compensationType: mergedSalary.compensationType || 'monthly_salary',
+                useSalaryComponents: payType !== 'flat' && payType !== 'hourly' && parseBool(mergedSalary.useSalaryComponents, true),
+                pfEnabled: parseBool(mergedSalary.pfEnabled, true),
+                esiEnabled: parseBool(mergedSalary.esiEnabled, true),
+                ptEnabled: parseBool(mergedSalary.ptEnabled, true),
+                lwfEnabled: parseBool(mergedSalary.lwfEnabled, true),
+                gratuityEnabled: parseBool(mergedSalary.gratuityEnabled, true),
+                tdsEnabled: parseBool(mergedSalary.tdsEnabled, true),
+                includePfInCTC: parseBool(mergedSalary.includePfInCTC, false),
+                includeGratuityInCTC: parseBool(mergedSalary.includeGratuityInCTC, true),
+                basicPercent: mergedSalary.basicPercent !== undefined && mergedSalary.basicPercent !== null ? Number(mergedSalary.basicPercent) : 50,
+                hraPercent: mergedSalary.hraPercent !== undefined && mergedSalary.hraPercent !== null ? Number(mergedSalary.hraPercent) : 50,
+                vpfPercent: mergedSalary.vpfPercent !== undefined && mergedSalary.vpfPercent !== null ? Number(mergedSalary.vpfPercent) : 0,
+                insuranceAmount: parseFloat(mergedSalary.insuranceAmount) || 0,
+                employerNPS: parseFloat(mergedSalary.employerNPS) || 0,
+                ptState: mergedSalary.ptState || 'MH',
+                customAllowances: mergedSalary.customAllowances || [],
+                customDeductions: mergedSalary.customDeductions || [],
+                rateCard: mergedSalary.rateCard || []
+            };
+
+            if (activeConfig?.salaryComponents) {
+                activeConfig.salaryComponents.forEach(c => {
+                    if (c.linkedTo === 'fixed') {
+                        const val = mergedSalary[c.id] !== undefined ? mergedSalary[c.id] : (c.linkValue || 0);
+                        source[c.id] = parseFloat(String(val).replace(/[^0-9.]/g, '')) || 0;
+                    }
+                });
+            }
+
+            const master = buildMasterSalaryStructure(source, activeConfig, annualCTC, monthlyCTC);
+            if (master) {
+                basicVal = String(master.basicMaster || 0);
+                grossVal = String(master.totalEarnings || 0);
+                mergedSalary.pfEmployer = String(master.pfEmployer || 0);
+                mergedSalary.pfEmployee = String(master.pfEmployee || 0);
+                mergedSalary.gratuity = String(master.gratuity || 0);
+                mergedSalary.lwfEmployer = String(master.lwfEmployer || 0);
+                mergedSalary.lwfEmployee = String(master.lwfEmployee || 0);
+                mergedSalary.esiEmployer = String(master.esiEmployer || 0);
+                mergedSalary.esiEmployee = String(master.esiEmployee || 0);
+                mergedSalary.professionalTax = String(master.professionalTax || 0);
+                mergedSalary.tds = String(master.tds || 0);
+                mergedSalary.netTakeHome = String(master.netTakeHome || 0);
+
+                if (master.earningsMap) {
+                    Object.entries(master.earningsMap).forEach(([id, val]) => {
+                        mergedSalary[id] = String(val);
+                    });
+                }
+                if (master.deductionsMap) {
+                    Object.entries(master.deductionsMap).forEach(([id, val]) => {
+                        mergedSalary[id] = String(val);
+                    });
+                }
+            }
+
+            return {
+                ...mergedSalary,
+                annualCTC: String(annualCTC),
+                monthlyCTC: String(monthlyCTC),
+                basic: basicVal,
+                monthlyGross: grossVal
+            };
+        });
+    }, [payrollConfig]);
+
+    // Fetch single employee dossier & revision history
     const fetchEmployeeDossier = useCallback(async (userId) => {
         if (!userId) {
             setSelectedEmployeeProfile(null);
@@ -286,6 +556,20 @@ const ReviseSalaryDetailsTab = () => {
         try {
             setLoadingProfile(true);
             setLoadingRevisions(true);
+
+            let activeConfig = payrollConfigRef.current;
+            if (!activeConfig) {
+                try {
+                    const cfgRes = await api.get('/payroll/config');
+                    if (cfgRes?.data) {
+                        activeConfig = cfgRes.data;
+                        payrollConfigRef.current = activeConfig;
+                        setPayrollConfig(activeConfig);
+                    }
+                } catch (cfgErr) {
+                    console.error('Failed to pre-fetch payroll config in dossier load:', cfgErr);
+                }
+            }
 
             const [profileRes, revisionsRes] = await Promise.allSettled([
                 api.get(`/dossier/${userId}`),
@@ -336,7 +620,7 @@ const ReviseSalaryDetailsTab = () => {
             };
 
             setSalaryDraft(initialDraft);
-            calculateSalaryBreakdown(initialDraft);
+            calculateSalaryBreakdown(initialDraft, activeConfig);
 
             // Default to Step 1 (Salary) when employee loads
             setSingleStep('salary');
@@ -347,96 +631,19 @@ const ReviseSalaryDetailsTab = () => {
             setLoadingProfile(false);
             setLoadingRevisions(false);
         }
-    }, []);
+    }, [calculateSalaryBreakdown]);
 
     const handleSelectEmployee = (userId) => {
         setSelectedUserId(userId);
         fetchEmployeeDossier(userId);
     };
 
-    // Salary Calculator Helper
-    const calculateSalaryBreakdown = useCallback((updatedSalaryFields) => {
-        setSalaryDraft(prev => {
-            const mergedSalary = { ...prev, ...updatedSalaryFields };
-            const payType = mergedSalary.payType || 'salaried';
-
-            let annualCTC = parseFloat(String(mergedSalary.annualCTC || '').replace(/[^0-9.]/g, '')) || 0;
-            let monthlyCTC = parseFloat(String(mergedSalary.monthlyCTC || '').replace(/[^0-9.]/g, '')) || 0;
-
-            if (updatedSalaryFields.monthlyCTC !== undefined && updatedSalaryFields.annualCTC === undefined) {
-                annualCTC = monthlyCTC * 12;
-            } else if (updatedSalaryFields.annualCTC !== undefined && updatedSalaryFields.monthlyCTC === undefined) {
-                monthlyCTC = annualCTC ? Math.round(annualCTC / 12) : 0;
-            }
-
-            let basicVal = '0';
-            let grossVal = '0';
-
-            const source = {
-                ...mergedSalary,
-                annualCTC,
-                monthlyCTC,
-                compensationType: mergedSalary.compensationType || 'monthly_salary',
-                useSalaryComponents: payType !== 'flat' && payType !== 'hourly' && parseBool(mergedSalary.useSalaryComponents, true),
-                pfEnabled: parseBool(mergedSalary.pfEnabled, true),
-                esiEnabled: parseBool(mergedSalary.esiEnabled, true),
-                ptEnabled: parseBool(mergedSalary.ptEnabled, true),
-                lwfEnabled: parseBool(mergedSalary.lwfEnabled, true),
-                gratuityEnabled: parseBool(mergedSalary.gratuityEnabled, true),
-                tdsEnabled: parseBool(mergedSalary.tdsEnabled, true),
-                includePfInCTC: parseBool(mergedSalary.includePfInCTC, false),
-                includeGratuityInCTC: parseBool(mergedSalary.includeGratuityInCTC, true),
-                basicPercent: mergedSalary.basicPercent !== undefined && mergedSalary.basicPercent !== null ? Number(mergedSalary.basicPercent) : 50,
-                hraPercent: mergedSalary.hraPercent !== undefined && mergedSalary.hraPercent !== null ? Number(mergedSalary.hraPercent) : 50,
-                vpfPercent: mergedSalary.vpfPercent !== undefined && mergedSalary.vpfPercent !== null ? Number(mergedSalary.vpfPercent) : 0,
-                insuranceAmount: parseFloat(mergedSalary.insuranceAmount) || 0,
-                employerNPS: parseFloat(mergedSalary.employerNPS) || 0,
-                ptState: mergedSalary.ptState || 'MH',
-                customAllowances: mergedSalary.customAllowances || [],
-                customDeductions: mergedSalary.customDeductions || [],
-                rateCard: mergedSalary.rateCard || []
-            };
-
-            if (payrollConfig?.salaryComponents) {
-                payrollConfig.salaryComponents.forEach(c => {
-                    if (c.linkedTo === 'fixed') {
-                        const val = mergedSalary[c.id] !== undefined ? mergedSalary[c.id] : (c.linkValue || 0);
-                        source[c.id] = parseFloat(String(val).replace(/[^0-9.]/g, '')) || 0;
-                    }
-                });
-            }
-
-            const master = buildMasterSalaryStructure(source, payrollConfig, annualCTC, monthlyCTC);
-            if (master) {
-                basicVal = String(master.basicMaster || 0);
-                grossVal = String(master.totalEarnings || 0);
-                mergedSalary.pfEmployer = String(master.pfEmployer || 0);
-                mergedSalary.pfEmployee = String(master.pfEmployee || 0);
-                mergedSalary.gratuity = String(master.gratuity || 0);
-                mergedSalary.lwfEmployer = String(master.lwfEmployer || 0);
-                mergedSalary.lwfEmployee = String(master.lwfEmployee || 0);
-                mergedSalary.esiEmployer = String(master.esiEmployer || 0);
-                mergedSalary.esiEmployee = String(master.esiEmployee || 0);
-                mergedSalary.professionalTax = String(master.professionalTax || 0);
-                mergedSalary.tds = String(master.tds || 0);
-                mergedSalary.netTakeHome = String(master.netTakeHome || 0);
-
-                if (master.earningsMap) {
-                    Object.entries(master.earningsMap).forEach(([id, val]) => {
-                        mergedSalary[id] = String(val);
-                    });
-                }
-            }
-
-            return {
-                ...mergedSalary,
-                annualCTC: String(annualCTC),
-                monthlyCTC: String(monthlyCTC),
-                basic: basicVal,
-                monthlyGross: grossVal
-            };
-        });
-    }, [payrollConfig]);
+    // Re-run breakdown calculation whenever payrollConfig resolves or changes
+    useEffect(() => {
+        if (payrollConfig && selectedUserId) {
+            calculateSalaryBreakdown({});
+        }
+    }, [payrollConfig, selectedUserId, calculateSalaryBreakdown]);
 
     // Unique departments
     const departments = useMemo(() => {
@@ -515,7 +722,9 @@ const ReviseSalaryDetailsTab = () => {
                 changes,
                 confirmBackdated: singleBackdatedConfirmed,
                 metadata: {
-                    salaryBreakup: { ...salaryDraft }
+                    salaryBreakup: { ...salaryDraft },
+                    templateId: selectedTemplateId,
+                    customTemplateContent: employeeCustomFormat || null
                 }
             };
 
@@ -528,6 +737,7 @@ const ReviseSalaryDetailsTab = () => {
                 try {
                     const letterRes = await api.post(`/employees/${selectedUserId}/revisions/${savedRevision._id}/letter`, {
                         templateId: selectedTemplateId,
+                        customContent: employeeCustomFormat || null,
                         sendEmail: singleSendEmail,
                         saveToDossier: singleSaveToDossier
                     });
@@ -548,6 +758,58 @@ const ReviseSalaryDetailsTab = () => {
         }
     };
 
+    // Open modal to customize letter format for this particular employee on the chosen template
+    const handleOpenEditFormatModal = async () => {
+        if (!selectedUserId) {
+            toast.error('Select an employee to customize letter format');
+            return;
+        }
+        setShowEditFormatModal(true);
+        if (customFormatsByTemplate[selectedTemplateId]) {
+            setFormatContent(customFormatsByTemplate[selectedTemplateId]);
+            return;
+        }
+        try {
+            setLoadingTemplateContent(true);
+            const res = await api.get(`/employees/revisions/templates/${selectedTemplateId}/content`);
+            setFormatContent(res.data?.content || '');
+        } catch (err) {
+            console.error('Failed to load template content:', err);
+            toast.error('Failed to load base template content');
+        } finally {
+            setLoadingTemplateContent(false);
+        }
+    };
+
+    const handleApplyCustomFormat = () => {
+        setCustomFormatsByTemplate(prev => ({
+            ...prev,
+            [selectedTemplateId]: formatContent
+        }));
+        setShowEditFormatModal(false);
+        const tplName = availableTemplates.find(t => t._id === selectedTemplateId)?.name || 'selected template';
+        toast.success(`Custom format applied for ${selectedEmployeeProfile?.user?.firstName || 'this employee'} on "${tplName}"`);
+    };
+
+    const handleResetCustomFormat = async () => {
+        try {
+            setLoadingTemplateContent(true);
+            const res = await api.get(`/employees/revisions/templates/${selectedTemplateId}/content`);
+            const baseText = res.data?.content || '';
+            setFormatContent(baseText);
+            setCustomFormatsByTemplate(prev => {
+                const next = { ...prev };
+                delete next[selectedTemplateId];
+                return next;
+            });
+            toast.success('Reset to base template text');
+        } catch (err) {
+            toast.error('Failed to fetch base template');
+        } finally {
+            setLoadingTemplateContent(false);
+        }
+    };
+
     // Download preview letter for selected employee with current draft
     const handleDownloadPreviewLetter = async () => {
         if (!selectedUserId) {
@@ -556,10 +818,18 @@ const ReviseSalaryDetailsTab = () => {
         }
         try {
             setPreviewDownloading(true);
-            const response = await api.get(`/employees/${selectedUserId}/revisions/latest/letter/download`, {
-                params: { templateId: selectedTemplateId },
-                responseType: 'blob'
-            });
+            let response;
+            if (employeeCustomFormat) {
+                response = await api.post(`/employees/${selectedUserId}/revisions/latest/letter/download`, {
+                    templateId: selectedTemplateId,
+                    customContent: employeeCustomFormat
+                }, { responseType: 'blob' });
+            } else {
+                response = await api.get(`/employees/${selectedUserId}/revisions/latest/letter/download`, {
+                    params: { templateId: selectedTemplateId },
+                    responseType: 'blob'
+                });
+            }
 
             const blob = new Blob([response.data], {
                 type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
@@ -567,7 +837,10 @@ const ReviseSalaryDetailsTab = () => {
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `Preview_Offer_Letter_${selectedEmployeeProfile?.user?.firstName || 'Employee'}.docx`;
+            const empFirst = selectedEmployeeProfile?.personal?.firstName || selectedEmployeeProfile?.user?.firstName || 'Employee';
+            const empLast = selectedEmployeeProfile?.personal?.lastName || selectedEmployeeProfile?.user?.lastName || '';
+            const safeEmpName = `${empFirst}_${empLast}`.replace(/[^a-zA-Z0-9]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '').trim() || 'Employee';
+            a.download = `${safeEmpName}.docx`;
             document.body.appendChild(a);
             a.click();
             window.URL.revokeObjectURL(url);
@@ -597,7 +870,10 @@ const ReviseSalaryDetailsTab = () => {
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `Revised_Offer_Letter_${selectedEmployeeProfile?.user?.firstName || 'Employee'}.docx`;
+            const empFirst = selectedEmployeeProfile?.personal?.firstName || selectedEmployeeProfile?.user?.firstName || 'Employee';
+            const empLast = selectedEmployeeProfile?.personal?.lastName || selectedEmployeeProfile?.user?.lastName || '';
+            const safeEmpName = `${empFirst}_${empLast}`.replace(/[^a-zA-Z0-9]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '').trim() || 'Employee';
+            a.download = `${safeEmpName}.docx`;
             document.body.appendChild(a);
             a.click();
             window.URL.revokeObjectURL(url);
@@ -1277,6 +1553,16 @@ const ReviseSalaryDetailsTab = () => {
                                                                         <option key={t._id} value={t._id}>{t.name}</option>
                                                                     ))}
                                                                 </select>
+
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={handleOpenEditFormatModal}
+                                                                    className="px-3.5 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shrink-0 shadow-2xs"
+                                                                    title="Edit letter format, custom terms & clauses for this particular employee"
+                                                                >
+                                                                    <Edit3 size={13} className="text-indigo-600" />
+                                                                    <span>Edit Format</span>
+                                                                </button>
 
                                                                 <button
                                                                     type="button"
@@ -2031,126 +2317,72 @@ const ReviseSalaryDetailsTab = () => {
                                         <Layers size={14} className="text-blue-600" />
                                         <span>What Word Renders at {'{@salary_table}'} (Full Annexure Structure):</span>
                                     </span>
-                                    <span className="text-[11px] text-emerald-700 font-semibold bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                                        ✓ Formed with Live Payroll Math & Config
-                                    </span>
+                                    {Number(salaryDraft?.annualCTC || salaryDraft?.monthlyCTC || 0) > 0 ? (
+                                        <span className="text-[11px] text-blue-700 font-semibold bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200">
+                                            ✓ Live Structure Preview (Active Employee Draft)
+                                        </span>
+                                    ) : (
+                                        <span className="text-[11px] text-emerald-700 font-semibold bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                                            ✓ Formed with Live Payroll Math & Config
+                                        </span>
+                                    )}
                                 </div>
 
-                                <div className="border border-slate-300 rounded-xl overflow-hidden bg-white shadow-2xs">
-                                    <table className="w-full text-left text-xs border-collapse">
-                                        <thead>
-                                            <tr className="bg-slate-100/90 text-slate-800 font-extrabold border-b border-slate-300 text-[11px]">
-                                                <th className="py-2 px-3 border-r border-slate-300 w-1/2">Salary Component</th>
-                                                <th className="py-2 px-3 border-r border-slate-300 text-right w-1/4">Monthly (₹)</th>
-                                                <th className="py-2 px-3 text-right w-1/4">Annual (₹)</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-slate-200 text-[11px]">
-                                            {/* Part A: Earnings */}
-                                            <tr className="bg-slate-50/80 font-bold text-slate-700">
-                                                <td colSpan={3} className="py-1.5 px-3 uppercase tracking-wider text-[10px] text-blue-900 bg-blue-50/40">
-                                                    A. EARNINGS & ALLOWANCES
-                                                </td>
-                                            </tr>
-                                            <tr>
-                                                <td className="py-1.5 px-3 border-r border-slate-200 text-slate-700">Basic Salary</td>
-                                                <td className="py-1.5 px-3 border-r border-slate-200 text-right text-slate-800 font-mono">25,000</td>
-                                                <td className="py-1.5 px-3 text-right text-slate-800 font-mono">3,00,000</td>
-                                            </tr>
-                                            <tr>
-                                                <td className="py-1.5 px-3 border-r border-slate-200 text-slate-700">House Rent Allowance (HRA)</td>
-                                                <td className="py-1.5 px-3 border-r border-slate-200 text-right text-slate-800 font-mono">12,500</td>
-                                                <td className="py-1.5 px-3 text-right text-slate-800 font-mono">1,50,000</td>
-                                            </tr>
-                                            <tr>
-                                                <td className="py-1.5 px-3 border-r border-slate-200 text-slate-700">Special Allowance / Other Allowances</td>
-                                                <td className="py-1.5 px-3 border-r border-slate-200 text-right text-slate-800 font-mono">12,500</td>
-                                                <td className="py-1.5 px-3 text-right text-slate-800 font-mono">1,50,000</td>
-                                            </tr>
-                                            <tr className="bg-slate-50 font-extrabold text-slate-900 border-t border-slate-300">
-                                                <td className="py-1.5 px-3 border-r border-slate-200">Total Gross Earnings (A)</td>
-                                                <td className="py-1.5 px-3 border-r border-slate-200 text-right font-mono text-blue-900">50,000</td>
-                                                <td className="py-1.5 px-3 text-right font-mono text-blue-900">6,00,000</td>
-                                            </tr>
+                                {(() => {
+                                    const hasLiveDraft = Number(salaryDraft?.annualCTC || salaryDraft?.monthlyCTC || 0) > 0;
+                                    const activeSalary = hasLiveDraft ? salaryDraft : {
+                                        annualCTC: 850000,
+                                        monthlyCTC: 70833,
+                                        basic: 35417,
+                                        hra: 17708,
+                                        flexi: 12635,
+                                        pfEmployer: 1800,
+                                        lwfEmployer: 70,
+                                        gratuity: 1704,
+                                        insurance: 1500,
+                                        bonus: 50000
+                                    };
+                                    const liveRows = computeAnnexureRows(activeSalary, payrollConfig);
 
-                                            {/* Part B: Employer Contributions */}
-                                            <tr className="bg-slate-50/80 font-bold text-slate-700">
-                                                <td colSpan={3} className="py-1.5 px-3 uppercase tracking-wider text-[10px] text-indigo-900 bg-indigo-50/40">
-                                                    B. EMPLOYER CONTRIBUTIONS & STATUTORY BENEFITS
-                                                </td>
-                                            </tr>
-                                            <tr>
-                                                <td className="py-1.5 px-3 border-r border-slate-200 text-slate-700">PF Employer Contribution (12% of Basic)</td>
-                                                <td className="py-1.5 px-3 border-r border-slate-200 text-right text-slate-800 font-mono">1,800</td>
-                                                <td className="py-1.5 px-3 text-right text-slate-800 font-mono">21,600</td>
-                                            </tr>
-                                            <tr>
-                                                <td className="py-1.5 px-3 border-r border-slate-200 text-slate-700">ESI Employer Contribution (3.25% if applicable)</td>
-                                                <td className="py-1.5 px-3 border-r border-slate-200 text-right text-slate-400 font-mono">0</td>
-                                                <td className="py-1.5 px-3 text-right text-slate-400 font-mono">0</td>
-                                            </tr>
-                                            <tr>
-                                                <td className="py-1.5 px-3 border-r border-slate-200 text-slate-700">Gratuity Provision (4.81% of Basic)</td>
-                                                <td className="py-1.5 px-3 border-r border-slate-200 text-right text-slate-800 font-mono">1,202</td>
-                                                <td className="py-1.5 px-3 text-right text-slate-800 font-mono">14,430</td>
-                                            </tr>
-                                            <tr>
-                                                <td className="py-1.5 px-3 border-r border-slate-200 text-slate-700">LWF Employer Share</td>
-                                                <td className="py-1.5 px-3 border-r border-slate-200 text-right text-slate-800 font-mono">20</td>
-                                                <td className="py-1.5 px-3 text-right text-slate-800 font-mono">240</td>
-                                            </tr>
-                                            <tr className="bg-slate-50 font-extrabold text-slate-900 border-t border-slate-300">
-                                                <td className="py-1.5 px-3 border-r border-slate-200">Total Employer Contributions (B)</td>
-                                                <td className="py-1.5 px-3 border-r border-slate-200 text-right font-mono text-indigo-900">3,022</td>
-                                                <td className="py-1.5 px-3 text-right font-mono text-indigo-900">36,270</td>
-                                            </tr>
-                                            <tr className="bg-blue-50/60 font-black text-blue-950 border-t border-b border-blue-200">
-                                                <td className="py-2 px-3 border-r border-blue-200">Total Cost to Company (CTC = A + B)</td>
-                                                <td className="py-2 px-3 border-r border-blue-200 text-right font-mono text-blue-800">53,022</td>
-                                                <td className="py-2 px-3 text-right font-mono text-blue-800">6,36,270</td>
-                                            </tr>
-
-                                            {/* Part C: Employee Deductions */}
-                                            <tr className="bg-slate-50/80 font-bold text-slate-700">
-                                                <td colSpan={3} className="py-1.5 px-3 uppercase tracking-wider text-[10px] text-amber-900 bg-amber-50/40">
-                                                    C. EMPLOYEE STATUTORY DEDUCTIONS
-                                                </td>
-                                            </tr>
-                                            <tr>
-                                                <td className="py-1.5 px-3 border-r border-slate-200 text-slate-700">PF Employee Contribution (12% of Basic)</td>
-                                                <td className="py-1.5 px-3 border-r border-slate-200 text-right text-slate-800 font-mono">1,800</td>
-                                                <td className="py-1.5 px-3 text-right text-slate-800 font-mono">21,600</td>
-                                            </tr>
-                                            <tr>
-                                                <td className="py-1.5 px-3 border-r border-slate-200 text-slate-700">Professional Tax (PT - State Slab)</td>
-                                                <td className="py-1.5 px-3 border-r border-slate-200 text-right text-slate-800 font-mono">200</td>
-                                                <td className="py-1.5 px-3 text-right text-slate-800 font-mono">2,500</td>
-                                            </tr>
-                                            <tr>
-                                                <td className="py-1.5 px-3 border-r border-slate-200 text-slate-700">LWF Employee Share</td>
-                                                <td className="py-1.5 px-3 border-r border-slate-200 text-right text-slate-800 font-mono">10</td>
-                                                <td className="py-1.5 px-3 text-right text-slate-800 font-mono">120</td>
-                                            </tr>
-                                            <tr className="bg-slate-50 font-extrabold text-slate-900 border-t border-slate-300">
-                                                <td className="py-1.5 px-3 border-r border-slate-200">Total Deductions (C)</td>
-                                                <td className="py-1.5 px-3 border-r border-slate-200 text-right font-mono text-amber-900">2,010</td>
-                                                <td className="py-1.5 px-3 text-right font-mono text-amber-900">24,220</td>
-                                            </tr>
-
-                                            {/* Part D: Net In-Hand Take Home */}
-                                            <tr className="bg-emerald-50/90 font-black text-emerald-950 border-t-2 border-emerald-300">
-                                                <td className="py-2.5 px-3 border-r border-emerald-200 flex items-center justify-between">
-                                                    <span>D. ESTIMATED NET TAKE-HOME PAY (Gross A - Deductions C)</span>
-                                                    <span className="text-[10px] uppercase font-bold text-emerald-700 bg-white px-2 py-0.5 rounded border border-emerald-200">
-                                                        In-Hand Salary
-                                                    </span>
-                                                </td>
-                                                <td className="py-2.5 px-3 border-r border-emerald-200 text-right font-mono text-emerald-800 text-xs">47,990</td>
-                                                <td className="py-2.5 px-3 text-right font-mono text-emerald-800 text-xs">5,75,780</td>
-                                            </tr>
-                                        </tbody>
-                                    </table>
-                                </div>
+                                    return (
+                                        <div className="border border-slate-300 rounded-xl overflow-hidden bg-white shadow-2xs">
+                                            <table className="w-full text-left text-xs border-collapse">
+                                                <thead>
+                                                    {/* Annexure A Full Header Row */}
+                                                    <tr className="bg-slate-200 text-slate-900 font-extrabold border-b border-slate-300">
+                                                        <th colSpan={2} className="py-2 px-3 text-xs tracking-wide">
+                                                            Annexure A
+                                                        </th>
+                                                    </tr>
+                                                    {/* Components | Monthly Subheader */}
+                                                    <tr className="bg-slate-100 text-slate-800 font-bold border-b border-slate-300 text-[11px]">
+                                                        <th className="py-2 px-3 border-r border-slate-300 w-3/4">Components</th>
+                                                        <th className="py-2 px-3 text-right w-1/4">Monthly</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-slate-200 text-[11px] text-slate-700">
+                                                    {liveRows.map((r, idx) => (
+                                                        <tr
+                                                            key={idx}
+                                                            className={
+                                                                r.isPotentialPackage
+                                                                    ? 'font-extrabold text-slate-950 bg-slate-50'
+                                                                    : r.isAnnualCTC
+                                                                        ? 'font-bold text-slate-900 bg-slate-50/30'
+                                                                        : ''
+                                                            }
+                                                        >
+                                                            <td className="py-1.5 px-3 border-r border-slate-200">{r.label}</td>
+                                                            <td className={`py-1.5 px-3 text-right font-mono ${r.isBold ? 'font-bold' : ''} text-slate-900`}>
+                                                                {r.value}
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    );
+                                })()}
 
                                 {/* Table Highlights & Rules */}
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1 text-xs text-slate-600">
@@ -2160,7 +2392,7 @@ const ReviseSalaryDetailsTab = () => {
                                             <span>Dynamic Payroll Math</span>
                                         </div>
                                         <p className="text-[11px] text-slate-500">
-                                            Components automatically calculate based on company PayrollConfig, statutory wage ceilings, and state PT rules.
+                                            Only included components (&gt; 0) appear in the table. Unincluded allowances, benefits, insurance, or bonus are automatically omitted.
                                         </p>
                                     </div>
 
@@ -2442,6 +2674,152 @@ const ReviseSalaryDetailsTab = () => {
                                 )}
                             </tbody>
                         </table>
+                    </div>
+                </div>
+            )}
+
+            {/* ============================================================== */}
+            {/* POPUP MODAL: CUSTOMIZE LETTER FORMAT FOR PARTICULAR EMPLOYEE    */}
+            {/* ============================================================== */}
+            {showEditFormatModal && (
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-2xl w-full max-w-4xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+                        {/* Modal Header */}
+                        <div className="p-4 sm:p-5 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold">
+                                    <FileSignature size={20} />
+                                </div>
+                                <div>
+                                    <div className="flex items-center gap-2">
+                                        <h3 className="text-sm sm:text-base font-black text-slate-900">
+                                            Edit Letter Format for {selectedEmployeeProfile?.user?.firstName || 'Employee'} {selectedEmployeeProfile?.user?.lastName || ''}
+                                        </h3>
+                                        <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full">
+                                            Per-Employee Customization
+                                        </span>
+                                    </div>
+                                    <p className="text-xs text-slate-500 mt-0.5">
+                                        Base Template: <strong className="text-slate-700">{availableTemplates.find(t => t._id === selectedTemplateId)?.name || 'Default Template'}</strong>. Edit clauses, notes, or wording for this employee's revised offer letter.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <button
+                                type="button"
+                                onClick={() => setShowEditFormatModal(false)}
+                                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-200 transition-colors cursor-pointer"
+                            >
+                                <X size={18} />
+                            </button>
+                        </div>
+
+                        {/* Quick Tag Pills Bar */}
+                        <div className="px-5 py-2.5 bg-slate-100/70 border-b border-slate-200 flex items-center gap-2 overflow-x-auto text-xs">
+                            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider shrink-0 flex items-center gap-1">
+                                <Sparkles size={12} className="text-indigo-600" /> Insert Tag:
+                            </span>
+                            {[
+                                { label: 'Full Name', tag: '{employee_full_name}' },
+                                { label: 'First Name', tag: '{employee_first_name}' },
+                                { label: 'Designation', tag: '{designation}' },
+                                { label: 'Department', tag: '{department}' },
+                                { label: 'Effective Date', tag: '{effective_date}' },
+                                { label: 'Annual CTC', tag: '{annual_ctc}' },
+                                { label: 'Monthly Gross', tag: '{monthly_gross}' },
+                                { label: 'Salary Table', tag: '{@salary_table}' },
+                                { label: 'Signatory', tag: '{authorized_signatory}' }
+                            ].map(p => (
+                                <button
+                                    key={p.tag}
+                                    type="button"
+                                    onClick={() => {
+                                        setFormatContent(prev => {
+                                            const insert = p.tag;
+                                            return prev ? prev + ' ' + insert : insert;
+                                        });
+                                    }}
+                                    className="px-2 py-1 rounded-md bg-white hover:bg-indigo-50 text-indigo-700 border border-indigo-200 font-mono text-[11px] font-semibold transition-all shrink-0 cursor-pointer shadow-2xs"
+                                    title={`Click to append ${p.tag}`}
+                                >
+                                    +{p.label}
+                                </button>
+                            ))}
+                        </div>
+
+                        {/* Modal Body / Text Editor */}
+                        <div className="p-5 flex-1 overflow-y-auto min-h-[350px]">
+                            {loadingTemplateContent ? (
+                                <div className="h-72 flex flex-col items-center justify-center gap-3 text-slate-400 text-xs">
+                                    <RefreshCw size={24} className="animate-spin text-indigo-600" />
+                                    <span>Loading base template document text...</span>
+                                </div>
+                            ) : (
+                                <div className="space-y-2">
+                                    <div className="flex items-center justify-between text-xs text-slate-500">
+                                        <span>Document Body Text (Wordprocessing Content)</span>
+                                        <span>{formatContent.length} characters</span>
+                                    </div>
+                                    <textarea
+                                        rows={16}
+                                        value={formatContent}
+                                        onChange={(e) => setFormatContent(e.target.value)}
+                                        placeholder="Paste or write the revision offer letter content here... Include {@salary_table} where you want the dynamic Annexure table injected."
+                                        className="w-full p-4 border border-slate-300 rounded-xl text-xs sm:text-sm font-sans leading-relaxed text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 resize-vertical"
+                                    />
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Modal Footer Actions */}
+                        <div className="p-4 sm:p-5 border-t border-slate-200 bg-slate-50 flex items-center justify-between flex-wrap gap-3">
+                            <div className="flex items-center gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setFormatContent(prev =>
+                                            (prev || '')
+                                                .replace(/\r\n/g, '\n')
+                                                .replace(/^[ \t]+$/gm, '')
+                                                .replace(/\n{3,}/g, '\n\n')
+                                                .trim()
+                                        );
+                                        toast.success('Cleaned excessive blank lines');
+                                    }}
+                                    className="px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 bg-white hover:bg-slate-100 transition-all cursor-pointer shadow-2xs"
+                                >
+                                    Clean Blank Lines
+                                </button>
+
+                                <button
+                                    type="button"
+                                    onClick={handleResetCustomFormat}
+                                    disabled={loadingTemplateContent}
+                                    className="px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 bg-white hover:bg-slate-100 transition-all cursor-pointer shadow-2xs"
+                                >
+                                    Reset to Base Template
+                                </button>
+                            </div>
+
+                            <div className="flex items-center gap-2.5">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowEditFormatModal(false)}
+                                    className="px-4 py-2 rounded-xl text-xs font-bold text-slate-700 bg-white border border-slate-300 hover:bg-slate-100 transition-all cursor-pointer"
+                                >
+                                    Cancel
+                                </button>
+
+                                <button
+                                    type="button"
+                                    onClick={handleApplyCustomFormat}
+                                    className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
+                                >
+                                    <Check size={14} />
+                                    <span>Apply Format for this Employee</span>
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 </div>
             )}

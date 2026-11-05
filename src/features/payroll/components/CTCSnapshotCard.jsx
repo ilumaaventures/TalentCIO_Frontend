@@ -46,7 +46,12 @@ export const CTCSnapshotCard = ({ breakup, payrollConfig, handleDownloadBreakup 
                                     if (val <= 0 && c.id !== 'basic') return null;
                                     return (
                                         <div key={c.id} className="flex justify-between text-sm text-slate-600 border-b border-slate-50 pb-1.5">
-                                            <span>{c.name}</span>
+                                            <span className="flex items-center gap-1.5">
+                                                {c.name}
+                                                {c.includeInCTC === false && (
+                                                    <span className="text-[9px] text-slate-400 border border-slate-200 px-1 rounded">Excl. CTC</span>
+                                                )}
+                                            </span>
                                             <span className="font-semibold text-slate-800">{fmtMoney(val)}</span>
                                         </div>
                                     );
@@ -63,7 +68,13 @@ export const CTCSnapshotCard = ({ breakup, payrollConfig, handleDownloadBreakup 
                                         <span className="font-semibold text-slate-800">{fmtMoney(breakup.hraMaster)}</span>
                                     </div>
                                 )}
-                                {breakup.specialAllowance > 0 && (
+                                {(Number(breakup.flexi) > 0 || Number(breakup.flexiAmount) > 0) && (
+                                    <div className="flex justify-between text-sm text-slate-600 border-b border-slate-50 pb-1.5">
+                                        <span>Flexi Allowance</span>
+                                        <span className="font-semibold text-slate-800">{fmtMoney(breakup.flexi || breakup.flexiAmount)}</span>
+                                    </div>
+                                )}
+                                {Number(breakup.specialAllowance) > 0 && (
                                     <div className="flex justify-between text-sm text-slate-600 border-b border-slate-50 pb-1.5">
                                         <span>Special Allowance</span>
                                         <span className="font-semibold text-slate-800">{fmtMoney(breakup.specialAllowance)}</span>
@@ -110,6 +121,20 @@ export const CTCSnapshotCard = ({ breakup, payrollConfig, handleDownloadBreakup 
                                     <span>LWF Employer Cost</span>
                                     <span className="font-semibold text-slate-800">{fmtMoney(breakup.lwfEmployer)}</span>
                                 </div>
+                            )}
+                            {hasDynamicComponents && (
+                                payrollConfig.salaryComponents
+                                    .filter(c => c.type === 'deduction' && (c.deductFromFlexi || c.includeInCTC))
+                                    .map(c => {
+                                        const val = breakup.deductionsMap?.[c.id] !== undefined ? breakup.deductionsMap[c.id] : (breakup[c.id] || 0);
+                                        if (val <= 0) return null;
+                                        return (
+                                            <div key={c.id} className="flex justify-between text-sm text-slate-600 border-b border-slate-50 pb-1.5">
+                                                <span>{c.name} <span className="text-[10px] text-blue-600 font-semibold">(Flexi Benefit)</span></span>
+                                                <span className="font-semibold text-slate-800">{fmtMoney(val)}</span>
+                                            </div>
+                                        );
+                                    })
                             )}
                         </div>
                     </div>
@@ -158,6 +183,22 @@ export const CTCSnapshotCard = ({ breakup, payrollConfig, handleDownloadBreakup 
                                     </div>
                                 )
                             ))}
+                            {hasDynamicComponents && (
+                                payrollConfig.salaryComponents
+                                    .filter(c => c.type === 'deduction' && !c.deductFromFlexi && !c.includeInCTC)
+                                    .map(c => {
+                                        const val = breakup.deductionsMap?.[c.id] !== undefined ? breakup.deductionsMap[c.id] : (breakup[c.id] || 0);
+                                        if (val <= 0) return null;
+                                        return (
+                                            <div key={c.id} className="flex justify-between text-sm text-slate-600 border-b border-slate-50 pb-1.5">
+                                                <span className="flex items-center gap-1.5">
+                                                    {c.name}
+                                                </span>
+                                                <span className="font-semibold text-rose-600">{fmtMoney(val)}</span>
+                                            </div>
+                                        );
+                                    })
+                            )}
                         </div>
                     </div>
                 )}

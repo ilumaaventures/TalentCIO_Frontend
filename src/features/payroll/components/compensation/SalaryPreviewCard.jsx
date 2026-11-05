@@ -390,12 +390,50 @@ const SalaryPreviewCard = ({ formData, config }) => {
                                     <span className="text-slate-600">HRA</span>
                                     <span className="font-semibold text-slate-800">₹{parseFloat(salary.hra || '0').toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
                                 </div>
-                                {parseFloat(salary.specialAllowance || 0) > 0 && (
-                                    <div className="flex justify-between items-center py-1 border-b border-slate-50">
-                                        <span className="text-slate-600">Flexi / Special Allowance</span>
-                                        <span className="font-semibold text-slate-800">₹{parseFloat(salary.specialAllowance || '0').toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
-                                    </div>
-                                )}
+                                {(() => {
+                                    const flexiVal = parseFloat(salary.flexi !== undefined && salary.flexi !== null && salary.flexi !== '' ? salary.flexi : (salary.flexiAmount !== undefined ? salary.flexiAmount : 0)) || 0;
+                                    const specialVal = parseFloat(salary.special !== undefined && salary.special !== null && salary.special !== '' ? salary.special : (salary.specialAllowance !== undefined ? salary.specialAllowance : 0)) || 0;
+                                    
+                                    return (
+                                        <>
+                                            {flexiVal > 0 && (
+                                                <div className="flex justify-between items-center py-1 border-b border-slate-50">
+                                                    <span className="text-slate-600">
+                                                        {config?.salaryComponents?.find(c => c.id === 'flexi')?.name || 'Flexi Allowance'}
+                                                    </span>
+                                                    <span className="font-semibold text-slate-800">₹{flexiVal.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+                                                </div>
+                                            )}
+                                            {specialVal > 0 && (
+                                                <div className="flex justify-between items-center py-1 border-b border-slate-50">
+                                                    <span className="text-slate-600">
+                                                        {config?.salaryComponents?.find(c => c.id === 'special')?.name || 'Special Allowance'}
+                                                    </span>
+                                                    <span className="font-semibold text-slate-800">₹{specialVal.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+                                                </div>
+                                            )}
+                                        </>
+                                    );
+                                })()}
+                                {(config?.salaryComponents || [])
+                                    .filter(c => (c.type === 'earning' || !c.type) && !['basic', 'hra', 'flexi', 'special'].includes(c.id))
+                                    .map(c => {
+                                        const val = parseFloat(salary[c.id] || 0);
+                                        if (val <= 0) return null;
+                                        return (
+                                            <div key={c.id} className="flex justify-between items-center py-1 border-b border-slate-50">
+                                                <span className="text-slate-600 flex items-center gap-1.5">
+                                                    {c.name}
+                                                    {c.includeInCTC === false && (
+                                                        <span className="text-[9px] font-medium text-slate-500 bg-slate-100 px-1 py-0.2 rounded border border-slate-200">
+                                                            Excl. CTC
+                                                        </span>
+                                                    )}
+                                                </span>
+                                                <span className="font-semibold text-slate-800">₹{val.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+                                            </div>
+                                        );
+                                    })}
                                 {(salary.customAllowances || []).map((item, idx) => (
                                     <div key={idx} className="flex justify-between items-center py-1 border-b border-slate-50">
                                         <span className="text-slate-600 flex items-center gap-1.5">
@@ -439,6 +477,23 @@ const SalaryPreviewCard = ({ formData, config }) => {
                                         <span className="font-semibold text-slate-800">₹{parseFloat(salary.insuranceAmount || '0').toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
                                     </div>
                                 )}
+                                {(config?.salaryComponents || [])
+                                    .filter(c => c.type === 'deduction' && (c.deductFromFlexi || c.includeInCTC))
+                                    .map(c => {
+                                        const val = parseFloat(salary[c.id] || 0);
+                                        if (val <= 0) return null;
+                                        return (
+                                            <div key={c.id} className="flex justify-between items-center py-1 border-b border-slate-50">
+                                                <span className="text-slate-600 flex items-center gap-1.5">
+                                                    {c.name}
+                                                    <span className="text-[9px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.2 rounded border border-blue-200">
+                                                        Flexi Benefit
+                                                    </span>
+                                                </span>
+                                                <span className="font-semibold text-slate-800">₹{val.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+                                            </div>
+                                        );
+                                    })}
                             </>
                         )}
 
@@ -482,6 +537,40 @@ const SalaryPreviewCard = ({ formData, config }) => {
                                         <span className="font-semibold text-rose-600">₹{parseFloat(item.amount || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
                                     </div>
                                 ))}
+                                {(config?.salaryComponents || [])
+                                    .filter(c => c.type === 'deduction' && !c.deductFromFlexi && !c.includeInCTC)
+                                    .map(c => {
+                                        const val = parseFloat(salary[c.id] || 0);
+                                        if (val <= 0) return null;
+                                        return (
+                                            <div key={c.id} className="flex justify-between items-center py-1 border-b border-slate-50">
+                                                <span className="text-slate-600 flex items-center gap-1.5">
+                                                    {c.name}
+                                                    <span className="text-[9px] font-semibold text-rose-600 bg-rose-50 px-1.5 py-0.2 rounded uppercase border border-rose-100">
+                                                        Deduction
+                                                    </span>
+                                                </span>
+                                                <span className="font-semibold text-rose-600">-₹{val.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+                                            </div>
+                                        );
+                                    })}
+                                {(config?.salaryComponents || [])
+                                    .filter(c => c.type === 'deduction' && (c.deductFromFlexi || c.includeInCTC))
+                                    .map(c => {
+                                        const val = parseFloat(salary[c.id] || 0);
+                                        if (val <= 0) return null;
+                                        return (
+                                            <div key={`flexi-${c.id}`} className="flex justify-between items-center py-1 border-b border-slate-50">
+                                                <span className="text-slate-600 flex items-center gap-1.5">
+                                                    {c.name}
+                                                    <span className="text-[9px] font-semibold text-blue-600 bg-blue-50 px-1.5 py-0.2 rounded border border-blue-200">
+                                                        From Flexi
+                                                    </span>
+                                                </span>
+                                                <span className="font-medium text-slate-500">₹{val.toLocaleString('en-IN', { maximumFractionDigits: 0 })} (Pre-tax)</span>
+                                            </div>
+                                        );
+                                    })}
                             </>
                         )}
 

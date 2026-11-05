@@ -885,6 +885,7 @@ const Onboarding = () => {
         <CompensationFormSection
           formData={formData}
           calculateSalaryBreakdown={calculateSalaryBreakdown}
+          payrollConfig={payrollConfig}
         />
       </div>
     );

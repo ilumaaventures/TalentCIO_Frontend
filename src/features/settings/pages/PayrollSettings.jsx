@@ -44,20 +44,20 @@ const STRATEGY_DEFAULTS = {
 };
 
 const getBaselineComponents = (config) => [
-  { id: 'basic',                    name: 'Basic Salary',                  type: 'earning',   taxable: true,  linkedTo: 'ctc_percent',   linkValue: config.basicPercent ?? 0.5,           frequency: 'monthly' },
-  { id: 'hra',                      name: 'HRA',                           type: 'earning',   taxable: false, linkedTo: 'basic_percent', linkValue: config.hraPercent ?? 0.5,             frequency: 'monthly' },
+  { id: 'basic',                    name: 'Basic Salary',                  type: 'earning',   taxable: true,  linkedTo: 'ctc_percent',   linkValue: config.basicPercent ?? 0.5,           frequency: 'monthly', includeInCTC: true },
+  { id: 'hra',                      name: 'HRA',                           type: 'earning',   taxable: false, linkedTo: 'basic_percent', linkValue: config.hraPercent ?? 0.5,             frequency: 'monthly', includeInCTC: true },
 ];
 
 const mergeSalaryComponents = (loadedComponents, config) => {
   const baselines = getBaselineComponents(config);
   const others = [
-    { id: 'special',          name: 'Special Allowance',  type: 'earning',   taxable: true,  linkedTo: 'fixed',       linkValue: 0, frequency: 'monthly' },
-    { id: 'flexi',            name: 'Flexi Allowance',    type: 'earning',   taxable: false, linkedTo: 'remainder',   linkValue: 0, frequency: 'monthly' },
-    { id: 'broadband',        name: 'Broadband',          type: 'earning',   taxable: false, linkedTo: 'fixed',       linkValue: 0, frequency: 'monthly' },
-    { id: 'petrol',           name: 'Petrol',             type: 'earning',   taxable: false, linkedTo: 'fixed',       linkValue: 0, frequency: 'monthly' },
-    { id: 'lta',              name: 'LTA',                type: 'earning',   taxable: false, linkedTo: 'fixed',       linkValue: 0, frequency: 'monthly' },
-    { id: 'conveyance',       name: 'Conveyance',         type: 'earning',   taxable: false, linkedTo: 'fixed',       linkValue: 0, frequency: 'monthly' },
-    { id: 'medical',          name: 'Medical Allowance',  type: 'earning',   taxable: false, linkedTo: 'fixed',       linkValue: 0, frequency: 'monthly' },
+    { id: 'special',          name: 'Special Allowance',  type: 'earning',   taxable: true,  linkedTo: 'fixed',       linkValue: 0, frequency: 'monthly', includeInCTC: true },
+    { id: 'flexi',            name: 'Flexi Allowance',    type: 'earning',   taxable: false, linkedTo: 'remainder',   linkValue: 0, frequency: 'monthly', includeInCTC: true },
+    { id: 'broadband',        name: 'Broadband',          type: 'earning',   taxable: false, linkedTo: 'fixed',       linkValue: 0, frequency: 'monthly', includeInCTC: true },
+    { id: 'petrol',           name: 'Petrol',             type: 'earning',   taxable: false, linkedTo: 'fixed',       linkValue: 0, frequency: 'monthly', includeInCTC: true },
+    { id: 'lta',              name: 'LTA',                type: 'earning',   taxable: false, linkedTo: 'fixed',       linkValue: 0, frequency: 'monthly', includeInCTC: true },
+    { id: 'conveyance',       name: 'Conveyance',         type: 'earning',   taxable: false, linkedTo: 'fixed',       linkValue: 0, frequency: 'monthly', includeInCTC: true },
+    { id: 'medical',          name: 'Medical Allowance',  type: 'earning',   taxable: false, linkedTo: 'fixed',       linkValue: 0, frequency: 'monthly', includeInCTC: true },
   ];
 
   const map = new Map();
@@ -81,7 +81,11 @@ const mergeSalaryComponents = (loadedComponents, config) => {
       'lwf_employer', 'lwf_employee', 'gratuity_rate',
       'default_working_days', 'default_insurance_amount', 'lta_max_percent'
     ].includes(c.id)) {
-      map.set(c.id, { ...c });
+      map.set(c.id, {
+        ...c,
+        includeInCTC: c.type === 'deduction' ? Boolean(c.deductFromFlexi || c.includeInCTC) : (c.includeInCTC !== undefined ? Boolean(c.includeInCTC) : true),
+        deductFromFlexi: c.type === 'deduction' ? Boolean(c.deductFromFlexi || c.includeInCTC) : false
+      });
     }
   });
 
@@ -206,7 +210,8 @@ const PayrollSettings = ({ embed = false, onSave }) => {
       taxable: false,
       linkedTo: 'fixed',
       linkValue: 0,
-      frequency: 'monthly'
+      frequency: 'monthly',
+      includeInCTC: true
     };
 
     setForm(prev => ({
@@ -232,6 +237,13 @@ const PayrollSettings = ({ embed = false, onSave }) => {
       const updated = { ...copy[index], [field]: value };
       if (field === 'linkedTo' && value === 'remainder') {
         updated.linkValue = 0;
+      }
+      if (field === 'type') {
+        if (value === 'deduction' && updated.includeInCTC === undefined) {
+          updated.includeInCTC = false;
+        } else if (value === 'earning' && updated.includeInCTC === undefined) {
+          updated.includeInCTC = true;
+        }
       }
       copy[index] = updated;
       
@@ -391,6 +403,8 @@ const PayrollSettings = ({ embed = false, onSave }) => {
               name: c.name || '',
               type: c.type || 'earning',
               taxable: !!c.taxable,
+              includeInCTC: c.type === 'deduction' ? Boolean(c.deductFromFlexi || c.includeInCTC) : (c.includeInCTC !== undefined ? Boolean(c.includeInCTC) : true),
+              deductFromFlexi: c.type === 'deduction' ? Boolean(c.deductFromFlexi || c.includeInCTC) : false,
               linkedTo: c.linkedTo || 'fixed',
               linkValue: c.linkedTo === 'remainder' ? 0 : Number(c.linkValue) || 0,
               frequency: c.frequency || 'monthly'
@@ -512,6 +526,7 @@ const PayrollSettings = ({ embed = false, onSave }) => {
                 <tr className="text-[11px] uppercase tracking-wider">
                   <th className="px-3 py-2">Component Name</th>
                   <th className="px-3 py-2">Type</th>
+                  <th className="px-3 py-2 text-center">Include in CTC / Deduction Source</th>
                   <th className="px-3 py-2 text-center">Taxable</th>
                   <th className="px-3 py-2">Linked to</th>
                   <th className="px-3 py-2">Link Value</th>
@@ -542,6 +557,35 @@ const PayrollSettings = ({ embed = false, onSave }) => {
                         <option value="earning">Earning</option>
                         <option value="deduction">Deduction</option>
                       </select>
+                    </td>
+                    <td className="px-3 py-2 text-center min-w-[155px]">
+                      {c.type === 'deduction' ? (
+                        <select
+                          value={c.deductFromFlexi || c.includeInCTC ? 'flexi' : 'gross'}
+                          onChange={(e) => {
+                            const isFlexi = e.target.value === 'flexi';
+                            updateComponent(index, 'deductFromFlexi', isFlexi);
+                            updateComponent(index, 'includeInCTC', isFlexi);
+                          }}
+                          className={`border rounded-lg px-2 py-1 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer ${
+                            c.deductFromFlexi || c.includeInCTC
+                              ? 'bg-blue-50 text-blue-700 border-blue-300'
+                              : 'bg-white text-slate-700 border-slate-300'
+                          }`}
+                        >
+                          <option value="flexi">Deduct from Flexi</option>
+                          <option value="gross">Deduct from Gross</option>
+                        </select>
+                      ) : (
+                        <input
+                          type="checkbox"
+                          checked={c.includeInCTC !== false}
+                          disabled={c.id === 'basic' || c.id === 'hra' || c.linkedTo === 'remainder'}
+                          onChange={(e) => updateComponent(index, 'includeInCTC', e.target.checked)}
+                          className="h-4.5 w-4.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 disabled:opacity-50 cursor-pointer"
+                          title={c.id === 'basic' || c.id === 'hra' || c.linkedTo === 'remainder' ? "Core CTC component must be included in CTC" : "Toggle whether this component is included in CTC"}
+                        />
+                      )}
                     </td>
                     <td className="px-3 py-2 text-center">
                       <input
