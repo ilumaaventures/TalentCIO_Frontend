@@ -2,9 +2,10 @@ import React from 'react';
 import { Download } from 'lucide-react';
 import { saveAs } from 'file-saver';
 
-const SalaryPreviewCard = ({ formData }) => {
+const SalaryPreviewCard = ({ formData, config }) => {
     const salary = formData?.salary || {};
     const compType = salary.compensationType || salary.payType || 'monthly_salary';
+    const display = config?.displayPreferences || {};
 
     const handleDownloadBreakup = () => {
         const rateCardList = Array.isArray(salary.rateCard) && salary.rateCard.length > 0 ? salary.rateCard : [];
@@ -360,89 +361,143 @@ const SalaryPreviewCard = ({ formData }) => {
                         <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-100">Live Estimate</span>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-2 bg-slate-50 p-2.5 rounded-xl border border-slate-200/60 mb-2">
-                        <div>
-                            <span className="text-[10px] text-slate-500 font-bold block uppercase">Annual CTC</span>
-                            <span className="text-sm font-extrabold text-slate-800">₹{parseFloat(salary.annualCTC || '0').toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+                    {(display.showAnnualCTC !== false || display.showMonthlyCTC !== false) && (
+                        <div className="grid grid-cols-2 gap-2 bg-slate-50 p-2.5 rounded-xl border border-slate-200/60 mb-2">
+                            {display.showAnnualCTC !== false && (
+                                <div>
+                                    <span className="text-[10px] text-slate-500 font-bold block uppercase">Annual CTC</span>
+                                    <span className="text-sm font-extrabold text-slate-800">₹{parseFloat(salary.annualCTC || '0').toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+                                </div>
+                            )}
+                            {display.showMonthlyCTC !== false && (
+                                <div>
+                                    <span className="text-[10px] text-slate-500 font-bold block uppercase">Monthly CTC</span>
+                                    <span className="text-sm font-extrabold text-slate-800">₹{parseFloat(salary.monthlyCTC || '0').toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+                                </div>
+                            )}
                         </div>
-                        <div>
-                            <span className="text-[10px] text-slate-500 font-bold block uppercase">Monthly CTC</span>
-                            <span className="text-sm font-extrabold text-slate-800">₹{parseFloat(salary.monthlyCTC || '0').toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
-                        </div>
-                    </div>
+                    )}
 
                     <div className="space-y-2 text-xs">
-                        <div className="font-bold text-slate-400 uppercase tracking-wider text-[10px] pt-1">Earnings Component Breakdown</div>
-                        <div className="flex justify-between items-center py-1 border-b border-slate-50">
-                            <span className="text-slate-600">Basic Salary</span>
-                            <span className="font-semibold text-slate-800">₹{parseFloat(salary.basic || '0').toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
-                        </div>
-                        <div className="flex justify-between items-center py-1 border-b border-slate-50">
-                            <span className="text-slate-600">HRA</span>
-                            <span className="font-semibold text-slate-800">₹{parseFloat(salary.hra || '0').toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
-                        </div>
-                        {parseFloat(salary.specialAllowance || 0) > 0 && (
-                            <div className="flex justify-between items-center py-1 border-b border-slate-50">
-                                <span className="text-slate-600">Flexi / Special Allowance</span>
-                                <span className="font-semibold text-slate-800">₹{parseFloat(salary.specialAllowance || '0').toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
-                            </div>
+                        {display.showEarningsBreakdown !== false && (
+                            <>
+                                <div className="font-bold text-slate-400 uppercase tracking-wider text-[10px] pt-1">Earnings Component Breakdown</div>
+                                <div className="flex justify-between items-center py-1 border-b border-slate-50">
+                                    <span className="text-slate-600">Basic Salary</span>
+                                    <span className="font-semibold text-slate-800">₹{parseFloat(salary.basic || '0').toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+                                </div>
+                                <div className="flex justify-between items-center py-1 border-b border-slate-50">
+                                    <span className="text-slate-600">HRA</span>
+                                    <span className="font-semibold text-slate-800">₹{parseFloat(salary.hra || '0').toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+                                </div>
+                                {parseFloat(salary.specialAllowance || 0) > 0 && (
+                                    <div className="flex justify-between items-center py-1 border-b border-slate-50">
+                                        <span className="text-slate-600">Flexi / Special Allowance</span>
+                                        <span className="font-semibold text-slate-800">₹{parseFloat(salary.specialAllowance || '0').toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+                                    </div>
+                                )}
+                                {(salary.customAllowances || []).map((item, idx) => (
+                                    <div key={idx} className="flex justify-between items-center py-1 border-b border-slate-50">
+                                        <span className="text-slate-600 flex items-center gap-1.5">
+                                            {item.name || 'Custom Allowance'}
+                                            {item.frequency && item.frequency !== 'monthly' && (
+                                                <span className="text-[9px] font-extrabold text-blue-600 bg-blue-50 px-1.5 py-0.2 rounded uppercase border border-blue-200">
+                                                    {item.frequency.replace('_', '-')}
+                                                </span>
+                                            )}
+                                        </span>
+                                        <span className="font-semibold text-slate-800">₹{parseFloat(item.amount || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+                                    </div>
+                                ))}
+                            </>
                         )}
-                        {(salary.customAllowances || []).map((item, idx) => (
-                            <div key={idx} className="flex justify-between items-center py-1 border-b border-slate-50">
-                                <span className="text-slate-600 flex items-center gap-1.5">
-                                    {item.name || 'Custom Allowance'}
-                                    {item.frequency && item.frequency !== 'monthly' && (
-                                        <span className="text-[9px] font-extrabold text-blue-600 bg-blue-50 px-1.5 py-0.2 rounded uppercase border border-blue-200">
-                                            {item.frequency.replace('_', '-')}
-                                        </span>
-                                    )}
-                                </span>
-                                <span className="font-semibold text-slate-800">₹{parseFloat(item.amount || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
-                            </div>
-                        ))}
 
-                        <div className="font-bold text-slate-400 uppercase tracking-wider text-[10px] pt-2">Employer Statutory & Benefits</div>
-                        <div className="flex justify-between items-center py-1 border-b border-slate-50">
-                            <span className="text-slate-600">PF Employer Cost</span>
-                            <span className="font-semibold text-slate-800">₹{parseFloat(salary.pfEmployer || '0').toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
-                        </div>
-                        <div className="flex justify-between items-center py-1 border-b border-slate-50">
-                            <span className="text-slate-600">Gratuity Accrual</span>
-                            <span className="font-semibold text-slate-800">₹{parseFloat(salary.gratuity || '0').toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
-                        </div>
+                        {display.showEmployerStatutory !== false && (
+                            <>
+                                <div className="font-bold text-slate-400 uppercase tracking-wider text-[10px] pt-2">Employer Statutory & Benefits</div>
+                                {display.showPFEmployer !== false && (
+                                    <div className="flex justify-between items-center py-1 border-b border-slate-50">
+                                        <span className="text-slate-600">PF Employer Cost</span>
+                                        <span className="font-semibold text-slate-800">₹{parseFloat(salary.pfEmployer || '0').toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+                                    </div>
+                                )}
+                                {display.showGratuity !== false && (
+                                    <div className="flex justify-between items-center py-1 border-b border-slate-50">
+                                        <span className="text-slate-600">Gratuity Accrual</span>
+                                        <span className="font-semibold text-slate-800">₹{parseFloat(salary.gratuity || '0').toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+                                    </div>
+                                )}
+                                {display.showLWFEmployer !== false && parseFloat(salary.lwfEmployer || 0) > 0 && (
+                                    <div className="flex justify-between items-center py-1 border-b border-slate-50">
+                                        <span className="text-slate-600">LWF Employer Cost</span>
+                                        <span className="font-semibold text-slate-800">₹{parseFloat(salary.lwfEmployer || '0').toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+                                    </div>
+                                )}
+                                {display.showInsurance !== false && parseFloat(salary.insuranceAmount || 0) > 0 && (
+                                    <div className="flex justify-between items-center py-1 border-b border-slate-50">
+                                        <span className="text-slate-600">Insurance Cost</span>
+                                        <span className="font-semibold text-slate-800">₹{parseFloat(salary.insuranceAmount || '0').toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+                                    </div>
+                                )}
+                            </>
+                        )}
 
-                        <div className="font-bold text-slate-400 uppercase tracking-wider text-[10px] pt-2">Employee Statutory & Deductions</div>
-                        <div className="flex justify-between items-center py-1 border-b border-slate-50">
-                            <span className="text-slate-600">Employee PF</span>
-                            <span className="font-semibold text-rose-600">₹{parseFloat(salary.pfEmployee || '0').toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
-                        </div>
-                        <div className="flex justify-between items-center py-1 border-b border-slate-50">
-                            <span className="text-slate-600">Professional Tax (PT)</span>
-                            <span className="font-semibold text-rose-600">₹{parseFloat(salary.professionalTax || '0').toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
-                        </div>
-                        {(salary.customDeductions || []).map((item, idx) => (
-                            <div key={idx} className="flex justify-between items-center py-1 border-b border-slate-50">
-                                <span className="text-slate-600 flex items-center gap-1.5">
-                                    {item.name || 'Custom Deduction'}
-                                    {item.frequency && item.frequency !== 'monthly' && (
-                                        <span className="text-[9px] font-extrabold text-rose-600 bg-rose-50 px-1.5 py-0.2 rounded uppercase border border-rose-200">
-                                            {item.frequency.replace('_', '-')}
+                        {display.showEmployeeDeductions !== false && (
+                            <>
+                                <div className="font-bold text-slate-400 uppercase tracking-wider text-[10px] pt-2">Employee Statutory & Deductions</div>
+                                {display.showPFEmployee !== false && (
+                                    <div className="flex justify-between items-center py-1 border-b border-slate-50">
+                                        <span className="text-slate-600">Employee PF</span>
+                                        <span className="font-semibold text-rose-600">₹{parseFloat(salary.pfEmployee || '0').toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+                                    </div>
+                                )}
+                                {display.showProfessionalTax !== false && (
+                                    <div className="flex justify-between items-center py-1 border-b border-slate-50">
+                                        <span className="text-slate-600">Professional Tax (PT)</span>
+                                        <span className="font-semibold text-rose-600">₹{parseFloat(salary.professionalTax || '0').toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+                                    </div>
+                                )}
+                                {display.showESIEmployee !== false && parseFloat(salary.esiEmployee || 0) > 0 && (
+                                    <div className="flex justify-between items-center py-1 border-b border-slate-50">
+                                        <span className="text-slate-600">Employee ESI</span>
+                                        <span className="font-semibold text-rose-600">₹{parseFloat(salary.esiEmployee || '0').toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+                                    </div>
+                                )}
+                                {display.showLWFEmployee !== false && parseFloat(salary.lwfEmployee || 0) > 0 && (
+                                    <div className="flex justify-between items-center py-1 border-b border-slate-50">
+                                        <span className="text-slate-600">Employee LWF</span>
+                                        <span className="font-semibold text-rose-600">₹{parseFloat(salary.lwfEmployee || '0').toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+                                    </div>
+                                )}
+                                {(salary.customDeductions || []).map((item, idx) => (
+                                    <div key={idx} className="flex justify-between items-center py-1 border-b border-slate-50">
+                                        <span className="text-slate-600 flex items-center gap-1.5">
+                                            {item.name || 'Custom Deduction'}
+                                            {item.frequency && item.frequency !== 'monthly' && (
+                                                <span className="text-[9px] font-extrabold text-rose-600 bg-rose-50 px-1.5 py-0.2 rounded uppercase border border-rose-200">
+                                                    {item.frequency.replace('_', '-')}
+                                                </span>
+                                            )}
                                         </span>
-                                    )}
-                                </span>
-                                <span className="font-semibold text-rose-600">₹{parseFloat(item.amount || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
-                            </div>
-                        ))}
+                                        <span className="font-semibold text-rose-600">₹{parseFloat(item.amount || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+                                    </div>
+                                ))}
+                            </>
+                        )}
 
                         <div className="pt-2 space-y-2">
-                            <div className="flex justify-between items-center py-2 bg-emerald-50 rounded-xl px-3 text-emerald-800 border border-emerald-200/80">
-                                <span className="font-bold text-xs uppercase">Gross Salary</span>
-                                <span className="font-extrabold text-base">₹{parseFloat(salary.monthlyGross || '0').toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
-                            </div>
-                            <div className="flex justify-between items-center py-2.5 bg-blue-50 rounded-xl px-3 text-blue-900 border border-blue-200/80 shadow-2xs">
-                                <span className="font-bold text-xs uppercase">Est. Net Take-Home</span>
-                                <span className="font-black text-lg">₹{parseFloat(salary.netTakeHome || '0').toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
-                            </div>
+                            {display.showGrossSalary !== false && (
+                                <div className="flex justify-between items-center py-2 bg-emerald-50 rounded-xl px-3 text-emerald-800 border border-emerald-200/80">
+                                    <span className="font-bold text-xs uppercase">Gross Salary</span>
+                                    <span className="font-extrabold text-base">₹{parseFloat(salary.monthlyGross || '0').toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+                                </div>
+                            )}
+                            {display.showNetTakeHome !== false && (
+                                <div className="flex justify-between items-center py-2.5 bg-blue-50 rounded-xl px-3 text-blue-900 border border-blue-200/80 shadow-2xs">
+                                    <span className="font-bold text-xs uppercase">Est. Net Take-Home</span>
+                                    <span className="font-black text-lg">₹{parseFloat(salary.netTakeHome || '0').toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>

@@ -318,37 +318,49 @@ const CompensationFormSection = ({ formData, calculateSalaryBreakdown, onChange,
                 </div>
 
                 {/* CTC Components Summary Card — ONLY for Structured Salary */}
-                {isSalaried && useComponents && (
+                {isSalaried && useComponents && (config?.displayPreferences?.showCtcComponentsCard !== false) && (
                     <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-2xs space-y-3">
                         <div className="flex items-center justify-between border-b border-slate-100 pb-2">
                             <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">CTC Components</span>
                             <span className="text-[10px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full font-bold">Synced with payroll settings</span>
                         </div>
                         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
-                            <div className="p-2.5 bg-slate-50 border border-slate-200/70 rounded-xl">
-                                <span className="block text-[10px] font-bold text-slate-500 uppercase">PF Employer</span>
-                                <span className="text-sm font-black text-slate-800">{fmtMoney(salary.pfEmployer)}</span>
-                            </div>
-                            <div className="p-2.5 bg-slate-50 border border-slate-200/70 rounded-xl">
-                                <span className="block text-[10px] font-bold text-slate-500 uppercase">Gratuity</span>
-                                <span className="text-sm font-black text-slate-800">{fmtMoney(salary.gratuity)}</span>
-                            </div>
-                            <div className="p-2.5 bg-slate-50 border border-slate-200/70 rounded-xl">
-                                <span className="block text-[10px] font-bold text-slate-500 uppercase">LWF Employer</span>
-                                <span className="text-sm font-black text-slate-800">{fmtMoney(salary.lwfEmployer)}</span>
-                            </div>
-                            <div className="p-2.5 bg-indigo-50/50 border border-indigo-100 rounded-xl">
-                                <span className="block text-[10px] font-bold text-indigo-600 uppercase">Annual CTC</span>
-                                <span className="text-sm font-black text-indigo-900">{fmtMoney(salary.annualCTC)}</span>
-                            </div>
-                            <div className="p-2.5 bg-slate-50 border border-slate-200/70 rounded-xl">
-                                <span className="block text-[10px] font-bold text-slate-500 uppercase">Gross Salary</span>
-                                <span className="text-sm font-black text-slate-800">{fmtMoney(salary.monthlyGross)}</span>
-                            </div>
-                            <div className="p-2.5 bg-emerald-50/50 border border-emerald-100 rounded-xl">
-                                <span className="block text-[10px] font-bold text-emerald-700 uppercase">Net Take-Home Estimate</span>
-                                <span className="text-sm font-black text-emerald-900">{fmtMoney(salary.netTakeHome)}</span>
-                            </div>
+                            {(config?.displayPreferences?.showPFEmployer !== false) && (
+                                <div className="p-2.5 bg-slate-50 border border-slate-200/70 rounded-xl">
+                                    <span className="block text-[10px] font-bold text-slate-500 uppercase">PF Employer</span>
+                                    <span className="text-sm font-black text-slate-800">{fmtMoney(salary.pfEmployer)}</span>
+                                </div>
+                            )}
+                            {(config?.displayPreferences?.showGratuity !== false) && (
+                                <div className="p-2.5 bg-slate-50 border border-slate-200/70 rounded-xl">
+                                    <span className="block text-[10px] font-bold text-slate-500 uppercase">Gratuity</span>
+                                    <span className="text-sm font-black text-slate-800">{fmtMoney(salary.gratuity)}</span>
+                                </div>
+                            )}
+                            {(config?.displayPreferences?.showLWFEmployer !== false) && (
+                                <div className="p-2.5 bg-slate-50 border border-slate-200/70 rounded-xl">
+                                    <span className="block text-[10px] font-bold text-slate-500 uppercase">LWF Employer</span>
+                                    <span className="text-sm font-black text-slate-800">{fmtMoney(salary.lwfEmployer)}</span>
+                                </div>
+                            )}
+                            {(config?.displayPreferences?.showAnnualCTC !== false) && (
+                                <div className="p-2.5 bg-indigo-50/50 border border-indigo-100 rounded-xl">
+                                    <span className="block text-[10px] font-bold text-indigo-600 uppercase">Annual CTC</span>
+                                    <span className="text-sm font-black text-indigo-900">{fmtMoney(salary.annualCTC)}</span>
+                                </div>
+                            )}
+                            {(config?.displayPreferences?.showGrossSalary !== false) && (
+                                <div className="p-2.5 bg-slate-50 border border-slate-200/70 rounded-xl">
+                                    <span className="block text-[10px] font-bold text-slate-500 uppercase">Gross Salary</span>
+                                    <span className="text-sm font-black text-slate-800">{fmtMoney(salary.monthlyGross)}</span>
+                                </div>
+                            )}
+                            {(config?.displayPreferences?.showNetTakeHome !== false) && (
+                                <div className="p-2.5 bg-emerald-50/50 border border-emerald-100 rounded-xl">
+                                    <span className="block text-[10px] font-bold text-emerald-700 uppercase">Net Take-Home Estimate</span>
+                                    <span className="text-sm font-black text-emerald-900">{fmtMoney(salary.netTakeHome)}</span>
+                                </div>
+                            )}
                         </div>
                     </div>
                 )}
@@ -793,7 +805,7 @@ const CompensationFormSection = ({ formData, calculateSalaryBreakdown, onChange,
 
             {/* Right Side: Live Salary Structure Preview / Strategy Snapshot */}
             <div>
-                <SalaryPreviewCard formData={formData} />
+                <SalaryPreviewCard formData={formData} config={config} />
             </div>
         </div>
     );

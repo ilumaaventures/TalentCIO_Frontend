@@ -1,5 +1,6 @@
 import {
   DEFAULT_PAYROLL_CONFIG,
+  DEFAULT_DISPLAY_PREFERENCES,
   STRATEGY_DEFAULTS,
   fmtMoney,
   parseBool,
@@ -23,6 +24,7 @@ import {
 
 export {
   DEFAULT_PAYROLL_CONFIG,
+  DEFAULT_DISPLAY_PREFERENCES,
   STRATEGY_DEFAULTS,
   fmtMoney,
   parseBool,
@@ -48,11 +50,20 @@ export const createDefaultSalaryData = (breakup = {}, comp = {}, user = null, co
   const baseDefaults = STRATEGY_DEFAULTS[compType] || { pfEligible: true, esiEligible: true, ptApplicable: true, gratuityEligible: true, lwfApplicable: true };
 
   const resolveInitFlag = (val, overrideVal, baseVal) => {
+    if (overrideVal === 'force_eligible' || overrideVal === true || overrideVal === 'true') {
+      return true;
+    }
+    if (overrideVal === 'force_exempt' || overrideVal === false || overrideVal === 'false') {
+      return false;
+    }
     if (val !== undefined && val !== null && val !== '') {
       return parseBool(val);
     }
-    if (overrideVal !== undefined && overrideVal !== null) {
-      return Boolean(overrideVal);
+    if (overrideVal === 'default_eligible' || overrideVal === 'eligible') {
+      return true;
+    }
+    if (overrideVal === 'default_exempt' || overrideVal === 'exempt') {
+      return false;
     }
     return Boolean(baseVal);
   };
@@ -220,6 +231,7 @@ export const normalizePayrollConfig = (config = {}) => {
     ltaMaxPercent: getNum(cfg.ltaMaxPercent, DEFAULT_PAYROLL_CONFIG.ltaMaxPercent),
     standardMonthlyHours: getNum(cfg.standardMonthlyHours, DEFAULT_PAYROLL_CONFIG.standardMonthlyHours),
     compensationTypeDefaults: cfg.compensationTypeDefaults || DEFAULT_PAYROLL_CONFIG.compensationTypeDefaults || {},
+    displayPreferences: cfg.displayPreferences ? { ...DEFAULT_DISPLAY_PREFERENCES, ...cfg.displayPreferences } : { ...DEFAULT_DISPLAY_PREFERENCES },
     salaryComponents: cfg.salaryComponents || null,
   };
 };
@@ -302,11 +314,20 @@ export const buildMasterSalaryStructure = (source = {}, configInput = {}) => {
   };
 
   const resolveStatutory = (sourceVal, overrideVal, baseVal) => {
+    if (overrideVal === 'force_eligible' || overrideVal === true || overrideVal === 'true') {
+      return true;
+    }
+    if (overrideVal === 'force_exempt' || overrideVal === false || overrideVal === 'false') {
+      return false;
+    }
     if (sourceVal !== undefined && sourceVal !== null && sourceVal !== '') {
       return parseBool(sourceVal);
     }
-    if (overrideVal !== undefined && overrideVal !== null) {
-      return Boolean(overrideVal);
+    if (overrideVal === 'default_eligible' || overrideVal === 'eligible') {
+      return true;
+    }
+    if (overrideVal === 'default_exempt' || overrideVal === 'exempt') {
+      return false;
     }
     return Boolean(baseVal);
   };

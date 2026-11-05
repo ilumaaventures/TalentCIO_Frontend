@@ -1,3 +1,30 @@
+export const DEFAULT_DISPLAY_PREFERENCES = {
+  // CTC & Top-Level Metrics
+  showAnnualCTC: true,
+  showMonthlyCTC: true,
+  showGrossSalary: true,
+  showNetTakeHome: true,
+  showCtcComponentsCard: true,
+
+  // Earnings Breakdown
+  showEarningsBreakdown: true,
+
+  // Employer Statutory & Benefits
+  showEmployerStatutory: true,
+  showPFEmployer: true,
+  showGratuity: true,
+  showLWFEmployer: true,
+  showInsurance: true,
+
+  // Employee Statutory & Deductions
+  showEmployeeDeductions: true,
+  showPFEmployee: true,
+  showESIEmployee: true,
+  showProfessionalTax: true,
+  showLWFEmployee: true,
+  showTDS: true,
+};
+
 export const DEFAULT_PAYROLL_CONFIG = {
   basicPercent: 0.5,
   hraPercent: 0.5,
@@ -18,6 +45,7 @@ export const DEFAULT_PAYROLL_CONFIG = {
   ltaMaxPercent: 0.0833,
   standardMonthlyHours: 160,
   compensationTypeDefaults: {},
+  displayPreferences: DEFAULT_DISPLAY_PREFERENCES,
 };
 
 export const STRATEGY_DEFAULTS = {

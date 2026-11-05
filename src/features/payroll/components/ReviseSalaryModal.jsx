@@ -239,6 +239,9 @@ export const ReviseSalaryModal = ({
                     {/* CTC Components Summary box */}
                     {(() => {
                         const preview = draftSalaryPreview || {};
+                        const prefs = payrollConfig?.displayPreferences || {};
+                        if (prefs.showCtcComponentsCard === false) return null;
+
                         return (
                             <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-4">
                                 <div className="flex justify-between items-center border-b border-slate-100 pb-2">
@@ -246,19 +249,19 @@ export const ReviseSalaryModal = ({
                                     <span className="text-[10px] text-slate-400">Synced with payroll settings</span>
                                 </div>
                                 <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-xs">
-                                    {preview.pfEmployer > 0 && (
+                                    {prefs.showPFEmployer !== false && preview.pfEmployer > 0 && (
                                         <div className="bg-slate-50 p-3 rounded border border-slate-100 text-center">
                                             <span className="text-[10px] text-slate-500 uppercase font-semibold">PF Employer</span>
                                             <strong className="text-xs text-slate-700 mt-1 block font-bold">{fmtMoney(preview.pfEmployer)}</strong>
                                         </div>
                                     )}
-                                    {preview.gratuity > 0 && (
+                                    {prefs.showGratuity !== false && preview.gratuity > 0 && (
                                         <div className="bg-slate-50 p-3 rounded border border-slate-100 text-center">
                                             <span className="text-[10px] text-slate-500 uppercase font-semibold">Gratuity</span>
                                             <strong className="text-xs text-slate-700 mt-1 block font-bold">{fmtMoney(preview.gratuity)}</strong>
                                         </div>
                                     )}
-                                    {preview.lwfEmployer > 0 && (
+                                    {prefs.showLWFEmployer !== false && preview.lwfEmployer > 0 && (
                                         <div className="bg-slate-50 p-3 rounded border border-slate-100 text-center">
                                             <span className="text-[10px] text-slate-500 uppercase font-semibold">LWF Employer</span>
                                             <strong className="text-xs text-slate-700 mt-1 block font-bold">{fmtMoney(preview.lwfEmployer)}</strong>
@@ -270,18 +273,24 @@ export const ReviseSalaryModal = ({
                                             <strong className="text-xs text-slate-700 mt-1 block font-bold">{fmtMoney(preview.esiEmployer)}</strong>
                                         </div>
                                     )}
-                                    <div className="bg-slate-50 p-3 rounded border border-slate-100 text-center">
-                                        <span className="text-[10px] text-slate-500 uppercase font-semibold">Annual CTC</span>
-                                        <strong className="text-xs text-slate-700 mt-1 block font-bold">{fmtMoney((Number(revisionDraft.newCTC) || 0) * 12)}</strong>
-                                    </div>
-                                    <div className="bg-slate-50 p-3 rounded border border-slate-100 text-center">
-                                        <span className="text-[10px] text-slate-500 uppercase font-semibold">Gross Salary</span>
-                                        <strong className="text-xs text-slate-700 mt-1 block font-bold">{fmtMoney(preview.totalEarnings || preview.grossSalary || 0)}</strong>
-                                    </div>
-                                    <div className="bg-slate-50 p-3 rounded border border-slate-100 text-center">
-                                        <span className="text-[10px] text-slate-500 uppercase font-semibold">Net Take-Home Estimate</span>
-                                        <strong className="text-xs text-slate-700 mt-1 block font-bold">{fmtMoney(preview.netTakeHome || 0)}</strong>
-                                    </div>
+                                    {prefs.showAnnualCTC !== false && (
+                                        <div className="bg-slate-50 p-3 rounded border border-slate-100 text-center">
+                                            <span className="text-[10px] text-slate-500 uppercase font-semibold">Annual CTC</span>
+                                            <strong className="text-xs text-slate-700 mt-1 block font-bold">{fmtMoney((Number(revisionDraft.newCTC) || 0) * 12)}</strong>
+                                        </div>
+                                    )}
+                                    {prefs.showGrossSalary !== false && (
+                                        <div className="bg-slate-50 p-3 rounded border border-slate-100 text-center">
+                                            <span className="text-[10px] text-slate-500 uppercase font-semibold">Gross Salary</span>
+                                            <strong className="text-xs text-slate-700 mt-1 block font-bold">{fmtMoney(preview.totalEarnings || preview.grossSalary || 0)}</strong>
+                                        </div>
+                                    )}
+                                    {prefs.showNetTakeHome !== false && (
+                                        <div className="bg-slate-50 p-3 rounded border border-slate-100 text-center">
+                                            <span className="text-[10px] text-slate-500 uppercase font-semibold">Net Take-Home Estimate</span>
+                                            <strong className="text-xs text-slate-700 mt-1 block font-bold">{fmtMoney(preview.netTakeHome || 0)}</strong>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         );
