@@ -61,16 +61,23 @@ export const persistAuthUser = (user) => {
 };
 
 export const getStoredAccessToken = () => (
-  sessionStorage.getItem(AUTH_TOKEN_KEY) || ''
+  sessionStorage.getItem(AUTH_TOKEN_KEY)
+  || localStorage.getItem(AUTH_TOKEN_KEY)
+  || localStorage.getItem(LEGACY_TOKEN_KEY)
+  || ''
 );
 
 export const persistAccessToken = (token) => {
   if (token) {
     sessionStorage.setItem(AUTH_TOKEN_KEY, token);
+    localStorage.setItem(AUTH_TOKEN_KEY, token);
+    localStorage.setItem(LEGACY_TOKEN_KEY, token);
     return;
   }
 
   sessionStorage.removeItem(AUTH_TOKEN_KEY);
+  localStorage.removeItem(AUTH_TOKEN_KEY);
+  localStorage.removeItem(LEGACY_TOKEN_KEY);
 };
 
 export const markAuthSessionActive = () => {
@@ -80,6 +87,8 @@ export const markAuthSessionActive = () => {
 export const hasAuthSessionHint = () => (
   sessionStorage.getItem(AUTH_SESSION_HINT_KEY) === '1'
   || Boolean(sessionStorage.getItem(AUTH_TOKEN_KEY))
+  || Boolean(localStorage.getItem(AUTH_TOKEN_KEY))
+  || Boolean(localStorage.getItem(LEGACY_TOKEN_KEY))
   || Boolean(localStorage.getItem(AUTH_USER_KEY))
 );
 
@@ -96,6 +105,7 @@ export const clearScopedCaches = () => {
 
 export const clearAuthSession = ({ preserveTenant = false, userId = '' } = {}) => {
   localStorage.removeItem(LEGACY_TOKEN_KEY);
+  localStorage.removeItem(AUTH_TOKEN_KEY);
   localStorage.removeItem(AUTH_USER_KEY);
   sessionStorage.removeItem(AUTH_TOKEN_KEY);
   if (!preserveTenant) {
