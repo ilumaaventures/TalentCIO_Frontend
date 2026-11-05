@@ -724,7 +724,11 @@ const SalaryCalculator = ({ embedded = false }) => {
                           const compTypeKey = type === 'hourly' ? 'hourly' : type === 'flat' ? 'flat_project' : 'monthly_salary';
                           const compDefaults = (config?.compensationTypeDefaults && config.compensationTypeDefaults[compTypeKey]) || {};
                           const baseDefaults = STRATEGY_DEFAULTS?.[compTypeKey] || { pfEligible: type === 'salaried', esiEligible: type === 'salaried', ptApplicable: type === 'salaried', gratuityEligible: type === 'salaried', lwfApplicable: type === 'salaried' };
-                          const resolveFlag = (overrideVal, baseVal) => overrideVal !== undefined ? Boolean(overrideVal) : Boolean(baseVal);
+                          const resolveFlag = (overrideVal, baseVal) => {
+                            if (overrideVal === 'force_eligible' || overrideVal === 'default_eligible' || overrideVal === true || overrideVal === 'true') return true;
+                            if (overrideVal === 'force_exempt' || overrideVal === 'default_exempt' || overrideVal === false || overrideVal === 'false') return false;
+                            return Boolean(baseVal);
+                          };
 
                           setForm((prev) => ({
                             ...prev,

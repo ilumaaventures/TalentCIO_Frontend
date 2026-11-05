@@ -124,7 +124,11 @@ const CompensationFormSection = ({ formData, calculateSalaryBreakdown, onChange,
                                     
                                     const compDefaults = (config?.compensationTypeDefaults && config.compensationTypeDefaults[newType]) || {};
                                     const baseDefaults = STRATEGY_DEFAULTS?.[newType] || { pfEligible: false, esiEligible: false, ptApplicable: false, gratuityEligible: false, lwfApplicable: false };
-                                    const resolveFlag = (overrideVal, baseVal) => overrideVal !== undefined ? Boolean(overrideVal) : Boolean(baseVal);
+                                    const resolveFlag = (overrideVal, baseVal) => {
+                                        if (overrideVal === 'force_eligible' || overrideVal === 'default_eligible' || overrideVal === true || overrideVal === 'true') return true;
+                                        if (overrideVal === 'force_exempt' || overrideVal === 'default_exempt' || overrideVal === false || overrideVal === 'false') return false;
+                                        return Boolean(baseVal);
+                                    };
 
                                     onBreakdownChange({
                                         compensationType: newType,
