@@ -178,6 +178,9 @@ const HREmailSend = () => {
     };
 
     const handleToggleDossierDoc = (userId, doc) => {
+        if (commonDossierCategory) {
+            setCommonDossierCategory("");
+        }
         setRecipientDossierDocs((prev) => {
             const currentList = prev[userId] || [];
             const exists = currentList.some((d) => String(d._id) === String(doc._id));
@@ -1144,6 +1147,60 @@ const HREmailSend = () => {
                         </div>
                     </div>
 
+                    {/* Per-Recipient Attachment Verification Breakdown */}
+                    {(totalPerUserDossierDocsCount > 0 || commonDossierCategory) && (
+                        <div className="mt-3.5 rounded-xl border border-slate-200 bg-slate-50 p-3.5">
+                            <div className="flex items-center justify-between text-slate-800 mb-1.5">
+                                <div className="flex items-center gap-1.5 font-bold text-xs">
+                                    <Paperclip size={13} className="text-blue-600" />
+                                    <span>Recipient-Specific Attachment Verification</span>
+                                </div>
+                                <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                                    Strictly Isolated Per Recipient
+                                </span>
+                            </div>
+                            <p className="text-[10.5px] text-slate-500 mb-2.5">
+                                Each employee receives only their own verified document(s) listed below. Files are never sent to alternate recipients.
+                            </p>
+                            <div className="divide-y divide-slate-200/70 max-h-48 overflow-y-auto pr-1">
+                                {selectedEmployees.map((emp) => {
+                                    const userDocs = recipientDossierDocs[emp._id] || [];
+                                    let resolvedDocList = userDocs.map((d) => ({ name: d.fileName || d.title, category: d.category }));
+                                    if (resolvedDocList.length === 0 && commonDossierCategory) {
+                                        const matched = (availableRecipientDocs.documentsByUser[emp._id] || []).find(
+                                            (d) => String(d.category || '').toLowerCase() === commonDossierCategory.toLowerCase() ||
+                                                   String(d.title || '').toLowerCase().includes(commonDossierCategory.toLowerCase())
+                                        );
+                                        if (matched) resolvedDocList = [{ name: matched.fileName || matched.title, category: matched.category }];
+                                    }
+                                    return (
+                                        <div key={emp._id} className="py-2 flex items-center justify-between text-xs">
+                                            <div className="min-w-0 pr-2">
+                                                <span className="font-semibold text-slate-800">{emp.firstName} {emp.lastName}</span>
+                                                <span className="text-[10px] text-slate-400 ml-1.5">({emp.department || 'Employee'})</span>
+                                            </div>
+                                            <div className="shrink-0 text-right">
+                                                {resolvedDocList.length > 0 ? (
+                                                    <div className="flex flex-col items-end gap-1">
+                                                        {resolvedDocList.map((f, i) => (
+                                                            <span key={i} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 text-[11px] font-semibold border border-emerald-200">
+                                                                <Check size={11} className="text-emerald-600" /> {f.name}
+                                                            </span>
+                                                        ))}
+                                                    </div>
+                                                ) : (
+                                                    <span className="text-[11px] text-slate-400 italic">
+                                                        No dossier files attached (general files only)
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
+
                     <div className="mt-4 rounded-xl border border-blue-100 bg-blue-50 p-3.5">
                         <div className="text-[10px] font-bold uppercase tracking-wider text-blue-700">Preview</div>
                         <div className="mt-1 text-xs font-bold text-slate-900">{previewSubject || 'No subject'}</div>
@@ -1305,7 +1362,13 @@ const HREmailSend = () => {
                                                             return (
                                                                 <div
                                                                     key={category}
-                                                                    onClick={() => setCommonDossierCategory(isSelected ? '' : category)}
+                                                                    onClick={() => {
+                                                                        const nextCat = isSelected ? '' : category;
+                                                                        setCommonDossierCategory(nextCat);
+                                                                        if (nextCat) {
+                                                                            setRecipientDossierDocs({});
+                                                                        }
+                                                                    }}
                                                                     className={`flex flex-col justify-between p-3 rounded-xl border transition cursor-pointer ${
                                                                         isSelected
                                                                             ? 'border-blue-600 bg-blue-50/90 ring-2 ring-blue-500/20 shadow-xs'
@@ -1452,6 +1515,7 @@ const HREmailSend = () => {
                                                                         <button
                                                                             type="button"
                                                                             onClick={() => {
+                                                                                if (commonDossierCategory) setCommonDossierCategory('');
                                                                                 if (selectedForCurrent.length === docs.length) {
                                                                                     setRecipientDossierDocs((prev) => ({ ...prev, [currentEmpId]: [] }));
                                                                                 } else {
@@ -1518,6 +1582,11 @@ const HREmailSend = () => {
                                                                                                 {doc.category || 'General'}
                                                                                             </span>
                                                                                             <span className="truncate">{doc.fileName}</span>
+                                                                                            {doc.uploadDate && (
+                                                                                                <span className="text-slate-400 font-normal shrink-0">
+                                                                                                    • {new Date(doc.uploadDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })} {new Date(doc.uploadDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                                                                </span>
+                                                                                            )}
                                                                                         </div>
                                                                                     </div>
                                                                                 </div>
