@@ -5,6 +5,7 @@ import CustomAllowancesEditor from './CustomAllowancesEditor';
 import CustomDeductionsEditor from './CustomDeductionsEditor';
 import AdditionalBenefitsEditor from './AdditionalBenefitsEditor';
 import SalaryPreviewCard from './SalaryPreviewCard';
+import { STRATEGY_DEFAULTS } from '@/features/payroll/utils/payroll';
 
 const PT_STATE_LIST = [
     { code: 'AP', name: 'Andhra Pradesh', leviesPT: true },
@@ -120,7 +121,20 @@ const CompensationFormSection = ({ formData, calculateSalaryBreakdown, onChange,
                                 onChange={(e) => {
                                     const newType = e.target.value;
                                     const defaultAttMode = newType === 'hourly' ? 'timesheet' : newType === 'piece_rate' ? 'unit_count' : newType === 'flat_project' || newType === 'milestone' || newType === 'commission_only' ? 'none' : 'attendance';
-                                    onBreakdownChange({ compensationType: newType, attendanceMode: defaultAttMode });
+                                    
+                                    const compDefaults = (config?.compensationTypeDefaults && config.compensationTypeDefaults[newType]) || {};
+                                    const baseDefaults = STRATEGY_DEFAULTS?.[newType] || { pfEligible: false, esiEligible: false, ptApplicable: false, gratuityEligible: false, lwfApplicable: false };
+                                    const resolveFlag = (overrideVal, baseVal) => overrideVal !== undefined ? Boolean(overrideVal) : Boolean(baseVal);
+
+                                    onBreakdownChange({
+                                        compensationType: newType,
+                                        attendanceMode: defaultAttMode,
+                                        pfEnabled: resolveFlag(compDefaults.pfEligible ?? compDefaults.pfEnabled, baseDefaults.pfEligible),
+                                        esiEnabled: resolveFlag(compDefaults.esiEligible ?? compDefaults.esiEnabled, baseDefaults.esiEligible),
+                                        ptEnabled: resolveFlag(compDefaults.ptApplicable ?? compDefaults.ptEnabled, baseDefaults.ptApplicable),
+                                        gratuityEnabled: resolveFlag(compDefaults.gratuityEligible ?? compDefaults.gratuityEnabled, baseDefaults.gratuityEligible),
+                                        lwfEnabled: resolveFlag(compDefaults.lwfApplicable ?? compDefaults.lwfEnabled, baseDefaults.lwfApplicable),
+                                    });
                                 }}
                                 className="zoho-input"
                             >

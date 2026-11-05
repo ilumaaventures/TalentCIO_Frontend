@@ -111,7 +111,7 @@ const PayrollSettings = ({ embed = false, onSave }) => {
       'Reset all payroll settings to factory defaults?\n\nThis will restore default salary components, PF, ESI, LWF, Gratuity rates, and general policy values.\n\nClick OK to confirm.'
     )) return;
     const defaultComponents = mergeSalaryComponents([], DEFAULT_PAYROLL_CONFIG);
-    setForm({ ...DEFAULT_PAYROLL_CONFIG, salaryComponents: defaultComponents });
+    setForm({ ...DEFAULT_PAYROLL_CONFIG, salaryComponents: defaultComponents, compensationTypeDefaults: {} });
     toast.success('Settings reset to defaults. Click Save to apply.');
   };
 
@@ -377,10 +377,13 @@ const PayrollSettings = ({ embed = false, onSave }) => {
             }) : [];
         } else if (key === 'pfCalculationType') {
           payload[key] = value || 'percent';
+        } else if (key === 'compensationTypeDefaults') {
+          payload[key] = (value && typeof value === 'object') ? value : {};
         } else {
           payload[key] = Number(value) || 0;
         }
       });
+      payload.compensationTypeDefaults = form.compensationTypeDefaults || {};
 
       await api.put('/payroll/config', payload);
       toast.success('Payroll configuration settings saved successfully');

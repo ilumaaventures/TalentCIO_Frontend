@@ -5,7 +5,7 @@ import * as XLSX from 'xlsx';
 import api from '@/lib/apiClient';
 import { useAuth } from '@/features/auth/context/AuthContext';
 import PayrollSettings from '@/features/settings/pages/PayrollSettings';
-import { buildPayrollSnapshot, buildMasterSalaryStructure, DEFAULT_PAYROLL_CONFIG, fmtMoney } from '@/features/payroll/utils/payroll';
+import { buildPayrollSnapshot, buildMasterSalaryStructure, DEFAULT_PAYROLL_CONFIG, STRATEGY_DEFAULTS, fmtMoney } from '@/features/payroll/utils/payroll';
 
 const toAnnual = (value) => (Number(value) || 0) * 12;
 
@@ -721,15 +721,20 @@ const SalaryCalculator = ({ embedded = false }) => {
                         value={form.payType || 'salaried'}
                         onChange={(e) => {
                           const type = e.target.value;
+                          const compTypeKey = type === 'hourly' ? 'hourly' : type === 'flat' ? 'flat_project' : 'monthly_salary';
+                          const compDefaults = (config?.compensationTypeDefaults && config.compensationTypeDefaults[compTypeKey]) || {};
+                          const baseDefaults = STRATEGY_DEFAULTS?.[compTypeKey] || { pfEligible: type === 'salaried', esiEligible: type === 'salaried', ptApplicable: type === 'salaried', gratuityEligible: type === 'salaried', lwfApplicable: type === 'salaried' };
+                          const resolveFlag = (overrideVal, baseVal) => overrideVal !== undefined ? Boolean(overrideVal) : Boolean(baseVal);
+
                           setForm((prev) => ({
                             ...prev,
                             payType: type,
+                            pfEnabled: resolveFlag(compDefaults.pfEligible ?? compDefaults.pfEnabled, baseDefaults.pfEligible),
+                            esiEnabled: resolveFlag(compDefaults.esiEligible ?? compDefaults.esiEnabled, baseDefaults.esiEligible),
+                            ptEnabled: resolveFlag(compDefaults.ptApplicable ?? compDefaults.ptEnabled, baseDefaults.ptApplicable),
+                            lwfEnabled: resolveFlag(compDefaults.lwfApplicable ?? compDefaults.lwfEnabled, baseDefaults.lwfApplicable),
+                            gratuityEnabled: resolveFlag(compDefaults.gratuityEligible ?? compDefaults.gratuityEnabled, baseDefaults.gratuityEligible),
                             ...(type === 'hourly' ? {
-                              pfEnabled: false,
-                              esiEnabled: false,
-                              ptEnabled: false,
-                              lwfEnabled: false,
-                              gratuityEnabled: false,
                               includePfInCTC: false,
                               includeGratuityInCTC: false,
                               flexiAmount: 0,
@@ -741,11 +746,6 @@ const SalaryCalculator = ({ embedded = false }) => {
                               monthlyCTC: (prev.hourlyRate || 0) * (prev.hoursWorked || 160),
                               annualCTC: (prev.hourlyRate || 0) * (prev.hoursWorked || 160) * 12
                             } : type === 'flat' ? {
-                              pfEnabled: false,
-                              esiEnabled: false,
-                              ptEnabled: false,
-                              lwfEnabled: false,
-                              gratuityEnabled: false,
                               includePfInCTC: false,
                               includeGratuityInCTC: false,
                               flexiAmount: 0,
@@ -757,11 +757,6 @@ const SalaryCalculator = ({ embedded = false }) => {
                               monthlyCTC: Number(prev.flatSalary) || 0,
                               annualCTC: (Number(prev.flatSalary) || 0) * 12
                             } : {
-                              pfEnabled: true,
-                              esiEnabled: true,
-                              ptEnabled: true,
-                              lwfEnabled: true,
-                              gratuityEnabled: true,
                               includePfInCTC: false,
                               includeGratuityInCTC: true,
                             })
