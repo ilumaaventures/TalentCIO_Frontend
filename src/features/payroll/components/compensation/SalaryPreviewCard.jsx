@@ -471,7 +471,7 @@ const SalaryPreviewCard = ({ formData, config }) => {
                                         <span className="font-semibold text-slate-800">₹{parseFloat(salary.lwfEmployer || '0').toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
                                     </div>
                                 )}
-                                {display.showInsurance !== false && parseFloat(salary.insuranceAmount || 0) > 0 && (
+                                {display.showInsurance !== false && parseFloat(salary.insuranceAmount || 0) > 0 && !((config?.salaryComponents || []).some(c => c.type === 'deduction' && (c.id === 'medical_insurance' || c.id === 'insurance' || (c.name && c.name.toLowerCase().includes('insurance'))) && (c.deductFromFlexi || c.includeInCTC))) && (
                                     <div className="flex justify-between items-center py-1 border-b border-slate-50">
                                         <span className="text-slate-600">Insurance Cost</span>
                                         <span className="font-semibold text-slate-800">₹{parseFloat(salary.insuranceAmount || '0').toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
@@ -480,7 +480,11 @@ const SalaryPreviewCard = ({ formData, config }) => {
                                 {(config?.salaryComponents || [])
                                     .filter(c => c.type === 'deduction' && (c.deductFromFlexi || c.includeInCTC))
                                     .map(c => {
-                                        const val = parseFloat(salary[c.id] || 0);
+                                        const isIns = c.id === 'medical_insurance' || c.id === 'insurance' || (c.name && c.name.toLowerCase().includes('insurance'));
+                                        let val = parseFloat(salary[c.id] !== undefined && salary[c.id] !== null ? salary[c.id] : 0);
+                                        if (isIns && (val <= 0 || isNaN(val) || (salary.insuranceAmount !== undefined && val !== parseFloat(salary.insuranceAmount)))) {
+                                            val = parseFloat(salary.insuranceAmount || 0);
+                                        }
                                         if (val <= 0) return null;
                                         return (
                                             <div key={c.id} className="flex justify-between items-center py-1 border-b border-slate-50">
@@ -551,23 +555,6 @@ const SalaryPreviewCard = ({ formData, config }) => {
                                                     </span>
                                                 </span>
                                                 <span className="font-semibold text-rose-600">-₹{val.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
-                                            </div>
-                                        );
-                                    })}
-                                {(config?.salaryComponents || [])
-                                    .filter(c => c.type === 'deduction' && (c.deductFromFlexi || c.includeInCTC))
-                                    .map(c => {
-                                        const val = parseFloat(salary[c.id] || 0);
-                                        if (val <= 0) return null;
-                                        return (
-                                            <div key={`flexi-${c.id}`} className="flex justify-between items-center py-1 border-b border-slate-50">
-                                                <span className="text-slate-600 flex items-center gap-1.5">
-                                                    {c.name}
-                                                    <span className="text-[9px] font-semibold text-blue-600 bg-blue-50 px-1.5 py-0.2 rounded border border-blue-200">
-                                                        From Flexi
-                                                    </span>
-                                                </span>
-                                                <span className="font-medium text-slate-500">₹{val.toLocaleString('en-IN', { maximumFractionDigits: 0 })} (Pre-tax)</span>
                                             </div>
                                         );
                                     })}
