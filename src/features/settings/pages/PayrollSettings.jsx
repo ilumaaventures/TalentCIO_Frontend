@@ -25,22 +25,23 @@ const STATUTORY_FLAGS = [
   { key: 'ptApplicable', name: 'Professional Tax (PT)' },
   { key: 'gratuityEligible', name: 'Gratuity' },
   { key: 'lwfApplicable', name: 'LWF' },
+  { key: 'ltaEligible', name: 'LTA' },
 ];
 
 const STRATEGY_DEFAULTS = {
-  monthly_salary: { pfEligible: true, esiEligible: true, ptApplicable: true, gratuityEligible: true, lwfApplicable: true },
-  attendance_based: { pfEligible: true, esiEligible: true, ptApplicable: true, gratuityEligible: true, lwfApplicable: true },
-  salary_plus_commission: { pfEligible: true, esiEligible: true, ptApplicable: true, gratuityEligible: true, lwfApplicable: true },
-  weekly_salary: { pfEligible: true, esiEligible: true, ptApplicable: true, gratuityEligible: true, lwfApplicable: true },
+  monthly_salary: { pfEligible: true, esiEligible: true, ptApplicable: true, gratuityEligible: true, lwfApplicable: true, ltaEligible: true },
+  attendance_based: { pfEligible: true, esiEligible: true, ptApplicable: true, gratuityEligible: true, lwfApplicable: true, ltaEligible: true },
+  salary_plus_commission: { pfEligible: true, esiEligible: true, ptApplicable: true, gratuityEligible: true, lwfApplicable: true, ltaEligible: true },
+  weekly_salary: { pfEligible: true, esiEligible: true, ptApplicable: true, gratuityEligible: true, lwfApplicable: true, ltaEligible: true },
   
-  hourly: { pfEligible: false, esiEligible: false, ptApplicable: false, gratuityEligible: false, lwfApplicable: false },
-  daily_wage: { pfEligible: false, esiEligible: false, ptApplicable: false, gratuityEligible: false, lwfApplicable: false },
-  piece_rate: { pfEligible: false, esiEligible: false, ptApplicable: false, gratuityEligible: false, lwfApplicable: false },
-  project_based: { pfEligible: false, esiEligible: false, ptApplicable: false, gratuityEligible: false, lwfApplicable: false },
-  milestone_based: { pfEligible: false, esiEligible: false, ptApplicable: false, gratuityEligible: false, lwfApplicable: false },
-  timesheet_based: { pfEligible: false, esiEligible: false, ptApplicable: false, gratuityEligible: false, lwfApplicable: false },
-  commission_only: { pfEligible: false, esiEligible: false, ptApplicable: false, gratuityEligible: false, lwfApplicable: false },
-  retainer: { pfEligible: false, esiEligible: false, ptApplicable: false, gratuityEligible: false, lwfApplicable: false },
+  hourly: { pfEligible: false, esiEligible: false, ptApplicable: false, gratuityEligible: false, lwfApplicable: false, ltaEligible: false },
+  daily_wage: { pfEligible: false, esiEligible: false, ptApplicable: false, gratuityEligible: false, lwfApplicable: false, ltaEligible: false },
+  piece_rate: { pfEligible: false, esiEligible: false, ptApplicable: false, gratuityEligible: false, lwfApplicable: false, ltaEligible: false },
+  project_based: { pfEligible: false, esiEligible: false, ptApplicable: false, gratuityEligible: false, lwfApplicable: false, ltaEligible: false },
+  milestone_based: { pfEligible: false, esiEligible: false, ptApplicable: false, gratuityEligible: false, lwfApplicable: false, ltaEligible: false },
+  timesheet_based: { pfEligible: false, esiEligible: false, ptApplicable: false, gratuityEligible: false, lwfApplicable: false, ltaEligible: false },
+  commission_only: { pfEligible: false, esiEligible: false, ptApplicable: false, gratuityEligible: false, lwfApplicable: false, ltaEligible: false },
+  retainer: { pfEligible: false, esiEligible: false, ptApplicable: false, gratuityEligible: false, lwfApplicable: false, ltaEligible: false },
 };
 
 const getBaselineComponents = (config) => [
@@ -890,17 +891,15 @@ const PayrollSettings = ({ embed = false, onSave }) => {
                 <thead>
                   <tr className="bg-slate-50 text-slate-500 font-bold uppercase tracking-wider text-[10px] border-b border-slate-200">
                     <th className="px-3 py-2">Compensation Type</th>
-                    <th className="px-3 py-2 text-center">Provident Fund (PF)</th>
-                    <th className="px-3 py-2 text-center">ESI Scheme</th>
-                    <th className="px-3 py-2 text-center">Professional Tax (PT)</th>
-                    <th className="px-3 py-2 text-center">Gratuity</th>
-                    <th className="px-3 py-2 text-center">LWF</th>
+                    {STATUTORY_FLAGS.map((flag) => (
+                      <th key={flag.key} className="px-3 py-2 text-center">{flag.name}</th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 bg-white">
                   {COMPENSATION_TYPES.map((type) => {
                     const overrides = (form.compensationTypeDefaults || {})[type.id] || {};
-                    const baseDefaults = STRATEGY_DEFAULTS[type.id] || { pfEligible: false, esiEligible: false, ptApplicable: false, gratuityEligible: false, lwfApplicable: false };
+                    const baseDefaults = STRATEGY_DEFAULTS[type.id] || { pfEligible: false, esiEligible: false, ptApplicable: false, gratuityEligible: false, lwfApplicable: false, ltaEligible: false };
                     
                     return (
                       <tr key={type.id} className="hover:bg-slate-50/50">

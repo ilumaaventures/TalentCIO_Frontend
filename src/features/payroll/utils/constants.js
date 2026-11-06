@@ -49,23 +49,23 @@ export const DEFAULT_PAYROLL_CONFIG = {
 };
 
 export const STRATEGY_DEFAULTS = {
-  monthly_salary: { pfEligible: true, esiEligible: true, ptApplicable: true, gratuityEligible: true, lwfApplicable: true },
-  attendance_based: { pfEligible: true, esiEligible: true, ptApplicable: true, gratuityEligible: true, lwfApplicable: true },
-  salary_plus_commission: { pfEligible: true, esiEligible: true, ptApplicable: true, gratuityEligible: true, lwfApplicable: true },
-  weekly_salary: { pfEligible: true, esiEligible: true, ptApplicable: true, gratuityEligible: true, lwfApplicable: true },
-  weekly_wage: { pfEligible: true, esiEligible: true, ptApplicable: true, gratuityEligible: true, lwfApplicable: true },
+  monthly_salary: { pfEligible: true, esiEligible: true, ptApplicable: true, gratuityEligible: true, lwfApplicable: true, ltaEligible: true },
+  attendance_based: { pfEligible: true, esiEligible: true, ptApplicable: true, gratuityEligible: true, lwfApplicable: true, ltaEligible: true },
+  salary_plus_commission: { pfEligible: true, esiEligible: true, ptApplicable: true, gratuityEligible: true, lwfApplicable: true, ltaEligible: true },
+  weekly_salary: { pfEligible: true, esiEligible: true, ptApplicable: true, gratuityEligible: true, lwfApplicable: true, ltaEligible: true },
+  weekly_wage: { pfEligible: true, esiEligible: true, ptApplicable: true, gratuityEligible: true, lwfApplicable: true, ltaEligible: true },
 
-  hourly: { pfEligible: false, esiEligible: false, ptApplicable: false, gratuityEligible: false, lwfApplicable: false },
-  daily_wage: { pfEligible: false, esiEligible: false, ptApplicable: false, gratuityEligible: false, lwfApplicable: false },
-  piece_rate: { pfEligible: false, esiEligible: false, ptApplicable: false, gratuityEligible: false, lwfApplicable: false },
-  project_based: { pfEligible: false, esiEligible: false, ptApplicable: false, gratuityEligible: false, lwfApplicable: false },
-  flat_project: { pfEligible: false, esiEligible: false, ptApplicable: false, gratuityEligible: false, lwfApplicable: false },
-  milestone: { pfEligible: false, esiEligible: false, ptApplicable: false, gratuityEligible: false, lwfApplicable: false },
-  milestone_based: { pfEligible: false, esiEligible: false, ptApplicable: false, gratuityEligible: false, lwfApplicable: false },
-  timesheet_based: { pfEligible: false, esiEligible: false, ptApplicable: false, gratuityEligible: false, lwfApplicable: false },
-  commission_only: { pfEligible: false, esiEligible: false, ptApplicable: false, gratuityEligible: false, lwfApplicable: false },
-  retainer: { pfEligible: false, esiEligible: false, ptApplicable: false, gratuityEligible: false, lwfApplicable: false },
-  stipend_intern: { pfEligible: false, esiEligible: false, ptApplicable: false, gratuityEligible: false, lwfApplicable: false },
+  hourly: { pfEligible: false, esiEligible: false, ptApplicable: false, gratuityEligible: false, lwfApplicable: false, ltaEligible: false },
+  daily_wage: { pfEligible: false, esiEligible: false, ptApplicable: false, gratuityEligible: false, lwfApplicable: false, ltaEligible: false },
+  piece_rate: { pfEligible: false, esiEligible: false, ptApplicable: false, gratuityEligible: false, lwfApplicable: false, ltaEligible: false },
+  project_based: { pfEligible: false, esiEligible: false, ptApplicable: false, gratuityEligible: false, lwfApplicable: false, ltaEligible: false },
+  flat_project: { pfEligible: false, esiEligible: false, ptApplicable: false, gratuityEligible: false, lwfApplicable: false, ltaEligible: false },
+  milestone: { pfEligible: false, esiEligible: false, ptApplicable: false, gratuityEligible: false, lwfApplicable: false, ltaEligible: false },
+  milestone_based: { pfEligible: false, esiEligible: false, ptApplicable: false, gratuityEligible: false, lwfApplicable: false, ltaEligible: false },
+  timesheet_based: { pfEligible: false, esiEligible: false, ptApplicable: false, gratuityEligible: false, lwfApplicable: false, ltaEligible: false },
+  commission_only: { pfEligible: false, esiEligible: false, ptApplicable: false, gratuityEligible: false, lwfApplicable: false, ltaEligible: false },
+  retainer: { pfEligible: false, esiEligible: false, ptApplicable: false, gratuityEligible: false, lwfApplicable: false, ltaEligible: false },
+  stipend_intern: { pfEligible: false, esiEligible: false, ptApplicable: false, gratuityEligible: false, lwfApplicable: false, ltaEligible: false },
 };
 
 export const fmtMoney = (value) => `₹${(Number(value) || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;

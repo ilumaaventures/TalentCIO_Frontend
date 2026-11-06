@@ -48,7 +48,7 @@ export const createDefaultSalaryData = (breakup = {}, comp = {}, user = null, co
   const rawCompType = breakup.compensationType || breakup.payType || 'monthly_salary';
   const compType = rawCompType === 'salaried' ? 'monthly_salary' : rawCompType;
   const compDefaults = (config?.compensationTypeDefaults && config.compensationTypeDefaults[compType]) || {};
-  const baseDefaults = STRATEGY_DEFAULTS[compType] || { pfEligible: true, esiEligible: true, ptApplicable: true, gratuityEligible: true, lwfApplicable: true };
+  const baseDefaults = STRATEGY_DEFAULTS[compType] || { pfEligible: true, esiEligible: true, ptApplicable: true, gratuityEligible: true, lwfApplicable: true, ltaEligible: true };
 
   const resolveInitFlag = (val, overrideVal, baseVal) => {
     if (overrideVal === 'force_eligible' || overrideVal === true || overrideVal === 'true') {
@@ -81,6 +81,7 @@ export const createDefaultSalaryData = (breakup = {}, comp = {}, user = null, co
     lwfEnabled: resolveInitFlag(breakup.lwfEnabled, compDefaults.lwfApplicable ?? compDefaults.lwfEnabled, baseDefaults.lwfApplicable),
     gratuityEnabled: resolveInitFlag(breakup.gratuityEnabled, compDefaults.gratuityEligible ?? compDefaults.gratuityEnabled, baseDefaults.gratuityEligible),
     tdsEnabled: parseBool(breakup.tdsEnabled, true),
+    ltaEnabled: resolveInitFlag(breakup.ltaEnabled, compDefaults.ltaEligible ?? compDefaults.ltaEnabled, baseDefaults.ltaEligible ?? true),
     includePfInCTC: parseBool(breakup.includePfInCTC, false),
     includeGratuityInCTC: parseBool(breakup.includeGratuityInCTC, true),
     basicPercent: breakup.basicPercent !== undefined && breakup.basicPercent !== null ? breakup.basicPercent : 50,
@@ -313,6 +314,7 @@ export const buildMasterSalaryStructure = (source = {}, configInput = {}) => {
     ptApplicable: !isNonSalariedType && !isIntern && !isHourly && !isFlat && !isNonStructuredExplicit,
     gratuityEligible: !isNonSalariedType && !isIntern && !isHourly && !isFlat && !isNonStructuredExplicit,
     lwfApplicable: !isNonSalariedType && !isIntern && !isHourly && !isFlat && !isNonStructuredExplicit,
+    ltaEligible: !isNonSalariedType && !isIntern && !isHourly && !isFlat && !isNonStructuredExplicit,
   };
 
   const resolveStatutory = (sourceVal, overrideVal, baseVal) => {
@@ -358,6 +360,11 @@ export const buildMasterSalaryStructure = (source = {}, configInput = {}) => {
     source.gratuityEnabled !== undefined ? source.gratuityEnabled : source.gratuityEligible,
     compDefaults.gratuityEligible !== undefined ? compDefaults.gratuityEligible : compDefaults.gratuityEnabled,
     baseDefaults.gratuityEligible
+  );
+  const ltaEnabled = resolveStatutory(
+    source.ltaEnabled !== undefined ? source.ltaEnabled : source.ltaEligible,
+    compDefaults.ltaEligible !== undefined ? compDefaults.ltaEligible : compDefaults.ltaEnabled,
+    baseDefaults.ltaEligible ?? true
   );
   const includePfInCTC = pfEnabled && source.includePfInCTC === true;
   const includeGratuityInCTC = gratuityEnabled && source.includeGratuityInCTC !== false;
@@ -488,7 +495,13 @@ export const buildMasterSalaryStructure = (source = {}, configInput = {}) => {
             }
             amount = roundAmount(val);
           }
-          if (c.id === 'lta') amount = roundAmount(Math.min(amount, ltaCap || amount));
+          if (c.id === 'lta') {
+            if (!ltaEnabled) {
+              amount = 0;
+            } else {
+              amount = roundAmount(Math.min(amount, ltaCap || amount));
+            }
+          }
           em[c.id] = amount;
           if (c.includeInCTC !== false) {
             sumOfAllNonRemainder += amount;
@@ -545,9 +558,9 @@ export const buildMasterSalaryStructure = (source = {}, configInput = {}) => {
     flexi = roundAmount(source.flexiAmount);
     broadband = roundAmount(source.broadband);
     petrol = roundAmount(source.petrol);
-    const ltaRequested = roundAmount(source.lta);
+    const ltaRequested = ltaEnabled ? roundAmount(source.lta) : 0;
     ltaCap = roundAmount(basicMaster * config.ltaMaxPercent);
-    lta = roundAmount(Math.min(ltaRequested, ltaCap || ltaRequested));
+    lta = ltaEnabled ? roundAmount(Math.min(ltaRequested, ltaCap || ltaRequested)) : 0;
     conveyance = roundAmount(source.salaryStructure?.conveyance);
     medicalAllowance = roundAmount(source.salaryStructure?.medicalAllowance);
     specialAllowance = roundAmount(Math.max(
@@ -742,6 +755,7 @@ export const buildMasterSalaryStructure = (source = {}, configInput = {}) => {
     ptEnabled,
     lwfEnabled,
     gratuityEnabled,
+    ltaEnabled,
     includePfInCTC,
     includeGratuityInCTC,
     useSalaryComponents: source.useSalaryComponents !== false,

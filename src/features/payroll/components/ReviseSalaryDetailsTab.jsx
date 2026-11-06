@@ -73,6 +73,7 @@ const DEFAULT_SALARY_DRAFT = {
     lwfEnabled: true,
     gratuityEnabled: true,
     tdsEnabled: true,
+    ltaEnabled: true,
     includePfInCTC: false,
     includeGratuityInCTC: true,
     ptState: 'MH',
@@ -222,7 +223,9 @@ const computeAnnexureRows = (salary = {}, config = {}) => {
     if (!pfEmployer && salary.hasOwnProperty('pfEmployer')) {
         pfEmployer = 0;
     } else if (!pfEmployer && salary.pfEnabled === true && salary.includePfInCTC === true) {
-        pfEmployer = basic >= 15000 ? 1800 : Math.round(basic * 0.12);
+        const pfCap = config?.pfCap || salary.pfCap || 15000;
+        const pfRate = config?.pfEmployerRate || 0.12;
+        pfEmployer = Math.round(Math.min(basic, pfCap) * pfRate);
     }
     if (salary.pfEnabled === false) pfEmployer = 0;
 
@@ -486,6 +489,7 @@ const ReviseSalaryDetailsTab = () => {
                 lwfEnabled: parseBool(mergedSalary.lwfEnabled, true),
                 gratuityEnabled: parseBool(mergedSalary.gratuityEnabled, true),
                 tdsEnabled: parseBool(mergedSalary.tdsEnabled, true),
+                ltaEnabled: parseBool(mergedSalary.ltaEnabled, true),
                 includePfInCTC: parseBool(mergedSalary.includePfInCTC, false),
                 includeGratuityInCTC: parseBool(mergedSalary.includeGratuityInCTC, true),
                 basicPercent: mergedSalary.basicPercent !== undefined && mergedSalary.basicPercent !== null ? Number(mergedSalary.basicPercent) : 50,
@@ -612,6 +616,7 @@ const ReviseSalaryDetailsTab = () => {
                 lwfEnabled: breakup.lwfEnabled !== undefined ? parseBool(breakup.lwfEnabled) : true,
                 gratuityEnabled: breakup.gratuityEnabled !== undefined ? parseBool(breakup.gratuityEnabled) : true,
                 tdsEnabled: breakup.tdsEnabled !== undefined ? parseBool(breakup.tdsEnabled) : true,
+                ltaEnabled: breakup.ltaEnabled !== undefined ? parseBool(breakup.ltaEnabled) : true,
                 includePfInCTC: parseBool(breakup.includePfInCTC),
                 includeGratuityInCTC: breakup.includeGratuityInCTC !== undefined ? parseBool(breakup.includeGratuityInCTC) : true,
                 ptState: breakup.ptState || 'MH',
