@@ -168,6 +168,16 @@ const computeAnnexureRows = (salary = {}, config = {}) => {
 
     let insurance = parseN(salary.insurance || salary.insuranceAmount);
 
+    const isStandardComp = (comp) => {
+        if (!comp) return false;
+        const id = String(comp.id || '').toLowerCase();
+        const name = String(comp.name || '').toLowerCase();
+        return (
+            ['basic', 'hra', 'flexi', 'special', 'broadband', 'petrol', 'lta', 'insurance', 'medical_insurance'].includes(id) ||
+            /basic|house rent|hra|flexi|special allowance|petrol|broadband|lta|leave travel|insurance|mediclaim/i.test(name)
+        );
+    };
+
     salaryComps.forEach(c => {
         const val = parseN(salary[c.id]);
         if (c.id === 'flexi') {
@@ -176,11 +186,17 @@ const computeAnnexureRows = (salary = {}, config = {}) => {
             if (!special) special = val;
         } else if (c.id === 'basic' || c.id === 'hra') {
             // handled
-        } else if (/insurance/i.test(c.name)) {
+        } else if (c.id === 'broadband' || /broadband/i.test(c.name)) {
+            if (!broadband && val > 0) broadband = val;
+        } else if (c.id === 'petrol' || /petrol/i.test(c.name)) {
+            if (!petrol && val > 0) petrol = val;
+        } else if (c.id === 'lta' || /leave travel|lta/i.test(c.name)) {
+            if (!lta && val > 0) lta = val;
+        } else if (c.id === 'insurance' || c.id === 'medical_insurance' || /insurance|mediclaim/i.test(c.name)) {
             if (!insurance && val > 0) insurance = val;
-        } else if ((c.type === 'earning' || !c.type) && !['broadband', 'petrol', 'lta'].includes(c.id)) {
+        } else if ((c.type === 'earning' || !c.type) && !isStandardComp(c)) {
             if (val > 0) additionalEarnings.push({ name: c.name, monthly: val });
-        } else if (c.type === 'deduction' && (c.deductFromFlexi || c.includeInCTC)) {
+        } else if (c.type === 'deduction' && (c.deductFromFlexi || c.includeInCTC) && !isStandardComp(c)) {
             if (val > 0) additionalDeductionsFromFlexi.push({ name: c.name, monthly: val });
         }
     });
@@ -189,7 +205,7 @@ const computeAnnexureRows = (salary = {}, config = {}) => {
         Object.keys(salary).forEach(k => {
             if (k.startsWith('custom_') && parseN(salary[k]) > 0) {
                 const comp = salaryComps.find(c => c.id === k);
-                if (comp && /insurance/i.test(comp.name)) {
+                if (comp && /insurance|mediclaim/i.test(comp.name)) {
                     insurance = parseN(salary[k]);
                 } else if (!comp && !insurance) {
                     insurance = parseN(salary[k]);
@@ -207,6 +223,11 @@ const computeAnnexureRows = (salary = {}, config = {}) => {
         const name = String(item.name || '').trim();
         const amt = parseN(item.amount);
         if (amt <= 0) return;
+
+        // Skip if this custom allowance duplicates an existing standard component
+        if (/basic|hra|flexi|special allowance|petrol|broadband|lta|leave travel|insurance|mediclaim/i.test(name)) {
+            return;
+        }
 
         if (/bonus/i.test(name)) {
             const freq = String(item.frequency || 'semi_annually').toLowerCase();
@@ -269,29 +290,64 @@ const computeAnnexureRows = (salary = {}, config = {}) => {
     }
 
     const rows = [];
-    if (basic > 0) rows.push({ label: 'Basic', value: basic });
-    if (hra > 0) rows.push({ label: 'HRA', value: hra });
-    if (flexi > 0) {
-        const flexiLabel = 'Flexi(if chosen)';
-        rows.push({ label: flexiLabel, value: flexi });
-    }
+    const seenCanonicalKeys = new Set();
+    const addUniqueRow = (label, value, extraProps = {}) => {
+        if (!value || value <= 0) return;
+        const normKey = String(label)
+            .toLowerCase()
+            .replace(/[*()]/g, '')
+            .replace(/\s+/g, ' ')
+            .trim();
+
+        let canonicalKey = normKey;
+        if (canonicalKey.includes('basic')) canonicalKey = 'basic';
+        else if (canonicalKey.includes('hra') || canonicalKey.includes('house rent')) canonicalKey = 'hra';
+        else if (canonicalKey.includes('flexi')) canonicalKey = 'flexi';
+        else if (canonicalKey.includes('special')) canonicalKey = 'special';
+        else if (canonicalKey.includes('petrol')) canonicalKey = 'petrol';
+        else if (canonicalKey.includes('broadband')) canonicalKey = 'broadband';
+        else if (canonicalKey.includes('lta') || canonicalKey.includes('leave travel')) canonicalKey = 'lta';
+        else if (canonicalKey.includes('insurance') || canonicalKey.includes('mediclaim')) canonicalKey = 'insurance';
+        else if (canonicalKey.includes('pf') && (canonicalKey.includes('employer') || canonicalKey.includes('contribution'))) canonicalKey = 'pf_employer';
+        else if (canonicalKey.includes('lwf') && (canonicalKey.includes('employer') || canonicalKey.includes('contribution'))) canonicalKey = 'lwf_employer';
+        else if (canonicalKey.includes('gratuity')) canonicalKey = 'gratuity';
+
+        if (seenCanonicalKeys.has(canonicalKey)) return;
+        seenCanonicalKeys.add(canonicalKey);
+
+        rows.push({ label, value, ...extraProps });
+    };
+
+    if (basic > 0) addUniqueRow('Basic', basic);
+    if (hra > 0) addUniqueRow('HRA', hra);
+    if (flexi > 0) addUniqueRow('Flexi(if chosen)', flexi);
     if (special > 0 && special !== flexi) {
         const specialLabel = salaryComps.find(c => c.id === 'special')?.name || 'Special Allowance';
-        rows.push({ label: specialLabel, value: special });
+        addUniqueRow(specialLabel, special);
     }
-    if (broadband > 0) rows.push({ label: 'Broadband', value: broadband });
-    if (petrol > 0) rows.push({ label: 'Petrol', value: petrol });
-    if (lta > 0) rows.push({ label: 'LTA', value: lta });
+    if (broadband > 0) addUniqueRow('Broadband', broadband);
+    if (petrol > 0) addUniqueRow('Petrol', petrol);
+    if (lta > 0) addUniqueRow('LTA', lta);
 
-    additionalEarnings.forEach(r => { if (r.monthly > 0) rows.push({ label: r.name, value: r.monthly }); });
-    additionalCustomRows.forEach(r => { if (r.monthly > 0) rows.push({ label: r.name, value: r.monthly }); });
+    additionalEarnings.forEach(r => { if (r.monthly > 0) addUniqueRow(r.name, r.monthly); });
+    additionalCustomRows.forEach(r => { if (r.monthly > 0) addUniqueRow(r.name, r.monthly); });
 
-    if (pfEmployer > 0) rows.push({ label: "PF(Employer's Contribution)", value: pfEmployer });
-    if (lwfEmployer > 0) rows.push({ label: 'LWF(Employer Contribution)', value: lwfEmployer });
-    if (gratuity > 0) rows.push({ label: 'Gratuity*', value: gratuity });
-    if (insurance > 0) rows.push({ label: 'Insurance**', value: insurance });
+    if (pfEmployer > 0) addUniqueRow("PF(Employer's Contribution)", pfEmployer);
+    if (lwfEmployer > 0) addUniqueRow('LWF(Employer Contribution)', lwfEmployer);
+    if (gratuity > 0) addUniqueRow('Gratuity*', gratuity);
+    if (insurance > 0) addUniqueRow('Insurance**', insurance);
 
-    additionalDeductionsFromFlexi.forEach(r => { if (r.monthly > 0) rows.push({ label: r.name, value: r.monthly }); });
+    additionalDeductionsFromFlexi.forEach(r => { if (r.monthly > 0) addUniqueRow(r.name, r.monthly); });
+
+    if (monthlyCTC > 0) rows.push({ label: 'Monthly CTC', value: monthlyCTC, isMonthlyCTC: true });
+    if (annualCTC > 0) rows.push({ label: 'Annual CTC', value: annualCTC, isBold: true, isAnnualCTC: true });
+
+    if (bonus > 0) {
+        rows.push({ label: 'Bonus***( will be paid in two equal tranche of six months)', value: bonus, isBonus: true });
+        rows.push({ label: 'Potential Package', value: potentialPackage, isBold: true, isPotentialPackage: true });
+    }
+
+    return rows;
 
     if (monthlyCTC > 0) rows.push({ label: 'Monthly CTC', value: monthlyCTC, isMonthlyCTC: true });
     if (annualCTC > 0) rows.push({ label: 'Annual CTC', value: annualCTC, isBold: true, isAnnualCTC: true });
@@ -529,8 +585,20 @@ const ReviseSalaryDetailsTab = () => {
             if (activeConfig?.salaryComponents) {
                 activeConfig.salaryComponents.forEach(c => {
                     if (c.linkedTo === 'fixed') {
-                        const val = mergedSalary[c.id] !== undefined ? mergedSalary[c.id] : (c.linkValue || 0);
-                        source[c.id] = parseFloat(String(val).replace(/[^0-9.]/g, '')) || 0;
+                        const isIns = c.id === 'medical_insurance' || c.id === 'insurance' || (c.name && c.name.toLowerCase().includes('insurance'));
+                        let val = mergedSalary[c.id];
+                        if (isIns && (val === undefined || val === null || val === '')) {
+                            val = mergedSalary.insuranceAmount ?? mergedSalary.insurance ?? mergedSalary.medical_insurance;
+                        }
+                        if (val === undefined) val = c.linkValue || 0;
+                        const parsedVal = parseFloat(String(val).replace(/[^0-9.]/g, '')) || 0;
+                        source[c.id] = parsedVal;
+                        if (isIns && (updatedSalaryFields?.[c.id] !== undefined || updatedSalaryFields?.insuranceAmount !== undefined || updatedSalaryFields?.insurance !== undefined)) {
+                            source.insuranceAmount = parsedVal;
+                            source.insurance = parsedVal;
+                            source.medical_insurance = parsedVal;
+                            mergedSalary.insuranceAmount = String(parsedVal);
+                        }
                     }
                 });
             }
@@ -3413,7 +3481,7 @@ const ReviseSalaryDetailsTab = () => {
                                 <tr>
                                     {/* Checkbox (Sticky Left #1: 0 to 48px) */}
                                     <th
-                                        style={{ position: 'sticky', top: 0, left: 0, zIndex: 60, width: '48px', minWidth: '48px', maxWidth: '48px', backgroundColor: '#f1f5f9' }}
+                                        style={{ position: 'sticky', top: 0, left: 0, zIndex: 50, width: '48px', minWidth: '48px', maxWidth: '48px', backgroundColor: '#f1f5f9' }}
                                         className="py-3 px-2 w-[48px] min-w-[48px] max-w-[48px] text-center border-b border-r border-slate-300 shadow-[2px_0_4px_rgba(0,0,0,0.06)]"
                                     >
                                         <input
@@ -3427,70 +3495,70 @@ const ReviseSalaryDetailsTab = () => {
 
                                     {/* Employee Info (Sticky Left #2: from 48px, 260px) */}
                                     <th
-                                        style={{ position: 'sticky', top: 0, left: '48px', zIndex: 60, width: '260px', minWidth: '260px', maxWidth: '260px', backgroundColor: '#f1f5f9' }}
-                                        className="py-3 px-3.5 border-b border-r-2 border-slate-300 shadow-[4px_0_8px_-2px_rgba(0,0,0,0.15)] w-[260px] min-w-[260px] max-w-[260px]"
+                                        style={{ position: 'sticky', top: 0, left: '48px', zIndex: 50, width: '260px', minWidth: '260px', maxWidth: '260px', backgroundColor: '#f1f5f9' }}
+                                        className="py-3 px-3.5 border-b border-r-2 border-slate-300 shadow-[4px_0_8px_-2px_rgba(0,0,0,0.12)] w-[260px] min-w-[260px] max-w-[260px]"
                                     >
                                         Employee
                                     </th>
 
                                     {/* Base Compensation Inputs */}
-                                    <th style={{ position: 'sticky', top: 0, zIndex: 20 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[140px] bg-slate-50">
+                                    <th style={{ position: 'sticky', top: 0, zIndex: 10 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[140px] bg-slate-50">
                                         Annual CTC (₹)
                                     </th>
-                                    <th style={{ position: 'sticky', top: 0, zIndex: 20 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[105px] text-right bg-slate-100">
+                                    <th style={{ position: 'sticky', top: 0, zIndex: 10 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[105px] text-right bg-slate-100">
                                         Monthly CTC
                                     </th>
-                                    <th style={{ position: 'sticky', top: 0, zIndex: 20 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[95px] text-right bg-slate-100">
+                                    <th style={{ position: 'sticky', top: 0, zIndex: 10 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[95px] text-right bg-slate-100">
                                         Basic
                                     </th>
-                                    <th style={{ position: 'sticky', top: 0, zIndex: 20 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[90px] text-right bg-slate-100">
+                                    <th style={{ position: 'sticky', top: 0, zIndex: 10 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[90px] text-right bg-slate-100">
                                         HRA
                                     </th>
 
                                     {/* Allowances (In CTC) */}
-                                    <th style={{ position: 'sticky', top: 0, zIndex: 20 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[125px] bg-sky-50">
+                                    <th style={{ position: 'sticky', top: 0, zIndex: 10 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[125px] bg-sky-50">
                                         <div className="flex items-center justify-between gap-1">
                                             <span>Petrol</span>
                                             <span className="text-[9px] font-bold text-sky-700 bg-sky-100 px-1 py-0.2 rounded">In CTC</span>
                                         </div>
                                     </th>
 
-                                    <th style={{ position: 'sticky', top: 0, zIndex: 20 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[130px] bg-emerald-50">
+                                    <th style={{ position: 'sticky', top: 0, zIndex: 10 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[130px] bg-emerald-50">
                                         <div className="flex items-center justify-between gap-1">
                                             <span>LTA</span>
                                             <span className="text-[9px] font-bold text-emerald-700 bg-emerald-100 px-1 py-0.2 rounded">In CTC</span>
                                         </div>
                                     </th>
 
-                                    <th style={{ position: 'sticky', top: 0, zIndex: 20 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[125px] bg-slate-100">
+                                    <th style={{ position: 'sticky', top: 0, zIndex: 10 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[125px] bg-slate-100">
                                         <div className="flex items-center justify-between gap-1">
                                             <span>Conveyance</span>
                                             <span className="text-[9px] font-semibold text-slate-600 bg-slate-200 px-1 py-0.2 rounded">In CTC</span>
                                         </div>
                                     </th>
 
-                                    <th style={{ position: 'sticky', top: 0, zIndex: 20 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[125px] bg-slate-100">
+                                    <th style={{ position: 'sticky', top: 0, zIndex: 10 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[125px] bg-slate-100">
                                         <div className="flex items-center justify-between gap-1">
                                             <span>Medical Allow.</span>
                                             <span className="text-[9px] font-semibold text-slate-600 bg-slate-200 px-1 py-0.2 rounded">In CTC</span>
                                         </div>
                                     </th>
 
-                                    <th style={{ position: 'sticky', top: 0, zIndex: 20 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[125px] bg-slate-100">
+                                    <th style={{ position: 'sticky', top: 0, zIndex: 10 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[125px] bg-slate-100">
                                         <div className="flex items-center justify-between gap-1">
                                             <span>Meal Allow.</span>
                                             <span className="text-[9px] font-semibold text-slate-600 bg-slate-200 px-1 py-0.2 rounded">In CTC</span>
                                         </div>
                                     </th>
 
-                                    <th style={{ position: 'sticky', top: 0, zIndex: 20 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[125px] bg-slate-100">
+                                    <th style={{ position: 'sticky', top: 0, zIndex: 10 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[125px] bg-slate-100">
                                         <div className="flex items-center justify-between gap-1">
                                             <span>Broadband</span>
                                             <span className="text-[9px] font-semibold text-slate-600 bg-slate-200 px-1 py-0.2 rounded">In CTC</span>
                                         </div>
                                     </th>
 
-                                    <th style={{ position: 'sticky', top: 0, zIndex: 20 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[135px] bg-slate-100">
+                                    <th style={{ position: 'sticky', top: 0, zIndex: 10 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[135px] bg-slate-100">
                                         <div className="flex items-center justify-between gap-1">
                                             <span>Custom Allow.</span>
                                             <span className="text-[9px] font-semibold text-slate-600 bg-slate-200 px-1 py-0.2 rounded">In CTC</span>
@@ -3498,15 +3566,15 @@ const ReviseSalaryDetailsTab = () => {
                                     </th>
 
                                     {/* Remainder & Gross */}
-                                    <th style={{ position: 'sticky', top: 0, zIndex: 20 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[120px] text-right bg-blue-100/80 text-blue-900 font-extrabold">
+                                    <th style={{ position: 'sticky', top: 0, zIndex: 10 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[120px] text-right bg-blue-100/80 text-blue-900 font-extrabold">
                                         Flexi Remainder
                                     </th>
-                                    <th style={{ position: 'sticky', top: 0, zIndex: 20 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[115px] bg-slate-200 text-right font-black text-slate-900">
+                                    <th style={{ position: 'sticky', top: 0, zIndex: 10 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[115px] bg-slate-200 text-right font-black text-slate-900">
                                         Monthly Gross
                                     </th>
 
                                     {/* Deductions (From Flexi) */}
-                                    <th style={{ position: 'sticky', top: 0, zIndex: 20 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[145px] bg-rose-100/80 text-rose-900">
+                                    <th style={{ position: 'sticky', top: 0, zIndex: 10 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[145px] bg-rose-100/80 text-rose-900">
                                         <div className="flex items-center justify-between gap-1">
                                             <span>Medical Insurance</span>
                                             <span className="text-[9px] font-extrabold text-rose-700 bg-rose-200 px-1 py-0.2 rounded">Deduct (Flexi)</span>
@@ -3514,7 +3582,7 @@ const ReviseSalaryDetailsTab = () => {
                                     </th>
 
                                     {/* Statutory Toggles (with Column Header Toggle-All) */}
-                                    <th style={{ position: 'sticky', top: 0, zIndex: 20 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[185px] bg-blue-100/80">
+                                    <th style={{ position: 'sticky', top: 0, zIndex: 10 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[185px] bg-blue-100/80">
                                         <div className="flex items-center justify-between gap-1.5">
                                             <span>PF</span>
                                             <button
@@ -3534,7 +3602,7 @@ const ReviseSalaryDetailsTab = () => {
                                         </div>
                                     </th>
 
-                                    <th style={{ position: 'sticky', top: 0, zIndex: 20 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[110px] bg-slate-100">
+                                    <th style={{ position: 'sticky', top: 0, zIndex: 10 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[110px] bg-slate-100">
                                         <div className="flex items-center justify-between gap-1.5">
                                             <span>ESI</span>
                                             <button
@@ -3554,7 +3622,7 @@ const ReviseSalaryDetailsTab = () => {
                                         </div>
                                     </th>
 
-                                    <th style={{ position: 'sticky', top: 0, zIndex: 20 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[100px] bg-slate-100">
+                                    <th style={{ position: 'sticky', top: 0, zIndex: 10 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[100px] bg-slate-100">
                                         <div className="flex items-center justify-between gap-1.5">
                                             <span>PT</span>
                                             <button
@@ -3574,7 +3642,7 @@ const ReviseSalaryDetailsTab = () => {
                                         </div>
                                     </th>
 
-                                    <th style={{ position: 'sticky', top: 0, zIndex: 20 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[130px] bg-indigo-100/80">
+                                    <th style={{ position: 'sticky', top: 0, zIndex: 10 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[130px] bg-indigo-100/80">
                                         <div className="flex items-center justify-between gap-1.5">
                                             <span>Gratuity</span>
                                             <button
@@ -3594,7 +3662,7 @@ const ReviseSalaryDetailsTab = () => {
                                         </div>
                                     </th>
 
-                                    <th style={{ position: 'sticky', top: 0, zIndex: 20 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[110px] bg-slate-100">
+                                    <th style={{ position: 'sticky', top: 0, zIndex: 10 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[110px] bg-slate-100">
                                         <div className="flex items-center justify-between gap-1.5">
                                             <span>LWF</span>
                                             <button
@@ -3614,7 +3682,7 @@ const ReviseSalaryDetailsTab = () => {
                                         </div>
                                     </th>
 
-                                    <th style={{ position: 'sticky', top: 0, zIndex: 20 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[90px] bg-slate-100">
+                                    <th style={{ position: 'sticky', top: 0, zIndex: 10 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[90px] bg-slate-100">
                                         <div className="flex items-center justify-between gap-1.5">
                                             <span>TDS</span>
                                             <button
@@ -3634,7 +3702,7 @@ const ReviseSalaryDetailsTab = () => {
                                         </div>
                                     </th>
 
-                                    <th style={{ position: 'sticky', top: 0, zIndex: 20 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[90px] bg-emerald-100/80">
+                                    <th style={{ position: 'sticky', top: 0, zIndex: 10 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[90px] bg-emerald-100/80">
                                         <div className="flex items-center justify-between gap-1.5">
                                             <span>LTA</span>
                                             <button
@@ -3654,17 +3722,17 @@ const ReviseSalaryDetailsTab = () => {
                                         </div>
                                     </th>
 
-                                    <th style={{ position: 'sticky', top: 0, zIndex: 20 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[110px] text-right text-rose-700 bg-rose-100/70">
+                                    <th style={{ position: 'sticky', top: 0, zIndex: 10 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[110px] text-right text-rose-700 bg-rose-100/70">
                                         Deductions
                                     </th>
 
-                                    <th style={{ position: 'sticky', top: 0, zIndex: 20 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[130px] text-right text-emerald-800 bg-emerald-100 font-extrabold">
+                                    <th style={{ position: 'sticky', top: 0, zIndex: 10 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[130px] text-right text-emerald-800 bg-emerald-100 font-extrabold">
                                         Est. Take-Home
                                     </th>
 
                                     <th
-                                        style={{ position: 'sticky', top: 0, right: 0, zIndex: 60, width: '195px', minWidth: '195px', maxWidth: '195px', backgroundColor: '#f1f5f9' }}
-                                        className="py-3 px-3 text-center border-b border-l-2 border-slate-300 shadow-[-4px_0_8px_-2px_rgba(0,0,0,0.1)] w-[195px] min-w-[195px] max-w-[195px] uppercase text-[10px] font-black tracking-wider text-slate-700"
+                                        style={{ position: 'sticky', top: 0, right: 0, zIndex: 50, width: '200px', minWidth: '200px', maxWidth: '200px', backgroundColor: '#f1f5f9' }}
+                                        className="py-3 px-3 text-center border-b border-l-2 border-slate-300 shadow-[-4px_0_8px_-2px_rgba(0,0,0,0.12)] w-[200px] min-w-[200px] max-w-[200px] uppercase text-[10px] font-black tracking-wider text-slate-700"
                                     >
                                         Actions
                                     </th>
@@ -3692,12 +3760,12 @@ const ReviseSalaryDetailsTab = () => {
                                         const isRowEven = idx % 2 === 0;
 
                                         const rowBg = modified
-                                            ? 'bg-amber-50/60 hover:bg-amber-100/50'
+                                            ? 'bg-amber-50 hover:bg-amber-100'
                                             : isSelected
-                                            ? 'bg-blue-50/60 hover:bg-blue-100/50'
+                                            ? 'bg-blue-50 hover:bg-blue-100'
                                             : isRowEven
                                             ? 'bg-white hover:bg-slate-50'
-                                            : 'bg-slate-50/60 hover:bg-slate-100/60';
+                                            : 'bg-slate-50 hover:bg-slate-100';
 
                                         const stickyBgColor = modified
                                             ? '#fef3c7'
@@ -3714,7 +3782,7 @@ const ReviseSalaryDetailsTab = () => {
                                             >
                                                 {/* Checkbox (Sticky Left #1: 0 to 48px) */}
                                                 <td
-                                                    style={{ position: 'sticky', left: 0, zIndex: 30, width: '48px', minWidth: '48px', maxWidth: '48px', backgroundColor: stickyBgColor, isolation: 'isolate' }}
+                                                    style={{ position: 'sticky', left: 0, zIndex: 20, width: '48px', minWidth: '48px', maxWidth: '48px', backgroundColor: stickyBgColor }}
                                                     className="py-2.5 px-2 text-center border-b border-r border-slate-200 w-[48px] min-w-[48px] max-w-[48px] shadow-[2px_0_4px_rgba(0,0,0,0.04)]"
                                                 >
                                                     <input
@@ -3727,8 +3795,8 @@ const ReviseSalaryDetailsTab = () => {
 
                                                 {/* Employee Info (Sticky Left #2: from 48px, 260px) */}
                                                 <td
-                                                    style={{ position: 'sticky', left: '48px', zIndex: 30, width: '260px', minWidth: '260px', maxWidth: '260px', backgroundColor: stickyBgColor, isolation: 'isolate' }}
-                                                    className="py-2.5 px-3.5 border-b border-r-2 border-slate-300 shadow-[4px_0_8px_-2px_rgba(0,0,0,0.15)] w-[260px] min-w-[260px] max-w-[260px]"
+                                                    style={{ position: 'sticky', left: '48px', zIndex: 20, width: '260px', minWidth: '260px', maxWidth: '260px', backgroundColor: stickyBgColor }}
+                                                    className="py-2.5 px-3.5 border-b border-r-2 border-slate-300 shadow-[4px_0_8px_-2px_rgba(0,0,0,0.12)] w-[260px] min-w-[260px] max-w-[260px]"
                                                 >
                                                     <div className="flex items-center gap-2.5 overflow-hidden">
                                                         <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-700 font-extrabold text-xs flex items-center justify-center shrink-0 border border-blue-200">
@@ -3752,7 +3820,7 @@ const ReviseSalaryDetailsTab = () => {
 
                                                 {/* Annual CTC Input Cell */}
                                                 <td className="py-2 px-2.5 border-b border-r border-slate-200 min-w-[140px] bg-slate-50">
-                                                    <div className="relative">
+                                                    <div className="relative z-0">
                                                         <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs select-none">₹</span>
                                                         <input
                                                             type="number"
@@ -3781,7 +3849,7 @@ const ReviseSalaryDetailsTab = () => {
 
                                                 {/* Petrol Cell */}
                                                 <td className="py-2 px-2.5 border-b border-r border-slate-200 min-w-[125px] bg-sky-50">
-                                                    <div className="relative">
+                                                    <div className="relative z-0">
                                                         <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs select-none">₹</span>
                                                         <input
                                                             type="number"
@@ -3795,7 +3863,7 @@ const ReviseSalaryDetailsTab = () => {
 
                                                 {/* LTA Cell */}
                                                 <td className="py-2 px-2.5 border-b border-r border-slate-200 min-w-[130px] bg-emerald-50">
-                                                    <div className="relative">
+                                                    <div className="relative z-0">
                                                         <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs select-none">₹</span>
                                                         <input
                                                             type="number"
@@ -3814,7 +3882,7 @@ const ReviseSalaryDetailsTab = () => {
 
                                                 {/* Conveyance Cell */}
                                                 <td className="py-2 px-2.5 border-b border-r border-slate-200 min-w-[125px] bg-white">
-                                                    <div className="relative">
+                                                    <div className="relative z-0">
                                                         <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs select-none">₹</span>
                                                         <input
                                                             type="number"
@@ -3828,7 +3896,7 @@ const ReviseSalaryDetailsTab = () => {
 
                                                 {/* Medical Allowance Cell */}
                                                 <td className="py-2 px-2.5 border-b border-r border-slate-200 min-w-[125px] bg-white">
-                                                    <div className="relative">
+                                                    <div className="relative z-0">
                                                         <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs select-none">₹</span>
                                                         <input
                                                             type="number"
@@ -3842,7 +3910,7 @@ const ReviseSalaryDetailsTab = () => {
 
                                                 {/* Meal Allowance Cell */}
                                                 <td className="py-2 px-2.5 border-b border-r border-slate-200 min-w-[125px] bg-white">
-                                                    <div className="relative">
+                                                    <div className="relative z-0">
                                                         <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs select-none">₹</span>
                                                         <input
                                                             type="number"
@@ -3856,7 +3924,7 @@ const ReviseSalaryDetailsTab = () => {
 
                                                 {/* Broadband Cell */}
                                                 <td className="py-2 px-2.5 border-b border-r border-slate-200 min-w-[125px] bg-white">
-                                                    <div className="relative">
+                                                    <div className="relative z-0">
                                                         <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs select-none">₹</span>
                                                         <input
                                                             type="number"
@@ -3870,7 +3938,7 @@ const ReviseSalaryDetailsTab = () => {
 
                                                 {/* Custom Allowances Cell */}
                                                 <td className="py-2 px-2.5 border-b border-r border-slate-200 min-w-[135px] bg-white">
-                                                    <div className="relative">
+                                                    <div className="relative z-0">
                                                         <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs select-none">₹</span>
                                                         <input
                                                             type="number"
@@ -3894,7 +3962,7 @@ const ReviseSalaryDetailsTab = () => {
 
                                                 {/* Medical Insurance (Deduction - Flexi) */}
                                                 <td className="py-2 px-2.5 border-b border-r border-slate-200 min-w-[145px] bg-rose-50">
-                                                    <div className="relative">
+                                                    <div className="relative z-0">
                                                         <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-rose-500 font-bold text-xs select-none">-₹</span>
                                                         <input
                                                             type="number"
@@ -4088,8 +4156,8 @@ const ReviseSalaryDetailsTab = () => {
 
                                                 {/* Row Actions (Sticky Right) */}
                                                 <td
-                                                    style={{ position: 'sticky', right: 0, zIndex: 30, width: '195px', minWidth: '195px', maxWidth: '195px', backgroundColor: stickyBgColor, isolation: 'isolate' }}
-                                                    className="py-2.5 px-3 text-center border-b border-l-2 border-slate-300 shadow-[-4px_0_8px_-2px_rgba(0,0,0,0.1)] w-[195px] min-w-[195px] max-w-[195px]"
+                                                    style={{ position: 'sticky', right: 0, zIndex: 20, width: '200px', minWidth: '200px', maxWidth: '200px', backgroundColor: stickyBgColor }}
+                                                    className="py-2.5 px-3 text-center border-b border-l-2 border-slate-300 shadow-[-4px_0_8px_-2px_rgba(0,0,0,0.12)] w-[200px] min-w-[200px] max-w-[200px]"
                                                 >
                                                     <div className="flex items-center justify-center gap-1.5 whitespace-nowrap">
                                                         {modified ? (

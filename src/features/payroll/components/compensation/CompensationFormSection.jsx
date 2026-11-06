@@ -848,7 +848,20 @@ const CompensationFormSection = ({ formData, calculateSalaryBreakdown, onChange,
                                                 type="number"
                                                 value={(c.id === 'lta' && !parseBool(salary.ltaEnabled, true)) ? 0 : (value || '')}
                                                 disabled={c.id === 'lta' && !parseBool(salary.ltaEnabled, true)}
-                                                onChange={(e) => onBreakdownChange({ [c.id]: e.target.value })}
+                                                onChange={(e) => {
+                                                    const val = e.target.value;
+                                                    const isIns = c.id === 'medical_insurance' || c.id === 'insurance' || (c.name && c.name.toLowerCase().includes('insurance'));
+                                                    if (isIns) {
+                                                        onBreakdownChange({
+                                                            [c.id]: val,
+                                                            insuranceAmount: val,
+                                                            insurance: val,
+                                                            medical_insurance: val
+                                                        });
+                                                    } else {
+                                                        onBreakdownChange({ [c.id]: val });
+                                                    }
+                                                }}
                                                 className={`zoho-input text-xs ${isDeduction ? 'focus:border-rose-400' : ''} ${c.id === 'lta' && !parseBool(salary.ltaEnabled, true) ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : ''}`}
                                                 placeholder="0"
                                             />

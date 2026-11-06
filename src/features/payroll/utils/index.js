@@ -547,10 +547,11 @@ export const buildMasterSalaryStructure = (source = {}, configInput = {}) => {
             amount = roundAmount(basicMaster * pct);
           } else if (c.linkedTo === 'fixed') {
             let val = source[c.id] !== undefined ? source[c.id] : (source.deductions?.[c.id] !== undefined ? source.deductions[c.id] : (source.salaryStructure?.[c.id] !== undefined ? source.salaryStructure[c.id] : (c.linkValue || 0)));
-            if (isInsuranceComp(c) && (source.insuranceAmount !== undefined || source.insurance !== undefined || source.medical_insurance !== undefined)) {
-              const explicitIns = source.insuranceAmount ?? source.insurance ?? source.medical_insurance;
-              if (val === 0 || val === undefined || (source.insuranceAmount !== undefined && val !== explicitIns)) {
-                val = explicitIns;
+            if (isInsuranceComp(c)) {
+              if (source[c.id] === undefined || source[c.id] === null || source[c.id] === '') {
+                if (source.insuranceAmount !== undefined || source.insurance !== undefined || source.medical_insurance !== undefined) {
+                  val = source.insuranceAmount ?? source.insurance ?? source.medical_insurance ?? 0;
+                }
               }
             }
             amount = roundAmount(val);
@@ -697,10 +698,11 @@ export const buildMasterSalaryStructure = (source = {}, configInput = {}) => {
           amount = roundAmount(basicMaster * pct);
         } else if (c.linkedTo === 'fixed') {
           let val = source[c.id] !== undefined ? source[c.id] : (source.deductions?.[c.id] !== undefined ? source.deductions[c.id] : (source.salaryStructure?.[c.id] !== undefined ? source.salaryStructure[c.id] : (c.linkValue || 0)));
-          if (isInsuranceComp(c) && (source.insuranceAmount !== undefined || source.insurance !== undefined || source.medical_insurance !== undefined)) {
-            const explicitIns = source.insuranceAmount ?? source.insurance ?? source.medical_insurance;
-            if (val === 0 || val === undefined || (source.insuranceAmount !== undefined && val !== explicitIns)) {
-              val = explicitIns;
+          if (isInsuranceComp(c)) {
+            if (source[c.id] === undefined || source[c.id] === null || source[c.id] === '') {
+              if (source.insuranceAmount !== undefined || source.insurance !== undefined || source.medical_insurance !== undefined) {
+                val = source.insuranceAmount ?? source.insurance ?? source.medical_insurance ?? 0;
+              }
             }
           }
           amount = roundAmount(val);
