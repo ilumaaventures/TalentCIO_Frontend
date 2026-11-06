@@ -144,6 +144,7 @@ const CompensationFormSection = ({ formData, calculateSalaryBreakdown, onChange,
                                         ptEnabled: resolveFlag(compDefaults.ptApplicable ?? compDefaults.ptEnabled, baseDefaults.ptApplicable),
                                         gratuityEnabled: resolveFlag(compDefaults.gratuityEligible ?? compDefaults.gratuityEnabled, baseDefaults.gratuityEligible),
                                         lwfEnabled: resolveFlag(compDefaults.lwfApplicable ?? compDefaults.lwfEnabled, baseDefaults.lwfApplicable),
+                                        ltaEnabled: resolveFlag(compDefaults.ltaEligible ?? compDefaults.ltaEnabled, baseDefaults.ltaEligible ?? true),
                                     });
                                 }}
                                 className="zoho-input"
@@ -572,6 +573,70 @@ const CompensationFormSection = ({ formData, calculateSalaryBreakdown, onChange,
                                     Labour Welfare Fund contributions {parseBool(salary.lwfEnabled, true) && (parseFloat(salary.lwfEmployee || 0) + parseFloat(salary.lwfEmployer || 0)) > 0 && `(EE: ${fmtMoney(salary.lwfEmployee)}, ER: ${fmtMoney(salary.lwfEmployer)})`}
                                 </span>
                             </div>
+
+                            {/* LTA (Leave Travel Allowance) Card */}
+                            <div className="flex flex-col gap-2 p-3 bg-slate-50/50 border border-slate-200 rounded-xl">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                        <span className="text-xs font-semibold text-slate-800">Leave Travel Allowance (LTA)</span>
+                                        {parseBool(salary.ltaEnabled, true) && parseFloat(salary.lta || 0) > 0 ? (
+                                            <span className="text-[9px] font-bold bg-teal-50 text-teal-700 border border-teal-200 rounded-full px-1.5 py-0.5">
+                                                {fmtMoney(salary.lta)}
+                                            </span>
+                                        ) : (
+                                            <span className="text-[9px] font-bold bg-slate-100 text-slate-500 border border-slate-200 rounded-full px-1.5 py-0.5">
+                                                Disabled (₹0)
+                                            </span>
+                                        )}
+                                    </div>
+                                    <input
+                                        type="checkbox"
+                                        checked={parseBool(salary.ltaEnabled, true)}
+                                        onChange={(e) => {
+                                            const checked = e.target.checked;
+                                            onBreakdownChange({
+                                                ltaEnabled: checked,
+                                                lta: checked ? (salary.lta || (config?.salaryComponents?.find(c => c.id === 'lta')?.linkValue || 0)) : 0
+                                            });
+                                        }}
+                                        className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500 cursor-pointer"
+                                    />
+                                </div>
+                                <span className="text-[10px] text-slate-500">
+                                    {parseBool(salary.ltaEnabled, true)
+                                        ? `Statutory tax-exempt travel allowance (Capped at ${Math.round((config?.ltaMaxPercent ?? 0.0833) * 10000) / 100}% of Basic: ${fmtMoney(parseFloat(salary.basicMaster || salary.basic || 0) * (config?.ltaMaxPercent ?? 0.0833))})`
+                                        : 'LTA contribution is disabled for this employee (zeroed out in salary)'}
+                                </span>
+                            </div>
+
+                            {/* Income Tax (TDS) Card */}
+                            <div className="flex flex-col gap-2 p-3 bg-slate-50/50 border border-slate-200 rounded-xl">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                        <span className="text-xs font-semibold text-slate-800">Income Tax (TDS)</span>
+                                        {parseBool(salary.tdsEnabled, true) && parseFloat(salary.tds || 0) > 0 ? (
+                                            <span className="text-[9px] font-bold bg-rose-50 text-rose-600 border border-rose-100 rounded-full px-1.5 py-0.5">
+                                                {fmtMoney(salary.tds)} / mo
+                                            </span>
+                                        ) : (
+                                            <span className="text-[9px] font-bold bg-slate-100 text-slate-500 border border-slate-200 rounded-full px-1.5 py-0.5">
+                                                Disabled (₹0)
+                                            </span>
+                                        )}
+                                    </div>
+                                    <input
+                                        type="checkbox"
+                                        checked={parseBool(salary.tdsEnabled, true)}
+                                        onChange={(e) => onBreakdownChange({ tdsEnabled: e.target.checked })}
+                                        className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500 cursor-pointer"
+                                    />
+                                </div>
+                                <span className="text-[10px] text-slate-500">
+                                    {parseBool(salary.tdsEnabled, true) && parseFloat(salary.tds || 0) > 0
+                                        ? `Subject to TDS deductions — Est. TDS: ${fmtMoney(salary.tds)}/mo (${fmtMoney(parseFloat(salary.tds) * 12)}/yr)`
+                                        : 'TDS deduction is disabled'}
+                                </span>
+                            </div>
                         </div>
 
                         {/* PT Card */}
@@ -642,35 +707,6 @@ const CompensationFormSection = ({ formData, calculateSalaryBreakdown, onChange,
                                     </p>
                                 </div>
                             )}
-                        </div>
-
-                        {/* Income Tax (TDS) Card */}
-                        <div className="flex items-center justify-between p-3 bg-slate-50/50 border border-slate-200 rounded-xl">
-                            <div>
-                                <div className="flex items-center gap-1.5 flex-wrap">
-                                    <span className="text-xs font-semibold text-slate-800">Income Tax (TDS)</span>
-                                    {parseBool(salary.tdsEnabled, true) && parseFloat(salary.tds || 0) > 0 ? (
-                                        <span className="text-[9px] font-bold bg-rose-50 text-rose-600 border border-rose-100 rounded-full px-1.5 py-0.5">
-                                            {fmtMoney(salary.tds)} / mo
-                                        </span>
-                                    ) : (
-                                        <span className="text-[9px] font-bold bg-slate-100 text-slate-500 border border-slate-200 rounded-full px-1.5 py-0.5">
-                                            Disabled (₹0)
-                                        </span>
-                                    )}
-                                </div>
-                                <span className="text-[10px] text-slate-500">
-                                    {parseBool(salary.tdsEnabled, true) && parseFloat(salary.tds || 0) > 0
-                                        ? `Subject to TDS deductions — Est. TDS: ${fmtMoney(salary.tds)}/mo (${fmtMoney(parseFloat(salary.tds) * 12)}/yr)`
-                                        : 'TDS deduction is disabled'}
-                                </span>
-                            </div>
-                            <input
-                                type="checkbox"
-                                checked={parseBool(salary.tdsEnabled, true)}
-                                onChange={(e) => onBreakdownChange({ tdsEnabled: e.target.checked })}
-                                className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500 cursor-pointer"
-                            />
                         </div>
                     </div>
                 )}
@@ -768,7 +804,11 @@ const CompensationFormSection = ({ formData, calculateSalaryBreakdown, onChange,
                                                 <label className="text-[11px] font-bold text-slate-700">
                                                     {c.name} {formulaLabel && <span className="text-[10px] font-normal text-slate-500">({formulaLabel})</span>}
                                                 </label>
-                                                {isDeduction ? (
+                                                {c.id === 'lta' && !parseBool(salary.ltaEnabled, true) ? (
+                                                    <span className="text-[9px] font-bold text-slate-500 bg-slate-100 border border-slate-200 px-1.5 py-0.2 rounded" title="LTA is disabled in Statutory Toggles">
+                                                        Disabled via Toggle
+                                                    </span>
+                                                ) : isDeduction ? (
                                                     <span className={`text-[9px] font-extrabold px-1.5 py-0.2 rounded uppercase border ${
                                                         c.deductFromFlexi || c.includeInCTC
                                                             ? 'text-blue-700 bg-blue-100/70 border-blue-200'
@@ -806,9 +846,23 @@ const CompensationFormSection = ({ formData, calculateSalaryBreakdown, onChange,
                                         {isFixed ? (
                                             <input
                                                 type="number"
-                                                value={value || ''}
-                                                onChange={(e) => onBreakdownChange({ [c.id]: e.target.value })}
-                                                className={`zoho-input text-xs ${isDeduction ? 'focus:border-rose-400' : ''}`}
+                                                value={(c.id === 'lta' && !parseBool(salary.ltaEnabled, true)) ? 0 : (value || '')}
+                                                disabled={c.id === 'lta' && !parseBool(salary.ltaEnabled, true)}
+                                                onChange={(e) => {
+                                                    const val = e.target.value;
+                                                    const isIns = c.id === 'medical_insurance' || c.id === 'insurance' || (c.name && c.name.toLowerCase().includes('insurance'));
+                                                    if (isIns) {
+                                                        onBreakdownChange({
+                                                            [c.id]: val,
+                                                            insuranceAmount: val,
+                                                            insurance: val,
+                                                            medical_insurance: val
+                                                        });
+                                                    } else {
+                                                        onBreakdownChange({ [c.id]: val });
+                                                    }
+                                                }}
+                                                className={`zoho-input text-xs ${isDeduction ? 'focus:border-rose-400' : ''} ${c.id === 'lta' && !parseBool(salary.ltaEnabled, true) ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : ''}`}
                                                 placeholder="0"
                                             />
                                         ) : (

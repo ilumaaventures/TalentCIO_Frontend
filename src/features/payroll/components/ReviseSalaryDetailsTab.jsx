@@ -38,7 +38,16 @@ import {
     ArrowLeft,
     Layers,
     X,
-    ExternalLink
+    ExternalLink,
+    Table,
+    CheckSquare,
+    Square,
+    RotateCcw,
+    FileSpreadsheet,
+    SlidersHorizontal,
+    ToggleLeft,
+    ToggleRight,
+    Info
 } from 'lucide-react';
 import CompensationFormSection from './compensation/CompensationFormSection';
 import { buildMasterSalaryStructure, fmtMoney, parseBool } from '@/features/payroll/utils/payroll';
@@ -73,6 +82,7 @@ const DEFAULT_SALARY_DRAFT = {
     lwfEnabled: true,
     gratuityEnabled: true,
     tdsEnabled: true,
+    ltaEnabled: true,
     includePfInCTC: false,
     includeGratuityInCTC: true,
     ptState: 'MH',
@@ -158,6 +168,16 @@ const computeAnnexureRows = (salary = {}, config = {}) => {
 
     let insurance = parseN(salary.insurance || salary.insuranceAmount);
 
+    const isStandardComp = (comp) => {
+        if (!comp) return false;
+        const id = String(comp.id || '').toLowerCase();
+        const name = String(comp.name || '').toLowerCase();
+        return (
+            ['basic', 'hra', 'flexi', 'special', 'broadband', 'petrol', 'lta', 'insurance', 'medical_insurance'].includes(id) ||
+            /basic|house rent|hra|flexi|special allowance|petrol|broadband|lta|leave travel|insurance|mediclaim/i.test(name)
+        );
+    };
+
     salaryComps.forEach(c => {
         const val = parseN(salary[c.id]);
         if (c.id === 'flexi') {
@@ -166,11 +186,17 @@ const computeAnnexureRows = (salary = {}, config = {}) => {
             if (!special) special = val;
         } else if (c.id === 'basic' || c.id === 'hra') {
             // handled
-        } else if (/insurance/i.test(c.name)) {
+        } else if (c.id === 'broadband' || /broadband/i.test(c.name)) {
+            if (!broadband && val > 0) broadband = val;
+        } else if (c.id === 'petrol' || /petrol/i.test(c.name)) {
+            if (!petrol && val > 0) petrol = val;
+        } else if (c.id === 'lta' || /leave travel|lta/i.test(c.name)) {
+            if (!lta && val > 0) lta = val;
+        } else if (c.id === 'insurance' || c.id === 'medical_insurance' || /insurance|mediclaim/i.test(c.name)) {
             if (!insurance && val > 0) insurance = val;
-        } else if ((c.type === 'earning' || !c.type) && !['broadband', 'petrol', 'lta'].includes(c.id)) {
+        } else if ((c.type === 'earning' || !c.type) && !isStandardComp(c)) {
             if (val > 0) additionalEarnings.push({ name: c.name, monthly: val });
-        } else if (c.type === 'deduction' && (c.deductFromFlexi || c.includeInCTC)) {
+        } else if (c.type === 'deduction' && (c.deductFromFlexi || c.includeInCTC) && !isStandardComp(c)) {
             if (val > 0) additionalDeductionsFromFlexi.push({ name: c.name, monthly: val });
         }
     });
@@ -179,7 +205,7 @@ const computeAnnexureRows = (salary = {}, config = {}) => {
         Object.keys(salary).forEach(k => {
             if (k.startsWith('custom_') && parseN(salary[k]) > 0) {
                 const comp = salaryComps.find(c => c.id === k);
-                if (comp && /insurance/i.test(comp.name)) {
+                if (comp && /insurance|mediclaim/i.test(comp.name)) {
                     insurance = parseN(salary[k]);
                 } else if (!comp && !insurance) {
                     insurance = parseN(salary[k]);
@@ -197,6 +223,11 @@ const computeAnnexureRows = (salary = {}, config = {}) => {
         const name = String(item.name || '').trim();
         const amt = parseN(item.amount);
         if (amt <= 0) return;
+
+        // Skip if this custom allowance duplicates an existing standard component
+        if (/basic|hra|flexi|special allowance|petrol|broadband|lta|leave travel|insurance|mediclaim/i.test(name)) {
+            return;
+        }
 
         if (/bonus/i.test(name)) {
             const freq = String(item.frequency || 'semi_annually').toLowerCase();
@@ -222,7 +253,9 @@ const computeAnnexureRows = (salary = {}, config = {}) => {
     if (!pfEmployer && salary.hasOwnProperty('pfEmployer')) {
         pfEmployer = 0;
     } else if (!pfEmployer && salary.pfEnabled === true && salary.includePfInCTC === true) {
-        pfEmployer = basic >= 15000 ? 1800 : Math.round(basic * 0.12);
+        const pfCap = config?.pfCap || salary.pfCap || 15000;
+        const pfRate = config?.pfEmployerRate || 0.12;
+        pfEmployer = Math.round(Math.min(basic, pfCap) * pfRate);
     }
     if (salary.pfEnabled === false) pfEmployer = 0;
 
@@ -257,29 +290,64 @@ const computeAnnexureRows = (salary = {}, config = {}) => {
     }
 
     const rows = [];
-    if (basic > 0) rows.push({ label: 'Basic', value: basic });
-    if (hra > 0) rows.push({ label: 'HRA', value: hra });
-    if (flexi > 0) {
-        const flexiLabel = 'Flexi(if chosen)';
-        rows.push({ label: flexiLabel, value: flexi });
-    }
+    const seenCanonicalKeys = new Set();
+    const addUniqueRow = (label, value, extraProps = {}) => {
+        if (!value || value <= 0) return;
+        const normKey = String(label)
+            .toLowerCase()
+            .replace(/[*()]/g, '')
+            .replace(/\s+/g, ' ')
+            .trim();
+
+        let canonicalKey = normKey;
+        if (canonicalKey.includes('basic')) canonicalKey = 'basic';
+        else if (canonicalKey.includes('hra') || canonicalKey.includes('house rent')) canonicalKey = 'hra';
+        else if (canonicalKey.includes('flexi')) canonicalKey = 'flexi';
+        else if (canonicalKey.includes('special')) canonicalKey = 'special';
+        else if (canonicalKey.includes('petrol')) canonicalKey = 'petrol';
+        else if (canonicalKey.includes('broadband')) canonicalKey = 'broadband';
+        else if (canonicalKey.includes('lta') || canonicalKey.includes('leave travel')) canonicalKey = 'lta';
+        else if (canonicalKey.includes('insurance') || canonicalKey.includes('mediclaim')) canonicalKey = 'insurance';
+        else if (canonicalKey.includes('pf') && (canonicalKey.includes('employer') || canonicalKey.includes('contribution'))) canonicalKey = 'pf_employer';
+        else if (canonicalKey.includes('lwf') && (canonicalKey.includes('employer') || canonicalKey.includes('contribution'))) canonicalKey = 'lwf_employer';
+        else if (canonicalKey.includes('gratuity')) canonicalKey = 'gratuity';
+
+        if (seenCanonicalKeys.has(canonicalKey)) return;
+        seenCanonicalKeys.add(canonicalKey);
+
+        rows.push({ label, value, ...extraProps });
+    };
+
+    if (basic > 0) addUniqueRow('Basic', basic);
+    if (hra > 0) addUniqueRow('HRA', hra);
+    if (flexi > 0) addUniqueRow('Flexi(if chosen)', flexi);
     if (special > 0 && special !== flexi) {
         const specialLabel = salaryComps.find(c => c.id === 'special')?.name || 'Special Allowance';
-        rows.push({ label: specialLabel, value: special });
+        addUniqueRow(specialLabel, special);
     }
-    if (broadband > 0) rows.push({ label: 'Broadband', value: broadband });
-    if (petrol > 0) rows.push({ label: 'Petrol', value: petrol });
-    if (lta > 0) rows.push({ label: 'LTA', value: lta });
+    if (broadband > 0) addUniqueRow('Broadband', broadband);
+    if (petrol > 0) addUniqueRow('Petrol', petrol);
+    if (lta > 0) addUniqueRow('LTA', lta);
 
-    additionalEarnings.forEach(r => { if (r.monthly > 0) rows.push({ label: r.name, value: r.monthly }); });
-    additionalCustomRows.forEach(r => { if (r.monthly > 0) rows.push({ label: r.name, value: r.monthly }); });
+    additionalEarnings.forEach(r => { if (r.monthly > 0) addUniqueRow(r.name, r.monthly); });
+    additionalCustomRows.forEach(r => { if (r.monthly > 0) addUniqueRow(r.name, r.monthly); });
 
-    if (pfEmployer > 0) rows.push({ label: "PF(Employer's Contribution)", value: pfEmployer });
-    if (lwfEmployer > 0) rows.push({ label: 'LWF(Employer Contribution)', value: lwfEmployer });
-    if (gratuity > 0) rows.push({ label: 'Gratuity*', value: gratuity });
-    if (insurance > 0) rows.push({ label: 'Insurance**', value: insurance });
+    if (pfEmployer > 0) addUniqueRow("PF(Employer's Contribution)", pfEmployer);
+    if (lwfEmployer > 0) addUniqueRow('LWF(Employer Contribution)', lwfEmployer);
+    if (gratuity > 0) addUniqueRow('Gratuity*', gratuity);
+    if (insurance > 0) addUniqueRow('Insurance**', insurance);
 
-    additionalDeductionsFromFlexi.forEach(r => { if (r.monthly > 0) rows.push({ label: r.name, value: r.monthly }); });
+    additionalDeductionsFromFlexi.forEach(r => { if (r.monthly > 0) addUniqueRow(r.name, r.monthly); });
+
+    if (monthlyCTC > 0) rows.push({ label: 'Monthly CTC', value: monthlyCTC, isMonthlyCTC: true });
+    if (annualCTC > 0) rows.push({ label: 'Annual CTC', value: annualCTC, isBold: true, isAnnualCTC: true });
+
+    if (bonus > 0) {
+        rows.push({ label: 'Bonus***( will be paid in two equal tranche of six months)', value: bonus, isBonus: true });
+        rows.push({ label: 'Potential Package', value: potentialPackage, isBold: true, isPotentialPackage: true });
+    }
+
+    return rows;
 
     if (monthlyCTC > 0) rows.push({ label: 'Monthly CTC', value: monthlyCTC, isMonthlyCTC: true });
     if (annualCTC > 0) rows.push({ label: 'Annual CTC', value: annualCTC, isBold: true, isAnnualCTC: true });
@@ -360,6 +428,20 @@ const ReviseSalaryDetailsTab = () => {
     const [submittingBulk, setSubmittingBulk] = useState(false);
     const [bulkResultSummary, setBulkResultSummary] = useState(null);
     const [bulkGenerateLetters, setBulkGenerateLetters] = useState(true);
+
+    // Bulk Salary Details (Excel Grid) state
+    const [bulkGridData, setBulkGridData] = useState([]);
+    const [loadingBulkProfiles, setLoadingBulkProfiles] = useState(false);
+    const [bulkDetailsSearch, setBulkDetailsSearch] = useState('');
+    const [bulkDetailsDept, setBulkDetailsDept] = useState('ALL');
+    const [selectedBulkDetailIds, setSelectedBulkDetailIds] = useState([]);
+    const [bulkDetailsEffectiveDate, setBulkDetailsEffectiveDate] = useState(() => format(new Date(), 'yyyy-MM-dd'));
+    const [bulkDetailsReason, setBulkDetailsReason] = useState('Company Compensation Restructuring');
+    const [bulkDetailsCustomReason, setBulkDetailsCustomReason] = useState('');
+    const [bulkDetailsBackdatedConfirmed, setBulkDetailsBackdatedConfirmed] = useState(false);
+    const [submittingBulkDetails, setSubmittingBulkDetails] = useState(false);
+    const [savingRowId, setSavingRowId] = useState(null);
+    const [bulkActionTarget, setBulkActionTarget] = useState('all'); // 'all' | 'selected'
 
     // Revision logs state
     const [companyRevisions, setCompanyRevisions] = useState([]);
@@ -486,6 +568,7 @@ const ReviseSalaryDetailsTab = () => {
                 lwfEnabled: parseBool(mergedSalary.lwfEnabled, true),
                 gratuityEnabled: parseBool(mergedSalary.gratuityEnabled, true),
                 tdsEnabled: parseBool(mergedSalary.tdsEnabled, true),
+                ltaEnabled: parseBool(mergedSalary.ltaEnabled, true),
                 includePfInCTC: parseBool(mergedSalary.includePfInCTC, false),
                 includeGratuityInCTC: parseBool(mergedSalary.includeGratuityInCTC, true),
                 basicPercent: mergedSalary.basicPercent !== undefined && mergedSalary.basicPercent !== null ? Number(mergedSalary.basicPercent) : 50,
@@ -502,8 +585,20 @@ const ReviseSalaryDetailsTab = () => {
             if (activeConfig?.salaryComponents) {
                 activeConfig.salaryComponents.forEach(c => {
                     if (c.linkedTo === 'fixed') {
-                        const val = mergedSalary[c.id] !== undefined ? mergedSalary[c.id] : (c.linkValue || 0);
-                        source[c.id] = parseFloat(String(val).replace(/[^0-9.]/g, '')) || 0;
+                        const isIns = c.id === 'medical_insurance' || c.id === 'insurance' || (c.name && c.name.toLowerCase().includes('insurance'));
+                        let val = mergedSalary[c.id];
+                        if (isIns && (val === undefined || val === null || val === '')) {
+                            val = mergedSalary.insuranceAmount ?? mergedSalary.insurance ?? mergedSalary.medical_insurance;
+                        }
+                        if (val === undefined) val = c.linkValue || 0;
+                        const parsedVal = parseFloat(String(val).replace(/[^0-9.]/g, '')) || 0;
+                        source[c.id] = parsedVal;
+                        if (isIns && (updatedSalaryFields?.[c.id] !== undefined || updatedSalaryFields?.insuranceAmount !== undefined || updatedSalaryFields?.insurance !== undefined)) {
+                            source.insuranceAmount = parsedVal;
+                            source.insurance = parsedVal;
+                            source.medical_insurance = parsedVal;
+                            mergedSalary.insuranceAmount = String(parsedVal);
+                        }
                     }
                 });
             }
@@ -612,6 +707,7 @@ const ReviseSalaryDetailsTab = () => {
                 lwfEnabled: breakup.lwfEnabled !== undefined ? parseBool(breakup.lwfEnabled) : true,
                 gratuityEnabled: breakup.gratuityEnabled !== undefined ? parseBool(breakup.gratuityEnabled) : true,
                 tdsEnabled: breakup.tdsEnabled !== undefined ? parseBool(breakup.tdsEnabled) : true,
+                ltaEnabled: breakup.ltaEnabled !== undefined ? parseBool(breakup.ltaEnabled) : true,
                 includePfInCTC: parseBool(breakup.includePfInCTC),
                 includeGratuityInCTC: breakup.includeGratuityInCTC !== undefined ? parseBool(breakup.includeGratuityInCTC) : true,
                 ptState: breakup.ptState || 'MH',
@@ -1095,6 +1191,835 @@ const ReviseSalaryDetailsTab = () => {
         return d.getTime() < t.getTime();
     }, [bulkEffectiveDate]);
 
+    // ==============================================================
+    // BULK SALARY DETAILS (EXCEL SPREADSHEET) LOGIC
+    // ==============================================================
+    const computeRowSalary = useCallback((rowData, cfg) => {
+        const activeConfig = cfg || payrollConfigRef.current || payrollConfig;
+        const annualCTC = parseFloat(String(rowData.annualCTC || '0').replace(/[^0-9.]/g, '')) || 0;
+        const monthlyCTC = annualCTC ? Math.round(annualCTC / 12) : 0;
+
+        const petrol = parseFloat(String(rowData.petrol || '0').replace(/[^0-9.]/g, '')) || 0;
+        const conveyance = parseFloat(String(rowData.conveyance || '0').replace(/[^0-9.]/g, '')) || 0;
+        const medicalAllowance = parseFloat(String(rowData.medicalAllowance !== undefined ? rowData.medicalAllowance : (rowData.medical || '0')).replace(/[^0-9.]/g, '')) || 0;
+        const mealAllowance = parseFloat(String(rowData.mealAllowance !== undefined ? rowData.mealAllowance : (rowData.meal || '0')).replace(/[^0-9.]/g, '')) || 0;
+        const broadband = parseFloat(String(rowData.broadband || '0').replace(/[^0-9.]/g, '')) || 0;
+        const customAllowances = parseFloat(String(rowData.customAllowances || '0').replace(/[^0-9.]/g, '')) || 0;
+        const insuranceAmount = parseFloat(String(rowData.insuranceAmount !== undefined ? rowData.insuranceAmount : (rowData.medical_insurance || '1500')).replace(/[^0-9.]/g, '')) || 0;
+
+        const ltaEnabled = parseBool(rowData.ltaEnabled, true);
+        let lta = 0;
+        if (ltaEnabled) {
+            if (rowData.lta !== undefined && rowData.lta !== null && rowData.lta !== '') {
+                lta = parseFloat(String(rowData.lta).replace(/[^0-9.]/g, '')) || 0;
+            } else {
+                const ltaComp = activeConfig?.salaryComponents?.find(c => c.id === 'lta');
+                const pct = ltaComp?.linkValue ? Number(ltaComp.linkValue) : 0.0833;
+                lta = Math.round(monthlyCTC * (pct > 1 ? pct / 100 : pct));
+            }
+        }
+
+        const source = {
+            ...rowData,
+            annualCTC,
+            monthlyCTC,
+            compensationType: rowData.compensationType || 'monthly_salary',
+            useSalaryComponents: rowData.useSalaryComponents !== false,
+            pfEnabled: parseBool(rowData.pfEnabled, true),
+            esiEnabled: parseBool(rowData.esiEnabled, true),
+            ptEnabled: parseBool(rowData.ptEnabled, true),
+            lwfEnabled: parseBool(rowData.lwfEnabled, true),
+            gratuityEnabled: parseBool(rowData.gratuityEnabled, true),
+            tdsEnabled: parseBool(rowData.tdsEnabled, true),
+            ltaEnabled,
+            includePfInCTC: parseBool(rowData.includePfInCTC, false),
+            includeGratuityInCTC: parseBool(rowData.includeGratuityInCTC, true),
+            basicPercent: rowData.basicPercent !== undefined && rowData.basicPercent !== null ? Number(rowData.basicPercent) : 50,
+            hraPercent: rowData.hraPercent !== undefined && rowData.hraPercent !== null ? Number(rowData.hraPercent) : 50,
+            ptState: rowData.ptState || 'MH',
+            petrol,
+            conveyance,
+            medicalAllowance,
+            medical: medicalAllowance,
+            mealAllowance,
+            meal: mealAllowance,
+            broadband,
+            lta,
+            insuranceAmount,
+            insurance: insuranceAmount,
+            medical_insurance: insuranceAmount,
+            customAllowances: customAllowances > 0 ? [{ name: 'Custom Allowance', amount: customAllowances }] : [],
+            otherAllowances: customAllowances > 0 ? [{ name: 'Custom Allowance', amount: customAllowances }] : []
+        };
+
+        if (activeConfig?.salaryComponents) {
+            activeConfig.salaryComponents.forEach(c => {
+                if (c.linkedTo === 'fixed') {
+                    if (c.id === 'petrol') source.petrol = petrol;
+                    else if (c.id === 'conveyance') source.conveyance = conveyance;
+                    else if (c.id === 'medical' || c.id === 'medicalAllowance' || (c.name && c.name.toLowerCase().includes('medical') && !c.name.toLowerCase().includes('insurance'))) {
+                        source[c.id] = medicalAllowance;
+                        source.medical = medicalAllowance;
+                        source.medicalAllowance = medicalAllowance;
+                    }
+                    else if (c.id === 'meal' || c.id === 'mealAllowance' || (c.name && c.name.toLowerCase().includes('meal'))) {
+                        source[c.id] = mealAllowance;
+                        source.meal = mealAllowance;
+                        source.mealAllowance = mealAllowance;
+                    }
+                    else if (c.id === 'broadband') source.broadband = broadband;
+                    else if (c.id === 'lta') source.lta = lta;
+                    else if (c.id === 'medical_insurance' || c.id === 'insurance' || (c.name && c.name.toLowerCase().includes('insurance'))) {
+                        source[c.id] = insuranceAmount;
+                        source.insurance = insuranceAmount;
+                        source.insuranceAmount = insuranceAmount;
+                        source.medical_insurance = insuranceAmount;
+                    }
+                    else {
+                        const val = rowData[c.id] !== undefined ? rowData[c.id] : (c.linkValue || 0);
+                        source[c.id] = parseFloat(String(val).replace(/[^0-9.]/g, '')) || 0;
+                    }
+                }
+            });
+        }
+
+        const master = buildMasterSalaryStructure(source, activeConfig, annualCTC, monthlyCTC);
+        return {
+            annualCTC: Math.round(annualCTC),
+            monthlyCTC: Math.round(monthlyCTC),
+            basicMaster: Math.round(master?.basicMaster || 0),
+            hraMaster: Math.round(master?.hraMaster || 0),
+            specialAllowance: Math.round(master?.specialAllowance || master?.flexi || 0),
+            petrol: Math.round(petrol),
+            lta: Math.round(lta),
+            conveyance: Math.round(conveyance),
+            medicalAllowance: Math.round(medicalAllowance),
+            mealAllowance: Math.round(mealAllowance),
+            broadband: Math.round(broadband),
+            customAllowances: Math.round(customAllowances),
+            insuranceAmount: Math.round(insuranceAmount),
+            grossMaster: Math.round(master?.totalEarnings || 0),
+            pfEmployer: Math.round(master?.pfEmployer || 0),
+            pfEmployee: Math.round(master?.pfEmployee || 0),
+            esiEmployer: Math.round(master?.esiEmployer || 0),
+            esiEmployee: Math.round(master?.esiEmployee || 0),
+            professionalTax: Math.round(master?.professionalTax || 0),
+            lwfEmployer: Math.round(master?.lwfEmployer || 0),
+            lwfEmployee: Math.round(master?.lwfEmployee || 0),
+            gratuity: Math.round(master?.gratuity || 0),
+            tds: Math.round(master?.tds || 0),
+            netTakeHome: Math.round(master?.netTakeHome || 0),
+            totalDeductions: Math.round((master?.pfEmployee || 0) + (master?.esiEmployee || 0) + (master?.professionalTax || 0) + (master?.lwfEmployee || 0) + (master?.tds || 0))
+        };
+    }, [payrollConfig]);
+
+    const fetchBulkProfiles = useCallback(async () => {
+        try {
+            setLoadingBulkProfiles(true);
+            let activeConfig = payrollConfigRef.current || payrollConfig;
+            if (!activeConfig) {
+                try {
+                    const cfgRes = await api.get('/payroll/config');
+                    if (cfgRes?.data) {
+                        activeConfig = cfgRes.data;
+                        payrollConfigRef.current = activeConfig;
+                        setPayrollConfig(activeConfig);
+                    }
+                } catch (cfgErr) {
+                    console.error('Failed to pre-fetch payroll config:', cfgErr);
+                }
+            }
+
+            const res = await api.get('/employees/revisions/bulk-profiles');
+            const list = res.data?.employees || [];
+            const rows = list.map(emp => {
+                const b = emp.salaryBreakup || {};
+                const annualCTC = String(emp.annualCTC || b.annualCTC || '600000');
+                const monthlyCTC = String(emp.monthlyCTC || b.monthlyCTC || Math.round(Number(annualCTC) / 12));
+                const insComp = activeConfig.salaryComponents?.find(c =>
+                    c.id === 'medical_insurance' || c.id === 'insurance' || (c.name && c.name.toLowerCase().includes('insurance'))
+                );
+                let initialInsurance = b.insuranceAmount;
+                if (insComp && b[insComp.id] !== undefined && b[insComp.id] !== null) {
+                    initialInsurance = b[insComp.id];
+                }
+                if (initialInsurance === undefined && b.medical_insurance !== undefined) {
+                    initialInsurance = b.medical_insurance;
+                }
+                if (initialInsurance === undefined) {
+                    initialInsurance = '1500';
+                }
+
+                const rowData = {
+                    ...b,
+                    _id: emp._id,
+                    firstName: emp.firstName,
+                    lastName: emp.lastName || '',
+                    employeeCode: emp.employeeCode || '',
+                    department: emp.department || '',
+                    designation: emp.designation || '',
+                    annualCTC,
+                    monthlyCTC,
+                    compensationType: b.compensationType || 'monthly_salary',
+                    useSalaryComponents: b.useSalaryComponents !== false,
+                    pfEnabled: b.pfEnabled !== undefined ? parseBool(b.pfEnabled) : true,
+                    includePfInCTC: parseBool(b.includePfInCTC),
+                    esiEnabled: b.esiEnabled !== undefined ? parseBool(b.esiEnabled) : true,
+                    ptEnabled: b.ptEnabled !== undefined ? parseBool(b.ptEnabled) : true,
+                    gratuityEnabled: b.gratuityEnabled !== undefined ? parseBool(b.gratuityEnabled) : true,
+                    includeGratuityInCTC: b.includeGratuityInCTC !== undefined ? parseBool(b.includeGratuityInCTC) : true,
+                    lwfEnabled: b.lwfEnabled !== undefined ? parseBool(b.lwfEnabled) : true,
+                    tdsEnabled: b.tdsEnabled !== undefined ? parseBool(b.tdsEnabled) : true,
+                    ltaEnabled: b.ltaEnabled !== undefined ? parseBool(b.ltaEnabled) : true,
+                    basicPercent: b.basicPercent !== undefined ? b.basicPercent : 50,
+                    hraPercent: b.hraPercent !== undefined ? b.hraPercent : 50,
+                    ptState: b.ptState || 'MH',
+                    petrol: b.petrol !== undefined ? String(b.petrol) : '0',
+                    lta: b.lta !== undefined ? String(b.lta) : '',
+                    conveyance: b.conveyance !== undefined ? String(b.conveyance) : '0',
+                    medicalAllowance: b.medicalAllowance !== undefined ? String(b.medicalAllowance) : (b.medical !== undefined ? String(b.medical) : '0'),
+                    mealAllowance: b.mealAllowance !== undefined ? String(b.mealAllowance) : (b.meal !== undefined ? String(b.meal) : '0'),
+                    broadband: b.broadband !== undefined ? String(b.broadband) : '0',
+                    customAllowances: b.customAllowances !== undefined ? (Array.isArray(b.customAllowances) ? String(b.customAllowances.reduce((s, x) => s + (Number(x.amount) || 0), 0)) : String(b.customAllowances)) : '0',
+                    insuranceAmount: String(initialInsurance)
+                };
+                const calculated = computeRowSalary(rowData, activeConfig);
+                return {
+                    ...rowData,
+                    calculated,
+                    original: {
+                        annualCTC: rowData.annualCTC,
+                        monthlyCTC: rowData.monthlyCTC,
+                        pfEnabled: rowData.pfEnabled,
+                        includePfInCTC: rowData.includePfInCTC,
+                        esiEnabled: rowData.esiEnabled,
+                        ptEnabled: rowData.ptEnabled,
+                        gratuityEnabled: rowData.gratuityEnabled,
+                        includeGratuityInCTC: rowData.includeGratuityInCTC,
+                        lwfEnabled: rowData.lwfEnabled,
+                        tdsEnabled: rowData.tdsEnabled,
+                        ltaEnabled: rowData.ltaEnabled,
+                        petrol: rowData.petrol,
+                        lta: rowData.lta,
+                        conveyance: rowData.conveyance,
+                        medicalAllowance: rowData.medicalAllowance,
+                        mealAllowance: rowData.mealAllowance,
+                        broadband: rowData.broadband,
+                        customAllowances: rowData.customAllowances,
+                        insuranceAmount: rowData.insuranceAmount
+                    }
+                };
+            });
+            setBulkGridData(rows);
+        } catch (err) {
+            console.error('Failed to load bulk employee profiles:', err);
+            // Fallback: Populate from employees if endpoint fails
+            if (employees.length > 0) {
+                const fallbackRows = employees.map(emp => {
+                    const fallbackAnnual = String(emp.salary?.annualCTC || emp.compensation?.annualCTC || (emp.compensation?.ctc ? Math.round(emp.compensation.ctc * 12) : 0) || '0');
+                    const fallbackMonthly = String(emp.salary?.monthlyCTC || (Number(fallbackAnnual) ? Math.round(Number(fallbackAnnual) / 12) : 0));
+                    const rowData = {
+                        _id: emp._id,
+                        firstName: emp.firstName,
+                        lastName: emp.lastName || '',
+                        employeeCode: emp.employeeCode || '',
+                        department: emp.department || '',
+                        designation: emp.designation || '',
+                        annualCTC: fallbackAnnual,
+                        monthlyCTC: fallbackMonthly,
+                        compensationType: 'monthly_salary',
+                        useSalaryComponents: true,
+                        pfEnabled: true,
+                        includePfInCTC: false,
+                        esiEnabled: true,
+                        ptEnabled: true,
+                        gratuityEnabled: true,
+                        includeGratuityInCTC: true,
+                        lwfEnabled: true,
+                        tdsEnabled: true,
+                        ltaEnabled: true,
+                        basicPercent: 50,
+                        hraPercent: 50,
+                        ptState: 'MH',
+                        petrol: '0',
+                        lta: '',
+                        conveyance: '0',
+                        medicalAllowance: '0',
+                        mealAllowance: '0',
+                        broadband: '0',
+                        customAllowances: '0',
+                        insuranceAmount: '1500'
+                    };
+                    const calculated = computeRowSalary(rowData, payrollConfigRef.current || payrollConfig);
+                    return {
+                        ...rowData,
+                        calculated,
+                        original: { ...rowData }
+                    };
+                });
+                setBulkGridData(fallbackRows);
+            }
+        } finally {
+            setLoadingBulkProfiles(false);
+        }
+    }, [employees, payrollConfig, computeRowSalary]);
+
+    useEffect(() => {
+        if (subTab === 'bulk_details' && bulkGridData.length === 0) {
+            fetchBulkProfiles();
+        }
+    }, [subTab, fetchBulkProfiles, bulkGridData.length]);
+
+    const isRowModified = useCallback((row) => {
+        if (!row || !row.original) return false;
+        const o = row.original;
+        return (
+            String(row.annualCTC || 0) !== String(o.annualCTC || 0) ||
+            Boolean(row.pfEnabled) !== Boolean(o.pfEnabled) ||
+            Boolean(row.includePfInCTC) !== Boolean(o.includePfInCTC) ||
+            Boolean(row.esiEnabled) !== Boolean(o.esiEnabled) ||
+            Boolean(row.ptEnabled) !== Boolean(o.ptEnabled) ||
+            Boolean(row.gratuityEnabled) !== Boolean(o.gratuityEnabled) ||
+            Boolean(row.includeGratuityInCTC) !== Boolean(o.includeGratuityInCTC) ||
+            Boolean(row.lwfEnabled) !== Boolean(o.lwfEnabled) ||
+            Boolean(row.tdsEnabled) !== Boolean(o.tdsEnabled) ||
+            Boolean(row.ltaEnabled) !== Boolean(o.ltaEnabled) ||
+            String(row.petrol || 0) !== String(o.petrol || 0) ||
+            String(row.lta || '') !== String(o.lta || '') ||
+            String(row.conveyance || 0) !== String(o.conveyance || 0) ||
+            String(row.medicalAllowance || 0) !== String(o.medicalAllowance || 0) ||
+            String(row.mealAllowance || 0) !== String(o.mealAllowance || 0) ||
+            String(row.broadband || 0) !== String(o.broadband || 0) ||
+            String(row.insuranceAmount || 0) !== String(o.insuranceAmount || 0) ||
+            String(row.customAllowances || 0) !== String(o.customAllowances || 0)
+        );
+    }, []);
+
+    const handleRowFieldChange = useCallback((empId, field, value) => {
+        setBulkGridData(prev => prev.map(row => {
+            if (row._id !== empId) return row;
+            const updated = { ...row, [field]: value };
+            if (field === 'annualCTC') {
+                const a = parseFloat(String(value).replace(/[^0-9.]/g, '')) || 0;
+                updated.annualCTC = String(a);
+                updated.monthlyCTC = String(Math.round(a / 12));
+            } else if (field === 'monthlyCTC') {
+                const m = parseFloat(String(value).replace(/[^0-9.]/g, '')) || 0;
+                updated.monthlyCTC = String(m);
+                updated.annualCTC = String(m * 12);
+            } else if (field === 'insuranceAmount') {
+                const insVal = parseFloat(String(value).replace(/[^0-9.]/g, '')) || 0;
+                (payrollConfigRef.current?.salaryComponents || payrollConfig?.salaryComponents || []).forEach(c => {
+                    if (c.id === 'medical_insurance' || c.id === 'insurance' || (c.name && c.name.toLowerCase().includes('insurance'))) {
+                        updated[c.id] = String(insVal);
+                    }
+                });
+            } else if (field === 'mealAllowance') {
+                const mealVal = parseFloat(String(value).replace(/[^0-9.]/g, '')) || 0;
+                (payrollConfigRef.current?.salaryComponents || payrollConfig?.salaryComponents || []).forEach(c => {
+                    if (c.id === 'meal' || c.id === 'mealAllowance' || (c.name && c.name.toLowerCase().includes('meal'))) {
+                        updated[c.id] = String(mealVal);
+                    }
+                });
+            } else if (field === 'medicalAllowance') {
+                const medVal = parseFloat(String(value).replace(/[^0-9.]/g, '')) || 0;
+                (payrollConfigRef.current?.salaryComponents || payrollConfig?.salaryComponents || []).forEach(c => {
+                    if (c.id === 'medical' || c.id === 'medicalAllowance' || (c.name && c.name.toLowerCase().includes('medical') && !c.name.toLowerCase().includes('insurance'))) {
+                        updated[c.id] = String(medVal);
+                    }
+                });
+            }
+            const calculated = computeRowSalary(updated);
+            return {
+                ...updated,
+                calculated
+            };
+        }));
+    }, [computeRowSalary]);
+
+    const filteredBulkRows = useMemo(() => {
+        return bulkGridData.filter(e => {
+            const matchesDept = bulkDetailsDept === 'ALL' || e.department === bulkDetailsDept;
+            const q = bulkDetailsSearch.toLowerCase().trim();
+            const matchesSearch = !q ||
+                `${e.firstName} ${e.lastName || ''}`.toLowerCase().includes(q) ||
+                (e.email || '').toLowerCase().includes(q) ||
+                (e.employeeCode || '').toLowerCase().includes(q);
+            return matchesDept && matchesSearch;
+        });
+    }, [bulkGridData, bulkDetailsDept, bulkDetailsSearch]);
+
+    const handleBatchComponentUpdate = useCallback((field, value, targetSelection = bulkActionTarget) => {
+        setBulkGridData(prev => {
+            const targetIds = targetSelection === 'selected' && selectedBulkDetailIds.length > 0
+                ? new Set(selectedBulkDetailIds)
+                : new Set(filteredBulkRows.map(r => r._id));
+
+            return prev.map(row => {
+                if (!targetIds.has(row._id)) return row;
+                const updated = {
+                    ...row,
+                    [field]: String(value)
+                };
+                const calculated = computeRowSalary(updated);
+                return {
+                    ...updated,
+                    calculated
+                };
+            });
+        });
+        toast.success(`Updated ${field} for ${targetSelection === 'selected' ? selectedBulkDetailIds.length : filteredBulkRows.length} employee(s)`);
+    }, [bulkActionTarget, selectedBulkDetailIds, filteredBulkRows, computeRowSalary]);
+
+    const handleResetSingleRow = useCallback((empId) => {
+        setBulkGridData(prev => prev.map(row => {
+            if (row._id !== empId) return row;
+            const updated = {
+                ...row,
+                ...row.original
+            };
+            const calculated = computeRowSalary(updated);
+            return {
+                ...updated,
+                calculated
+            };
+        }));
+        toast.success('Row reset to original values');
+    }, [computeRowSalary]);
+
+    const handleToggleSelectBulkDetailOne = (empId) => {
+        setSelectedBulkDetailIds(prev =>
+            prev.includes(empId) ? prev.filter(id => id !== empId) : [...prev, empId]
+        );
+    };
+
+    const handleToggleSelectAllBulkDetails = () => {
+        if (selectedBulkDetailIds.length === filteredBulkRows.length) {
+            setSelectedBulkDetailIds([]);
+        } else {
+            setSelectedBulkDetailIds(filteredBulkRows.map(r => r._id));
+        }
+    };
+
+    const applyStatutoryToAll = useCallback((field, value, targetSelection = bulkActionTarget) => {
+        setBulkGridData(prev => {
+            const targetIds = targetSelection === 'selected' && selectedBulkDetailIds.length > 0
+                ? new Set(selectedBulkDetailIds)
+                : new Set(filteredBulkRows.map(r => r._id));
+
+            return prev.map(row => {
+                if (targetIds && !targetIds.has(row._id)) return row;
+                const updated = { ...row, [field]: value };
+                const calculated = computeRowSalary(updated);
+                return {
+                    ...updated,
+                    calculated
+                };
+            });
+        });
+        toast.success(`Updated ${field} for ${targetSelection === 'selected' ? selectedBulkDetailIds.length : filteredBulkRows.length} employee(s)`);
+    }, [bulkActionTarget, selectedBulkDetailIds, filteredBulkRows, computeRowSalary]);
+
+    const targetRowsForStatutory = useMemo(() => {
+        if (bulkActionTarget === 'selected' && selectedBulkDetailIds.length > 0) {
+            const set = new Set(selectedBulkDetailIds);
+            return filteredBulkRows.filter(r => set.has(r._id));
+        }
+        return filteredBulkRows;
+    }, [bulkActionTarget, selectedBulkDetailIds, filteredBulkRows]);
+
+    const getStatutoryState = useCallback((field) => {
+        const total = targetRowsForStatutory.length;
+        if (total === 0) return { allTrue: false, allFalse: false, isMixed: false, trueCount: 0, total: 0 };
+        let trueCount = 0;
+        targetRowsForStatutory.forEach(r => {
+            if (Boolean(r[field])) trueCount++;
+        });
+        const allTrue = trueCount === total;
+        const allFalse = trueCount === 0;
+        const isMixed = !allTrue && !allFalse;
+        return { allTrue, allFalse, isMixed, trueCount, total };
+    }, [targetRowsForStatutory]);
+
+    const pfStatutoryState = useMemo(() => getStatutoryState('pfEnabled'), [getStatutoryState]);
+    const pfInCtcStatutoryState = useMemo(() => getStatutoryState('includePfInCTC'), [getStatutoryState]);
+    const esiStatutoryState = useMemo(() => getStatutoryState('esiEnabled'), [getStatutoryState]);
+    const gratuityStatutoryState = useMemo(() => getStatutoryState('gratuityEnabled'), [getStatutoryState]);
+    const gratuityInCtcStatutoryState = useMemo(() => getStatutoryState('includeGratuityInCTC'), [getStatutoryState]);
+    const ptStatutoryState = useMemo(() => getStatutoryState('ptEnabled'), [getStatutoryState]);
+    const lwfStatutoryState = useMemo(() => getStatutoryState('lwfEnabled'), [getStatutoryState]);
+    const ltaStatutoryState = useMemo(() => getStatutoryState('ltaEnabled'), [getStatutoryState]);
+    const tdsStatutoryState = useMemo(() => getStatutoryState('tdsEnabled'), [getStatutoryState]);
+
+    const handleColumnHeaderToggle = useCallback((field) => {
+        const rowsToCheck = filteredBulkRows;
+        if (rowsToCheck.length === 0) return;
+        const allEnabled = rowsToCheck.every(r => Boolean(r[field]));
+        applyStatutoryToAll(field, !allEnabled, 'all');
+    }, [filteredBulkRows, applyStatutoryToAll]);
+
+    const handleResetAllModified = useCallback(() => {
+        setBulkGridData(prev => prev.map(row => {
+            const updated = {
+                ...row,
+                ...row.original
+            };
+            const calculated = computeRowSalary(updated);
+            return {
+                ...updated,
+                calculated
+            };
+        }));
+        toast.success('All modified rows reset to original');
+    }, [computeRowSalary]);
+
+    const bulkGridMetrics = useMemo(() => {
+        const modifiedCount = bulkGridData.filter(isRowModified).length;
+        const totalMonthlyCTC = filteredBulkRows.reduce((sum, r) => sum + (r.calculated?.monthlyCTC || 0), 0);
+        const totalNetTakeHome = filteredBulkRows.reduce((sum, r) => sum + (r.calculated?.netTakeHome || 0), 0);
+        const totalGross = filteredBulkRows.reduce((sum, r) => sum + (r.calculated?.grossMaster || 0), 0);
+        return {
+            totalEmployees: filteredBulkRows.length,
+            selectedCount: selectedBulkDetailIds.length,
+            modifiedCount,
+            totalMonthlyCTC,
+            totalNetTakeHome,
+            totalGross
+        };
+    }, [bulkGridData, filteredBulkRows, selectedBulkDetailIds, isRowModified]);
+
+    const isBulkDetailsBackdated = useMemo(() => {
+        if (!bulkDetailsEffectiveDate) return false;
+        const d = new Date(bulkDetailsEffectiveDate);
+        const t = new Date();
+        t.setHours(0, 0, 0, 0);
+        d.setHours(0, 0, 0, 0);
+        return d.getTime() < t.getTime();
+    }, [bulkDetailsEffectiveDate]);
+
+    const handleExportCsv = useCallback(() => {
+        if (filteredBulkRows.length === 0) {
+            toast.error('No employees to export');
+            return;
+        }
+
+        const headers = [
+            'Employee Code',
+            'First Name',
+            'Last Name',
+            'Department',
+            'Designation',
+            'Annual CTC (INR)',
+            'Monthly CTC (INR)',
+            'Basic (INR)',
+            'HRA (INR)',
+            'Petrol (INR)',
+            'LTA (INR)',
+            'Conveyance (INR)',
+            'Medical Allowance (INR)',
+            'Meal Allowance (INR)',
+            'Broadband (INR)',
+            'Custom Allowances (INR)',
+            'Flexi Remainder (INR)',
+            'Monthly Gross (INR)',
+            'Medical Insurance Deduction Flexi (INR)',
+            'PF Enabled',
+            'Include PF in CTC',
+            'Employee PF (INR)',
+            'Employer PF (INR)',
+            'ESI Enabled',
+            'Employee ESI (INR)',
+            'PT Applicable',
+            'Professional Tax (INR)',
+            'Gratuity Enabled',
+            'Include Gratuity in CTC',
+            'Gratuity (INR)',
+            'LWF Applicable',
+            'Employee LWF (INR)',
+            'Employer LWF (INR)',
+            'TDS Enabled',
+            'LTA Eligible',
+            'Total Deductions (INR)',
+            'Est Net Take-Home (INR)'
+        ];
+
+        const csvRows = [headers.join(',')];
+
+        filteredBulkRows.forEach(row => {
+            const c = row.calculated || {};
+            const cleanStr = (val) => `"${String(val || '').replace(/"/g, '""')}"`;
+            const r = [
+                cleanStr(row.employeeCode),
+                cleanStr(row.firstName),
+                cleanStr(row.lastName),
+                cleanStr(row.department),
+                cleanStr(row.designation),
+                row.annualCTC || 0,
+                row.monthlyCTC || 0,
+                c.basicMaster || 0,
+                c.hraMaster || 0,
+                row.petrol || 0,
+                c.lta || 0,
+                row.conveyance || 0,
+                row.medicalAllowance || 0,
+                row.mealAllowance || 0,
+                row.broadband || 0,
+                row.customAllowances || 0,
+                c.specialAllowance || 0,
+                c.grossMaster || 0,
+                row.insuranceAmount || 1500,
+                row.pfEnabled ? 'Yes' : 'No',
+                row.includePfInCTC ? 'Yes' : 'No',
+                c.pfEmployee || 0,
+                c.pfEmployer || 0,
+                row.esiEnabled ? 'Yes' : 'No',
+                c.esiEmployee || 0,
+                row.ptEnabled ? 'Yes' : 'No',
+                c.professionalTax || 0,
+                row.gratuityEnabled ? 'Yes' : 'No',
+                row.includeGratuityInCTC ? 'Yes' : 'No',
+                c.gratuity || 0,
+                row.lwfEnabled ? 'Yes' : 'No',
+                c.lwfEmployee || 0,
+                c.lwfEmployer || 0,
+                row.tdsEnabled ? 'Yes' : 'No',
+                row.ltaEnabled ? 'Yes' : 'No',
+                c.totalDeductions || 0,
+                c.netTakeHome || 0
+            ];
+            csvRows.push(r.join(','));
+        });
+
+        const blob = new Blob([csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.setAttribute('href', url);
+        link.setAttribute('download', `Bulk_Salary_Details_${format(new Date(), 'yyyy-MM-dd')}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        toast.success('Spreadsheet exported to CSV successfully');
+    }, [filteredBulkRows]);
+
+    const buildCustomBreakup = useCallback((row) => {
+        const c = row.calculated || {};
+        const insVal = parseFloat(String(row.insuranceAmount !== undefined ? row.insuranceAmount : '1500')) || 0;
+        const dynamicCompMap = {};
+        (payrollConfigRef.current?.salaryComponents || payrollConfig?.salaryComponents || []).forEach(comp => {
+            if (comp.id === 'medical_insurance' || comp.id === 'insurance' || (comp.name && comp.name.toLowerCase().includes('insurance'))) {
+                dynamicCompMap[comp.id] = String(insVal);
+            } else if (comp.id === 'meal' || comp.id === 'mealAllowance' || (comp.name && comp.name.toLowerCase().includes('meal'))) {
+                dynamicCompMap[comp.id] = String(parseFloat(String(row.mealAllowance || '0')) || 0);
+            } else if (comp.id === 'medical' || comp.id === 'medicalAllowance' || (comp.name && comp.name.toLowerCase().includes('medical') && !comp.name.toLowerCase().includes('insurance'))) {
+                dynamicCompMap[comp.id] = String(parseFloat(String(row.medicalAllowance || '0')) || 0);
+            } else if (row[comp.id] !== undefined) {
+                dynamicCompMap[comp.id] = String(row[comp.id]);
+            }
+        });
+
+        return {
+            ...dynamicCompMap,
+            annualCTC: String(row.annualCTC),
+            monthlyCTC: String(row.monthlyCTC),
+            pfEnabled: Boolean(row.pfEnabled),
+            includePfInCTC: Boolean(row.includePfInCTC),
+            esiEnabled: Boolean(row.esiEnabled),
+            ptEnabled: Boolean(row.ptEnabled),
+            gratuityEnabled: Boolean(row.gratuityEnabled),
+            includeGratuityInCTC: Boolean(row.includeGratuityInCTC),
+            lwfEnabled: Boolean(row.lwfEnabled),
+            tdsEnabled: Boolean(row.tdsEnabled),
+            ltaEnabled: Boolean(row.ltaEnabled),
+            basicPercent: Number(row.basicPercent || 50),
+            hraPercent: Number(row.hraPercent || 50),
+            ptState: row.ptState || 'MH',
+            petrol: parseFloat(String(row.petrol || '0')) || 0,
+            lta: parseFloat(String(row.lta !== undefined && row.lta !== '' ? row.lta : (c.lta || '0'))) || 0,
+            conveyance: parseFloat(String(row.conveyance || '0')) || 0,
+            medicalAllowance: parseFloat(String(row.medicalAllowance || '0')) || 0,
+            medical: parseFloat(String(row.medicalAllowance || '0')) || 0,
+            mealAllowance: parseFloat(String(row.mealAllowance || '0')) || 0,
+            meal: parseFloat(String(row.mealAllowance || '0')) || 0,
+            broadband: parseFloat(String(row.broadband || '0')) || 0,
+            insuranceAmount: insVal,
+            insurance: insVal,
+            medical_insurance: insVal,
+            customAllowances: parseFloat(String(row.customAllowances || '0')) > 0 ? [{ name: 'Custom Allowance', amount: parseFloat(String(row.customAllowances || '0')) }] : [],
+            otherAllowances: parseFloat(String(row.customAllowances || '0')) > 0 ? [{ name: 'Custom Allowance', amount: parseFloat(String(row.customAllowances || '0')) }] : [],
+            basic: String(c.basicMaster || 0),
+            hra: String(c.hraMaster || 0),
+            specialAllowance: String(c.specialAllowance || 0),
+            monthlyGross: String(c.grossMaster || 0),
+            netTakeHome: String(c.netTakeHome || 0)
+        };
+    }, [payrollConfig]);
+
+    const markRowAsSynced = useCallback((empId) => {
+        setBulkGridData(prev => prev.map(r => {
+            if (r._id !== empId) return r;
+            return {
+                ...r,
+                original: {
+                    annualCTC: r.annualCTC,
+                    monthlyCTC: r.monthlyCTC,
+                    pfEnabled: r.pfEnabled,
+                    includePfInCTC: r.includePfInCTC,
+                    esiEnabled: r.esiEnabled,
+                    ptEnabled: r.ptEnabled,
+                    gratuityEnabled: r.gratuityEnabled,
+                    includeGratuityInCTC: r.includeGratuityInCTC,
+                    lwfEnabled: r.lwfEnabled,
+                    tdsEnabled: r.tdsEnabled,
+                    ltaEnabled: r.ltaEnabled,
+                    petrol: r.petrol,
+                    lta: r.lta,
+                    conveyance: r.conveyance,
+                    medicalAllowance: r.medicalAllowance,
+                    mealAllowance: r.mealAllowance,
+                    broadband: r.broadband,
+                    insuranceAmount: r.insuranceAmount,
+                    customAllowances: r.customAllowances
+                }
+            };
+        }));
+    }, []);
+
+    const handleSaveSingleRow = useCallback(async (row) => {
+        if (!row) return;
+
+        if (!bulkDetailsEffectiveDate) {
+            toast.error('Please specify an effective date.');
+            return;
+        }
+
+        const resolvedReason = bulkDetailsReason === 'Other' ? bulkDetailsCustomReason : bulkDetailsReason;
+        if (!resolvedReason) {
+            toast.error('Please specify a revision reason.');
+            return;
+        }
+
+        if (isBulkDetailsBackdated && !bulkDetailsBackdatedConfirmed) {
+            toast.error('Please confirm the retroactive / backdated revision notice.');
+            return;
+        }
+
+        try {
+            setSavingRowId(row._id);
+            const payload = {
+                employeeIds: [row._id],
+                effectiveDate: bulkDetailsEffectiveDate,
+                reason: resolvedReason,
+                revisionType: 'custom',
+                customSalaries: { [row._id]: Number(row.annualCTC) || 0 },
+                customBreakups: { [row._id]: buildCustomBreakup(row) },
+                confirmBackdated: bulkDetailsBackdatedConfirmed
+            };
+
+            const res = await api.post('/employees/revisions/bulk', payload);
+            toast.success(res.data?.message || `Successfully saved revision for ${row.firstName} ${row.lastName || ''}`);
+            markRowAsSynced(row._id);
+            setSelectedBulkDetailIds(prev => prev.filter(id => id !== row._id));
+            await fetchBulkProfiles();
+            await fetchEmployees();
+        } catch (err) {
+            console.error('Error saving single row:', err);
+            toast.error(err.response?.data?.message || `Failed to save ${row.firstName}`);
+        } finally {
+            setSavingRowId(null);
+        }
+    }, [
+        bulkDetailsEffectiveDate,
+        bulkDetailsReason,
+        bulkDetailsCustomReason,
+        isBulkDetailsBackdated,
+        bulkDetailsBackdatedConfirmed,
+        buildCustomBreakup,
+        markRowAsSynced,
+        fetchBulkProfiles,
+        fetchEmployees
+    ]);
+
+    const handleSaveBulkDetails = useCallback(async (mode = 'smart') => {
+        let targets = [];
+        if (mode === 'all_filtered') {
+            targets = filteredBulkRows;
+        } else if (selectedBulkDetailIds.length > 0) {
+            targets = bulkGridData.filter(r => selectedBulkDetailIds.includes(r._id));
+        } else {
+            const modified = bulkGridData.filter(isRowModified);
+            targets = modified.length > 0 ? modified : filteredBulkRows;
+        }
+
+        if (targets.length === 0) {
+            toast.error('No employee rows found to save.');
+            return;
+        }
+
+        if (!bulkDetailsEffectiveDate) {
+            toast.error('Please specify an effective date.');
+            return;
+        }
+
+        const resolvedReason = bulkDetailsReason === 'Other' ? bulkDetailsCustomReason : bulkDetailsReason;
+        if (!resolvedReason) {
+            toast.error('Please specify a revision reason.');
+            return;
+        }
+
+        if (isBulkDetailsBackdated && !bulkDetailsBackdatedConfirmed) {
+            toast.error('Please confirm the retroactive / backdated revision notice.');
+            return;
+        }
+
+        try {
+            setSubmittingBulkDetails(true);
+            const customSalaries = {};
+            const customBreakups = {};
+
+            targets.forEach(row => {
+                customSalaries[row._id] = Number(row.annualCTC) || 0;
+                customBreakups[row._id] = buildCustomBreakup(row);
+            });
+
+            const payload = {
+                employeeIds: targets.map(r => r._id),
+                effectiveDate: bulkDetailsEffectiveDate,
+                reason: resolvedReason,
+                revisionType: 'custom',
+                customSalaries,
+                customBreakups,
+                confirmBackdated: bulkDetailsBackdatedConfirmed
+            };
+
+            const res = await api.post('/employees/revisions/bulk', payload);
+            toast.success(res.data?.message || `Successfully revised ${targets.length} employee(s)`);
+            targets.forEach(t => markRowAsSynced(t._id));
+            setSelectedBulkDetailIds([]);
+            await fetchBulkProfiles();
+            await fetchEmployees();
+        } catch (err) {
+            console.error('Error saving bulk details:', err);
+            toast.error(err.response?.data?.message || 'Failed to save bulk salary details');
+        } finally {
+            setSubmittingBulkDetails(false);
+        }
+    }, [
+        selectedBulkDetailIds,
+        bulkGridData,
+        filteredBulkRows,
+        isRowModified,
+        bulkDetailsEffectiveDate,
+        bulkDetailsReason,
+        bulkDetailsCustomReason,
+        isBulkDetailsBackdated,
+        bulkDetailsBackdatedConfirmed,
+        buildCustomBreakup,
+        markRowAsSynced,
+        fetchBulkProfiles,
+        fetchEmployees
+    ]);
+
     const currentSelectedEmpObj = employees.find(e => String(e._id) === String(selectedUserId));
 
     return (
@@ -1113,6 +2038,24 @@ const ReviseSalaryDetailsTab = () => {
                     >
                         <User size={15} />
                         <span>Individual Revision</span>
+                    </button>
+
+                    <button
+                        type="button"
+                        onClick={() => setSubTab('bulk_details')}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                            subTab === 'bulk_details'
+                                ? 'bg-blue-600 text-white shadow-sm'
+                                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                        }`}
+                    >
+                        <Table size={15} />
+                        <span>Bulk Salary Details</span>
+                        <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-extrabold ${
+                            subTab === 'bulk_details' ? 'bg-blue-500 text-white' : 'bg-emerald-100 text-emerald-800'
+                        }`}>
+                            Excel Grid
+                        </span>
                     </button>
 
                     <button
@@ -1797,6 +2740,1488 @@ const ReviseSalaryDetailsTab = () => {
                                 )}
                             </div>
                         )}
+                    </div>
+                </div>
+            )}
+
+            {/* ============================================================== */}
+            {/* SUB-TAB: BULK SALARY DETAILS (EXCEL SPREADSHEET GRID)          */}
+            {/* ============================================================== */}
+            {subTab === 'bulk_details' && (
+                <div className="space-y-6">
+                    {/* Header Summary & KPI Cards */}
+                    <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-4">
+                        <div className="flex items-center justify-between flex-wrap gap-3 pb-3 border-b border-slate-100">
+                            <div>
+                                <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                                    <Table size={18} className="text-blue-600" />
+                                    <span>Bulk Salary Details & Statutory Calibration Spreadsheet</span>
+                                </h3>
+                                <p className="text-[11px] text-slate-500 mt-0.5">
+                                    Review live salary breakdowns, edit compensation, and toggle statutory components per employee or company-wide.
+                                </p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    type="button"
+                                    onClick={fetchBulkProfiles}
+                                    disabled={loadingBulkProfiles}
+                                    className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+                                    title="Refresh latest salary profiles from database"
+                                >
+                                    <RefreshCw size={13} className={loadingBulkProfiles ? 'animate-spin text-blue-600' : 'text-slate-600'} />
+                                    <span>Refresh Data</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handleExportCsv}
+                                    className="px-3.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs"
+                                    title="Export current table data to Excel-compatible CSV"
+                                >
+                                    <Download size={13} className="text-emerald-600" />
+                                    <span>Export CSV</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Metrics Bar */}
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">Total Employees</span>
+                                <span className="text-lg font-extrabold text-slate-800">{bulkGridMetrics.totalEmployees}</span>
+                                {bulkGridMetrics.selectedCount > 0 && (
+                                    <span className="text-[10px] text-blue-600 font-bold ml-1.5">({bulkGridMetrics.selectedCount} selected)</span>
+                                )}
+                            </div>
+
+                            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">Modified Rows</span>
+                                <div className="flex items-center gap-2 mt-0.5">
+                                    <span className={`text-lg font-extrabold ${bulkGridMetrics.modifiedCount > 0 ? 'text-amber-600' : 'text-slate-700'}`}>
+                                        {bulkGridMetrics.modifiedCount}
+                                    </span>
+                                    {bulkGridMetrics.modifiedCount > 0 && (
+                                        <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-100 text-amber-800 border border-amber-200 animate-pulse">
+                                            Unsaved Edits
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className="p-3 bg-blue-50/50 rounded-xl border border-blue-100">
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-blue-600 block">Total Monthly CTC</span>
+                                <span className="text-lg font-extrabold text-blue-900">₹{bulkGridMetrics.totalMonthlyCTC.toLocaleString('en-IN')}</span>
+                            </div>
+
+                            <div className="p-3 bg-emerald-50/50 rounded-xl border border-emerald-100">
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 block">Total Net Take-Home</span>
+                                <span className="text-lg font-extrabold text-emerald-900">₹{bulkGridMetrics.totalNetTakeHome.toLocaleString('en-IN')}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Global "Applicable for All" Statutory Controls */}
+                    <div className="bg-gradient-to-r from-blue-50/80 via-indigo-50/40 to-slate-50 p-5 rounded-2xl border border-blue-200/80 shadow-2xs space-y-3">
+                        <div className="flex items-center justify-between flex-wrap gap-2 pb-2 border-b border-blue-100">
+                            <div className="flex items-center gap-2">
+                                <SlidersHorizontal size={16} className="text-blue-600" />
+                                <div>
+                                    <span className="text-xs font-extrabold uppercase tracking-wider text-blue-950 block">
+                                        Applicable for All (Global Batch Statutory Toggles)
+                                    </span>
+                                    <span className="text-[11px] text-slate-500">
+                                        Quick-toggle statutory contributions across all employees or selected employees with immediate recalculation.
+                                    </span>
+                                </div>
+                            </div>
+
+                            {/* Scope Selector */}
+                            <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-slate-200 text-xs shadow-2xs">
+                                <span className="text-[11px] font-bold text-slate-500 px-2">Apply To:</span>
+                                <button
+                                    type="button"
+                                    onClick={() => setBulkActionTarget('all')}
+                                    className={`px-3 py-1 rounded-lg font-bold text-xs transition-all cursor-pointer ${
+                                        bulkActionTarget === 'all'
+                                            ? 'bg-blue-600 text-white shadow-2xs'
+                                            : 'text-slate-600 hover:bg-slate-100'
+                                    }`}
+                                >
+                                    All Filtered ({filteredBulkRows.length})
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setBulkActionTarget('selected')}
+                                    disabled={selectedBulkDetailIds.length === 0}
+                                    className={`px-3 py-1 rounded-lg font-bold text-xs transition-all cursor-pointer ${
+                                        bulkActionTarget === 'selected'
+                                            ? 'bg-blue-600 text-white shadow-2xs'
+                                            : 'text-slate-600 hover:bg-slate-100 disabled:opacity-40'
+                                    }`}
+                                >
+                                    Selected Only ({selectedBulkDetailIds.length})
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Batch Action Buttons Grouped by Component */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-1">
+                            {/* Provident Fund (PF) */}
+                            <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs space-y-2">
+                                <div className="flex items-center justify-between gap-1 flex-wrap">
+                                    <span className="text-xs font-bold text-slate-800">Provident Fund (PF)</span>
+                                    <div className="flex items-center gap-1">
+                                        <span className="text-[10px] text-blue-600 font-extrabold bg-blue-50 px-1.5 py-0.5 rounded">12% / Cap</span>
+                                        {pfStatutoryState.allTrue && (
+                                            <span className="text-[9px] font-black px-1.5 py-0.2 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                                All Active
+                                            </span>
+                                        )}
+                                        {pfStatutoryState.allFalse && (
+                                            <span className="text-[9px] font-black px-1.5 py-0.2 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
+                                                All Off
+                                            </span>
+                                        )}
+                                        {pfStatutoryState.isMixed && (
+                                            <span className="text-[9px] font-black px-1.5 py-0.2 rounded-full bg-amber-100 text-amber-800 border border-amber-200">
+                                                Mixed ({pfStatutoryState.trueCount}/{pfStatutoryState.total})
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-2 p-0.5 bg-slate-100 rounded-lg border border-slate-200 gap-0.5">
+                                    <button
+                                        type="button"
+                                        onClick={() => applyStatutoryToAll('pfEnabled', true)}
+                                        className={`px-2 py-1.5 rounded-md text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
+                                            pfStatutoryState.allTrue
+                                                ? 'bg-blue-600 text-white shadow-xs'
+                                                : 'text-slate-600 hover:text-slate-900 hover:bg-white'
+                                        }`}
+                                    >
+                                        <Check size={12} className={pfStatutoryState.allTrue ? 'text-white' : 'text-slate-400'} />
+                                        <span>✓ Enable PF All</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => applyStatutoryToAll('pfEnabled', false)}
+                                        className={`px-2 py-1.5 rounded-md text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
+                                            pfStatutoryState.allFalse
+                                                ? 'bg-slate-800 text-white shadow-xs'
+                                                : 'text-slate-600 hover:text-slate-900 hover:bg-white'
+                                        }`}
+                                    >
+                                        <X size={12} className={pfStatutoryState.allFalse ? 'text-white' : 'text-slate-400'} />
+                                        <span>✕ Disable PF All</span>
+                                    </button>
+                                </div>
+                                <div className="grid grid-cols-2 p-0.5 bg-slate-50 rounded-lg border border-slate-200 gap-0.5 pt-1 border-t border-slate-100">
+                                    <button
+                                        type="button"
+                                        onClick={() => applyStatutoryToAll('includePfInCTC', true)}
+                                        className={`px-1.5 py-1 rounded-md text-[10px] font-bold flex items-center justify-center gap-0.5 transition-all cursor-pointer ${
+                                            pfInCtcStatutoryState.allTrue
+                                                ? 'bg-indigo-600 text-white shadow-xs'
+                                                : 'text-slate-600 hover:text-slate-900 hover:bg-white'
+                                        }`}
+                                        title="Employer PF reduces gross take-home"
+                                    >
+                                        <span>+ In CTC: All</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => applyStatutoryToAll('includePfInCTC', false)}
+                                        className={`px-1.5 py-1 rounded-md text-[10px] font-bold flex items-center justify-center gap-0.5 transition-all cursor-pointer ${
+                                            pfInCtcStatutoryState.allFalse
+                                                ? 'bg-slate-700 text-white shadow-xs'
+                                                : 'text-slate-600 hover:text-slate-900 hover:bg-white'
+                                        }`}
+                                        title="Employer PF outside CTC take-home calculation"
+                                    >
+                                        <span>- Ex CTC: All</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* State Insurance (ESI) & Gratuity */}
+                            <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs space-y-2">
+                                <div className="flex items-center justify-between gap-1 flex-wrap">
+                                    <span className="text-xs font-bold text-slate-800">ESI (Health)</span>
+                                    <div className="flex items-center gap-1">
+                                        <span className="text-[10px] text-slate-500 font-semibold">&le; ₹21k</span>
+                                        {esiStatutoryState.allTrue && (
+                                            <span className="text-[9px] font-black px-1.5 py-0.2 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                                All Active
+                                            </span>
+                                        )}
+                                        {esiStatutoryState.allFalse && (
+                                            <span className="text-[9px] font-black px-1.5 py-0.2 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
+                                                All Off
+                                            </span>
+                                        )}
+                                        {esiStatutoryState.isMixed && (
+                                            <span className="text-[9px] font-black px-1.5 py-0.2 rounded-full bg-amber-100 text-amber-800 border border-amber-200">
+                                                Mixed ({esiStatutoryState.trueCount}/{esiStatutoryState.total})
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-2 p-0.5 bg-slate-100 rounded-lg border border-slate-200 gap-0.5">
+                                    <button
+                                        type="button"
+                                        onClick={() => applyStatutoryToAll('esiEnabled', true)}
+                                        className={`px-2 py-1.5 rounded-md text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
+                                            esiStatutoryState.allTrue
+                                                ? 'bg-blue-600 text-white shadow-xs'
+                                                : 'text-slate-600 hover:text-slate-900 hover:bg-white'
+                                        }`}
+                                    >
+                                        <Check size={12} className={esiStatutoryState.allTrue ? 'text-white' : 'text-slate-400'} />
+                                        <span>✓ Enable ESI All</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => applyStatutoryToAll('esiEnabled', false)}
+                                        className={`px-2 py-1.5 rounded-md text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
+                                            esiStatutoryState.allFalse
+                                                ? 'bg-slate-800 text-white shadow-xs'
+                                                : 'text-slate-600 hover:text-slate-900 hover:bg-white'
+                                        }`}
+                                    >
+                                        <X size={12} className={esiStatutoryState.allFalse ? 'text-white' : 'text-slate-400'} />
+                                        <span>✕ Disable ESI All</span>
+                                    </button>
+                                </div>
+
+                                <div className="pt-2 border-t border-slate-100 space-y-1.5">
+                                    <div className="flex items-center justify-between gap-1 flex-wrap">
+                                        <span className="text-xs font-bold text-slate-800">Gratuity Provision</span>
+                                        <div className="flex items-center gap-1">
+                                            <span className="text-[10px] text-indigo-600 font-extrabold">4.81% Basic</span>
+                                            {gratuityStatutoryState.allTrue && (
+                                                <span className="text-[9px] font-black px-1.5 py-0.2 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                                    All Active
+                                                </span>
+                                            )}
+                                            {gratuityStatutoryState.allFalse && (
+                                                <span className="text-[9px] font-black px-1.5 py-0.2 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
+                                                    All Off
+                                                </span>
+                                            )}
+                                            {gratuityStatutoryState.isMixed && (
+                                                <span className="text-[9px] font-black px-1.5 py-0.2 rounded-full bg-amber-100 text-amber-800 border border-amber-200">
+                                                    Mixed ({gratuityStatutoryState.trueCount}/{gratuityStatutoryState.total})
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <div className="grid grid-cols-2 p-0.5 bg-slate-100 rounded-lg border border-slate-200 gap-0.5">
+                                        <button
+                                            type="button"
+                                            onClick={() => applyStatutoryToAll('gratuityEnabled', true)}
+                                            className={`px-2 py-1.5 rounded-md text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
+                                                gratuityStatutoryState.allTrue
+                                                    ? 'bg-indigo-600 text-white shadow-xs'
+                                                    : 'text-slate-600 hover:text-slate-900 hover:bg-white'
+                                            }`}
+                                        >
+                                            <Check size={12} className={gratuityStatutoryState.allTrue ? 'text-white' : 'text-slate-400'} />
+                                            <span>✓ Gratuity All</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => applyStatutoryToAll('gratuityEnabled', false)}
+                                            className={`px-2 py-1.5 rounded-md text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
+                                                gratuityStatutoryState.allFalse
+                                                    ? 'bg-slate-800 text-white shadow-xs'
+                                                    : 'text-slate-600 hover:text-slate-900 hover:bg-white'
+                                            }`}
+                                        >
+                                            <X size={12} className={gratuityStatutoryState.allFalse ? 'text-white' : 'text-slate-400'} />
+                                            <span>✕ Disable Gratuity</span>
+                                        </button>
+                                    </div>
+                                    <div className="grid grid-cols-2 p-0.5 bg-slate-50 rounded-lg border border-slate-200 gap-0.5 mt-1">
+                                        <button
+                                            type="button"
+                                            onClick={() => applyStatutoryToAll('includeGratuityInCTC', true)}
+                                            className={`px-1.5 py-1 rounded-md text-[10px] font-bold flex items-center justify-center gap-0.5 transition-all cursor-pointer ${
+                                                gratuityInCtcStatutoryState.allTrue
+                                                    ? 'bg-indigo-600 text-white shadow-xs'
+                                                    : 'text-slate-600 hover:text-slate-900 hover:bg-white'
+                                            }`}
+                                        >
+                                            <span>+ In CTC</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => applyStatutoryToAll('includeGratuityInCTC', false)}
+                                            className={`px-1.5 py-1 rounded-md text-[10px] font-bold flex items-center justify-center gap-0.5 transition-all cursor-pointer ${
+                                                gratuityInCtcStatutoryState.allFalse
+                                                    ? 'bg-slate-700 text-white shadow-xs'
+                                                    : 'text-slate-600 hover:text-slate-900 hover:bg-white'
+                                            }`}
+                                        >
+                                            <span>- Ex CTC</span>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* PT & LWF */}
+                            <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs space-y-2">
+                                <div className="flex items-center justify-between gap-1 flex-wrap">
+                                    <span className="text-xs font-bold text-slate-800">Professional Tax (PT)</span>
+                                    <div className="flex items-center gap-1">
+                                        <span className="text-[10px] text-slate-500 font-semibold">State Slab</span>
+                                        {ptStatutoryState.allTrue && (
+                                            <span className="text-[9px] font-black px-1.5 py-0.2 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                                All Active
+                                            </span>
+                                        )}
+                                        {ptStatutoryState.allFalse && (
+                                            <span className="text-[9px] font-black px-1.5 py-0.2 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
+                                                All Off
+                                            </span>
+                                        )}
+                                        {ptStatutoryState.isMixed && (
+                                            <span className="text-[9px] font-black px-1.5 py-0.2 rounded-full bg-amber-100 text-amber-800 border border-amber-200">
+                                                Mixed ({ptStatutoryState.trueCount}/{ptStatutoryState.total})
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-2 p-0.5 bg-slate-100 rounded-lg border border-slate-200 gap-0.5">
+                                    <button
+                                        type="button"
+                                        onClick={() => applyStatutoryToAll('ptEnabled', true)}
+                                        className={`px-2 py-1.5 rounded-md text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
+                                            ptStatutoryState.allTrue
+                                                ? 'bg-blue-600 text-white shadow-xs'
+                                                : 'text-slate-600 hover:text-slate-900 hover:bg-white'
+                                        }`}
+                                    >
+                                        <Check size={12} className={ptStatutoryState.allTrue ? 'text-white' : 'text-slate-400'} />
+                                        <span>✓ Enable PT All</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => applyStatutoryToAll('ptEnabled', false)}
+                                        className={`px-2 py-1.5 rounded-md text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
+                                            ptStatutoryState.allFalse
+                                                ? 'bg-slate-800 text-white shadow-xs'
+                                                : 'text-slate-600 hover:text-slate-900 hover:bg-white'
+                                        }`}
+                                    >
+                                        <X size={12} className={ptStatutoryState.allFalse ? 'text-white' : 'text-slate-400'} />
+                                        <span>✕ Disable PT All</span>
+                                    </button>
+                                </div>
+
+                                <div className="pt-2 border-t border-slate-100 space-y-1.5">
+                                    <div className="flex items-center justify-between gap-1 flex-wrap">
+                                        <span className="text-xs font-bold text-slate-800">Labour Welfare Fund (LWF)</span>
+                                        <div className="flex items-center gap-1">
+                                            <span className="text-[10px] text-slate-500 font-semibold">EE+ER</span>
+                                            {lwfStatutoryState.allTrue && (
+                                                <span className="text-[9px] font-black px-1.5 py-0.2 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                                    All Active
+                                                </span>
+                                            )}
+                                            {lwfStatutoryState.allFalse && (
+                                                <span className="text-[9px] font-black px-1.5 py-0.2 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
+                                                    All Off
+                                                </span>
+                                            )}
+                                            {lwfStatutoryState.isMixed && (
+                                                <span className="text-[9px] font-black px-1.5 py-0.2 rounded-full bg-amber-100 text-amber-800 border border-amber-200">
+                                                    Mixed ({lwfStatutoryState.trueCount}/{lwfStatutoryState.total})
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <div className="grid grid-cols-2 p-0.5 bg-slate-100 rounded-lg border border-slate-200 gap-0.5">
+                                        <button
+                                            type="button"
+                                            onClick={() => applyStatutoryToAll('lwfEnabled', true)}
+                                            className={`px-2 py-1.5 rounded-md text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
+                                                lwfStatutoryState.allTrue
+                                                    ? 'bg-blue-600 text-white shadow-xs'
+                                                    : 'text-slate-600 hover:text-slate-900 hover:bg-white'
+                                            }`}
+                                        >
+                                            <Check size={12} className={lwfStatutoryState.allTrue ? 'text-white' : 'text-slate-400'} />
+                                            <span>✓ Enable LWF All</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => applyStatutoryToAll('lwfEnabled', false)}
+                                            className={`px-2 py-1.5 rounded-md text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
+                                                lwfStatutoryState.allFalse
+                                                    ? 'bg-slate-800 text-white shadow-xs'
+                                                    : 'text-slate-600 hover:text-slate-900 hover:bg-white'
+                                            }`}
+                                        >
+                                            <X size={12} className={lwfStatutoryState.allFalse ? 'text-white' : 'text-slate-400'} />
+                                            <span>✕ Disable LWF All</span>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* TDS & LTA */}
+                            <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs space-y-2">
+                                <div className="flex items-center justify-between gap-1 flex-wrap">
+                                    <span className="text-xs font-bold text-slate-800">Leave Travel (LTA)</span>
+                                    <div className="flex items-center gap-1">
+                                        <span className="text-[10px] text-emerald-700 font-extrabold bg-emerald-50 px-1.5 py-0.5 rounded">Allowance</span>
+                                        {ltaStatutoryState.allTrue && (
+                                            <span className="text-[9px] font-black px-1.5 py-0.2 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                                All Active
+                                            </span>
+                                        )}
+                                        {ltaStatutoryState.allFalse && (
+                                            <span className="text-[9px] font-black px-1.5 py-0.2 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
+                                                All Off
+                                            </span>
+                                        )}
+                                        {ltaStatutoryState.isMixed && (
+                                            <span className="text-[9px] font-black px-1.5 py-0.2 rounded-full bg-amber-100 text-amber-800 border border-amber-200">
+                                                Mixed ({ltaStatutoryState.trueCount}/{ltaStatutoryState.total})
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-2 p-0.5 bg-slate-100 rounded-lg border border-slate-200 gap-0.5">
+                                    <button
+                                        type="button"
+                                        onClick={() => applyStatutoryToAll('ltaEnabled', true)}
+                                        className={`px-2 py-1.5 rounded-md text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
+                                            ltaStatutoryState.allTrue
+                                                ? 'bg-emerald-600 text-white shadow-xs'
+                                                : 'text-slate-600 hover:text-slate-900 hover:bg-white'
+                                        }`}
+                                    >
+                                        <Check size={12} className={ltaStatutoryState.allTrue ? 'text-white' : 'text-slate-400'} />
+                                        <span>✓ Enable LTA All</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => applyStatutoryToAll('ltaEnabled', false)}
+                                        className={`px-2 py-1.5 rounded-md text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
+                                            ltaStatutoryState.allFalse
+                                                ? 'bg-slate-800 text-white shadow-xs'
+                                                : 'text-slate-600 hover:text-slate-900 hover:bg-white'
+                                        }`}
+                                    >
+                                        <X size={12} className={ltaStatutoryState.allFalse ? 'text-white' : 'text-slate-400'} />
+                                        <span>✕ Disable LTA All</span>
+                                    </button>
+                                </div>
+
+                                <div className="pt-2 border-t border-slate-100 space-y-1.5">
+                                    <div className="flex items-center justify-between gap-1 flex-wrap">
+                                        <span className="text-xs font-bold text-slate-800">Income Tax (TDS)</span>
+                                        <div className="flex items-center gap-1">
+                                            <span className="text-[10px] text-slate-500 font-semibold">TDS Deductions</span>
+                                            {tdsStatutoryState.allTrue && (
+                                                <span className="text-[9px] font-black px-1.5 py-0.2 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                                    All Active
+                                                </span>
+                                            )}
+                                            {tdsStatutoryState.allFalse && (
+                                                <span className="text-[9px] font-black px-1.5 py-0.2 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
+                                                    All Off
+                                                </span>
+                                            )}
+                                            {tdsStatutoryState.isMixed && (
+                                                <span className="text-[9px] font-black px-1.5 py-0.2 rounded-full bg-amber-100 text-amber-800 border border-amber-200">
+                                                    Mixed ({tdsStatutoryState.trueCount}/{tdsStatutoryState.total})
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <div className="grid grid-cols-2 p-0.5 bg-slate-100 rounded-lg border border-slate-200 gap-0.5">
+                                        <button
+                                            type="button"
+                                            onClick={() => applyStatutoryToAll('tdsEnabled', true)}
+                                            className={`px-2 py-1.5 rounded-md text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
+                                                tdsStatutoryState.allTrue
+                                                    ? 'bg-blue-600 text-white shadow-xs'
+                                                    : 'text-slate-600 hover:text-slate-900 hover:bg-white'
+                                            }`}
+                                        >
+                                            <Check size={12} className={tdsStatutoryState.allTrue ? 'text-white' : 'text-slate-400'} />
+                                            <span>✓ Enable TDS All</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => applyStatutoryToAll('tdsEnabled', false)}
+                                            className={`px-2 py-1.5 rounded-md text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
+                                                tdsStatutoryState.allFalse
+                                                    ? 'bg-slate-800 text-white shadow-xs'
+                                                    : 'text-slate-600 hover:text-slate-900 hover:bg-white'
+                                            }`}
+                                        >
+                                            <X size={12} className={tdsStatutoryState.allFalse ? 'text-white' : 'text-slate-400'} />
+                                            <span>✕ Disable TDS All</span>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Quick Batch Allowance & Deduction Tools */}
+                        <div className="bg-white/95 p-3 rounded-xl border border-blue-100 shadow-2xs flex items-center justify-between flex-wrap gap-2 text-xs">
+                            <div className="flex items-center gap-2">
+                                <span className="text-[11px] font-extrabold uppercase text-slate-700 tracking-wider">
+                                    Allowances & Insurance Batch Actions:
+                                </span>
+                                <span className="text-[10px] text-slate-500 font-medium">
+                                    (Applies to {bulkActionTarget === 'selected' ? `selected (${selectedBulkDetailIds.length})` : `all filtered (${filteredBulkRows.length})`})
+                                </span>
+                            </div>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                                <button
+                                    type="button"
+                                    onClick={() => handleBatchComponentUpdate('insuranceAmount', 1500)}
+                                    className="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-[10px] font-bold transition-all cursor-pointer shadow-2xs"
+                                    title="Set Medical Insurance deduction to ₹1,500"
+                                >
+                                    Medical Insurance: ₹1,500
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => handleBatchComponentUpdate('insuranceAmount', 0)}
+                                    className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-[10px] font-semibold transition-all cursor-pointer"
+                                >
+                                    Clear Insurance (₹0)
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => handleBatchComponentUpdate('petrol', 0)}
+                                    className="px-2 py-1 bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 rounded-lg text-[10px] font-bold transition-all cursor-pointer shadow-2xs"
+                                >
+                                    Reset Petrol (₹0)
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => handleBatchComponentUpdate('conveyance', 0)}
+                                    className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[10px] font-semibold transition-all cursor-pointer"
+                                >
+                                    Reset Conveyance (₹0)
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => handleBatchComponentUpdate('mealAllowance', 0)}
+                                    className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[10px] font-semibold transition-all cursor-pointer"
+                                >
+                                    Reset Meal (₹0)
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => handleBatchComponentUpdate('lta', '')}
+                                    className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-lg text-[10px] font-bold transition-all cursor-pointer shadow-2xs"
+                                    title="Reset LTA to auto-calculated formula percentage"
+                                >
+                                    Recalculate LTA (Auto %)
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Filter Bar & Save Controls */}
+                    <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs flex items-center justify-between flex-wrap gap-4">
+                        <div className="flex items-center gap-3 flex-wrap flex-1 min-w-[300px]">
+                            {/* Search */}
+                            <div className="relative flex-1 min-w-[180px]">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                                <input
+                                    type="text"
+                                    placeholder="Search name, code, dept..."
+                                    value={bulkDetailsSearch}
+                                    onChange={(e) => setBulkDetailsSearch(e.target.value)}
+                                    className="w-full pl-9 pr-3.5 py-2 text-xs font-semibold rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50/50"
+                                />
+                            </div>
+
+                            {/* Department Filter */}
+                            <div className="flex items-center gap-1.5">
+                                <Filter size={14} className="text-slate-400" />
+                                <select
+                                    value={bulkDetailsDept}
+                                    onChange={(e) => setBulkDetailsDept(e.target.value)}
+                                    className="px-3 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 bg-white focus:outline-none"
+                                >
+                                    <option value="ALL">All Departments</option>
+                                    {departments.map(d => (
+                                        <option key={d} value={d}>{d}</option>
+                                    ))}
+                                </select>
+                            </div>
+                        </div>
+
+                        {/* Revision Parameters & Save Execution */}
+                        <div className="flex items-center gap-2.5 flex-wrap">
+                            <div className="flex items-center gap-1.5">
+                                <Calendar size={14} className="text-blue-600" />
+                                <input
+                                    type="date"
+                                    value={bulkDetailsEffectiveDate}
+                                    onChange={(e) => setBulkDetailsEffectiveDate(e.target.value)}
+                                    className="px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-800 bg-white focus:outline-none"
+                                    title="Revision Effective Date"
+                                />
+                            </div>
+
+                            <select
+                                value={bulkDetailsReason}
+                                onChange={(e) => setBulkDetailsReason(e.target.value)}
+                                className="px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-800 bg-white focus:outline-none max-w-[200px] truncate"
+                            >
+                                <option value="Company Compensation Restructuring">Company Compensation Restructuring</option>
+                                <option value="Annual Appraisal & Hike">Annual Appraisal & Hike</option>
+                                <option value="Statutory Compliance Update">Statutory Compliance Update</option>
+                                <option value="Market Rate Correction">Market Rate Correction</option>
+                                <option value="Other">Other (Custom)</option>
+                            </select>
+
+                            {bulkDetailsReason === 'Other' && (
+                                <input
+                                    type="text"
+                                    placeholder="Enter custom reason"
+                                    value={bulkDetailsCustomReason}
+                                    onChange={(e) => setBulkDetailsCustomReason(e.target.value)}
+                                    className="px-3 py-1.5 text-xs font-semibold rounded-xl border border-slate-200 focus:outline-none"
+                                />
+                            )}
+
+                            {bulkGridMetrics.modifiedCount > 0 && (
+                                <button
+                                    type="button"
+                                    onClick={handleResetAllModified}
+                                    className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+                                    title="Discard all changes and reset grid to original database values"
+                                >
+                                    <RotateCcw size={13} className="text-slate-600" />
+                                    <span>Reset All</span>
+                                </button>
+                            )}
+
+                            {/* Save All Button */}
+                            <button
+                                type="button"
+                                onClick={() => handleSaveBulkDetails('smart')}
+                                disabled={submittingBulkDetails || (bulkGridMetrics.modifiedCount === 0 && selectedBulkDetailIds.length === 0)}
+                                className="px-5 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
+                                title="Save all modified and selected employee compensation rows"
+                            >
+                                {submittingBulkDetails ? (
+                                    <>
+                                        <RefreshCw size={13} className="animate-spin text-white" />
+                                        <span>Saving All...</span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <Save size={14} />
+                                        <span>
+                                            Save All
+                                            {selectedBulkDetailIds.length > 0
+                                                ? ` (${selectedBulkDetailIds.length} Selected)`
+                                                : bulkGridMetrics.modifiedCount > 0
+                                                ? ` (${bulkGridMetrics.modifiedCount} Modified)`
+                                                : ''}
+                                        </span>
+                                    </>
+                                )}
+                            </button>
+
+                            {/* Option to Save All Filtered Rows across spreadsheet */}
+                            {bulkGridMetrics.modifiedCount === 0 && selectedBulkDetailIds.length === 0 && filteredBulkRows.length > 0 && (
+                                <button
+                                    type="button"
+                                    onClick={() => handleSaveBulkDetails('all_filtered')}
+                                    disabled={submittingBulkDetails}
+                                    className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold flex items-center gap-1.5 border border-slate-200 transition-all cursor-pointer shadow-2xs"
+                                    title="Save and sync all employees in this table view"
+                                >
+                                    <Save size={13} className="text-slate-500" />
+                                    <span>Save All ({filteredBulkRows.length})</span>
+                                </button>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Backdated Notice */}
+                    {isBulkDetailsBackdated && (
+                        <div className="p-4 bg-amber-50 rounded-xl border border-amber-200 flex items-start gap-3">
+                            <AlertTriangle className="text-amber-600 shrink-0 mt-0.5" size={18} />
+                            <div className="space-y-1 text-xs text-amber-900">
+                                <p className="font-bold">Retroactive / Backdated Revision Notice</p>
+                                <p className="text-[11px] text-amber-800">
+                                    The selected effective date ({bulkDetailsEffectiveDate}) is in the past. This revision will be recorded as retroactive and synced across employee dossiers.
+                                </p>
+                                <label className="flex items-center gap-2 pt-1 font-bold text-amber-950 cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        checked={bulkDetailsBackdatedConfirmed}
+                                        onChange={(e) => setBulkDetailsBackdatedConfirmed(e.target.checked)}
+                                        className="rounded text-amber-600 focus:ring-amber-500"
+                                    />
+                                    <span>I acknowledge and confirm retroactive compensation revision</span>
+                                </label>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Interactive Excel Spreadsheet Table */}
+                    <div className="relative overflow-x-auto border border-slate-300 rounded-2xl bg-white shadow-xs max-h-[720px] overflow-y-auto">
+                        <table className="w-full text-left text-xs border-separate border-spacing-0 whitespace-nowrap table-auto">
+                            <thead className="sticky top-0 z-40 bg-slate-100 text-slate-700 uppercase text-[10px] tracking-wider border-b border-slate-300">
+                                <tr>
+                                    {/* Checkbox (Sticky Left #1: 0 to 48px) */}
+                                    <th
+                                        style={{ position: 'sticky', top: 0, left: 0, zIndex: 50, width: '48px', minWidth: '48px', maxWidth: '48px', backgroundColor: '#f1f5f9' }}
+                                        className="py-3 px-2 w-[48px] min-w-[48px] max-w-[48px] text-center border-b border-r border-slate-300 shadow-[2px_0_4px_rgba(0,0,0,0.06)]"
+                                    >
+                                        <input
+                                            type="checkbox"
+                                            checked={filteredBulkRows.length > 0 && selectedBulkDetailIds.length === filteredBulkRows.length}
+                                            onChange={handleToggleSelectAllBulkDetails}
+                                            className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                            title="Select all rows"
+                                        />
+                                    </th>
+
+                                    {/* Employee Info (Sticky Left #2: from 48px, 260px) */}
+                                    <th
+                                        style={{ position: 'sticky', top: 0, left: '48px', zIndex: 50, width: '260px', minWidth: '260px', maxWidth: '260px', backgroundColor: '#f1f5f9' }}
+                                        className="py-3 px-3.5 border-b border-r-2 border-slate-300 shadow-[4px_0_8px_-2px_rgba(0,0,0,0.12)] w-[260px] min-w-[260px] max-w-[260px]"
+                                    >
+                                        Employee
+                                    </th>
+
+                                    {/* Base Compensation Inputs */}
+                                    <th style={{ position: 'sticky', top: 0, zIndex: 10 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[140px] bg-slate-50">
+                                        Annual CTC (₹)
+                                    </th>
+                                    <th style={{ position: 'sticky', top: 0, zIndex: 10 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[105px] text-right bg-slate-100">
+                                        Monthly CTC
+                                    </th>
+                                    <th style={{ position: 'sticky', top: 0, zIndex: 10 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[95px] text-right bg-slate-100">
+                                        Basic
+                                    </th>
+                                    <th style={{ position: 'sticky', top: 0, zIndex: 10 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[90px] text-right bg-slate-100">
+                                        HRA
+                                    </th>
+
+                                    {/* Allowances (In CTC) */}
+                                    <th style={{ position: 'sticky', top: 0, zIndex: 10 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[125px] bg-sky-50">
+                                        <div className="flex items-center justify-between gap-1">
+                                            <span>Petrol</span>
+                                            <span className="text-[9px] font-bold text-sky-700 bg-sky-100 px-1 py-0.2 rounded">In CTC</span>
+                                        </div>
+                                    </th>
+
+                                    <th style={{ position: 'sticky', top: 0, zIndex: 10 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[130px] bg-emerald-50">
+                                        <div className="flex items-center justify-between gap-1">
+                                            <span>LTA</span>
+                                            <span className="text-[9px] font-bold text-emerald-700 bg-emerald-100 px-1 py-0.2 rounded">In CTC</span>
+                                        </div>
+                                    </th>
+
+                                    <th style={{ position: 'sticky', top: 0, zIndex: 10 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[125px] bg-slate-100">
+                                        <div className="flex items-center justify-between gap-1">
+                                            <span>Conveyance</span>
+                                            <span className="text-[9px] font-semibold text-slate-600 bg-slate-200 px-1 py-0.2 rounded">In CTC</span>
+                                        </div>
+                                    </th>
+
+                                    <th style={{ position: 'sticky', top: 0, zIndex: 10 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[125px] bg-slate-100">
+                                        <div className="flex items-center justify-between gap-1">
+                                            <span>Medical Allow.</span>
+                                            <span className="text-[9px] font-semibold text-slate-600 bg-slate-200 px-1 py-0.2 rounded">In CTC</span>
+                                        </div>
+                                    </th>
+
+                                    <th style={{ position: 'sticky', top: 0, zIndex: 10 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[125px] bg-slate-100">
+                                        <div className="flex items-center justify-between gap-1">
+                                            <span>Meal Allow.</span>
+                                            <span className="text-[9px] font-semibold text-slate-600 bg-slate-200 px-1 py-0.2 rounded">In CTC</span>
+                                        </div>
+                                    </th>
+
+                                    <th style={{ position: 'sticky', top: 0, zIndex: 10 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[125px] bg-slate-100">
+                                        <div className="flex items-center justify-between gap-1">
+                                            <span>Broadband</span>
+                                            <span className="text-[9px] font-semibold text-slate-600 bg-slate-200 px-1 py-0.2 rounded">In CTC</span>
+                                        </div>
+                                    </th>
+
+                                    <th style={{ position: 'sticky', top: 0, zIndex: 10 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[135px] bg-slate-100">
+                                        <div className="flex items-center justify-between gap-1">
+                                            <span>Custom Allow.</span>
+                                            <span className="text-[9px] font-semibold text-slate-600 bg-slate-200 px-1 py-0.2 rounded">In CTC</span>
+                                        </div>
+                                    </th>
+
+                                    {/* Remainder & Gross */}
+                                    <th style={{ position: 'sticky', top: 0, zIndex: 10 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[120px] text-right bg-blue-100/80 text-blue-900 font-extrabold">
+                                        Flexi Remainder
+                                    </th>
+                                    <th style={{ position: 'sticky', top: 0, zIndex: 10 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[115px] bg-slate-200 text-right font-black text-slate-900">
+                                        Monthly Gross
+                                    </th>
+
+                                    {/* Deductions (From Flexi) */}
+                                    <th style={{ position: 'sticky', top: 0, zIndex: 10 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[145px] bg-rose-100/80 text-rose-900">
+                                        <div className="flex items-center justify-between gap-1">
+                                            <span>Medical Insurance</span>
+                                            <span className="text-[9px] font-extrabold text-rose-700 bg-rose-200 px-1 py-0.2 rounded">Deduct (Flexi)</span>
+                                        </div>
+                                    </th>
+
+                                    {/* Statutory Toggles (with Column Header Toggle-All) */}
+                                    <th style={{ position: 'sticky', top: 0, zIndex: 10 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[185px] bg-blue-100/80">
+                                        <div className="flex items-center justify-between gap-1.5">
+                                            <span>PF</span>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleColumnHeaderToggle('pfEnabled')}
+                                                className={`text-[9px] font-bold px-2 py-0.5 rounded-full transition-all cursor-pointer shadow-2xs ${
+                                                    pfStatutoryState.allTrue
+                                                        ? 'bg-blue-600 text-white'
+                                                        : pfStatutoryState.allFalse
+                                                        ? 'bg-slate-200 text-slate-700'
+                                                        : 'bg-amber-200 text-amber-900 border border-amber-300'
+                                                }`}
+                                                title="Toggle PF for all rows"
+                                            >
+                                                {pfStatutoryState.allTrue ? '✓ All On' : pfStatutoryState.allFalse ? '✕ All Off' : `Mixed (${pfStatutoryState.trueCount})`}
+                                            </button>
+                                        </div>
+                                    </th>
+
+                                    <th style={{ position: 'sticky', top: 0, zIndex: 10 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[110px] bg-slate-100">
+                                        <div className="flex items-center justify-between gap-1.5">
+                                            <span>ESI</span>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleColumnHeaderToggle('esiEnabled')}
+                                                className={`text-[9px] font-bold px-2 py-0.5 rounded-full transition-all cursor-pointer shadow-2xs ${
+                                                    esiStatutoryState.allTrue
+                                                        ? 'bg-blue-600 text-white'
+                                                        : esiStatutoryState.allFalse
+                                                        ? 'bg-slate-200 text-slate-700'
+                                                        : 'bg-amber-200 text-amber-900 border border-amber-300'
+                                                }`}
+                                                title="Toggle ESI for all rows"
+                                            >
+                                                {esiStatutoryState.allTrue ? '✓ All On' : esiStatutoryState.allFalse ? '✕ All Off' : `Mixed (${esiStatutoryState.trueCount})`}
+                                            </button>
+                                        </div>
+                                    </th>
+
+                                    <th style={{ position: 'sticky', top: 0, zIndex: 10 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[100px] bg-slate-100">
+                                        <div className="flex items-center justify-between gap-1.5">
+                                            <span>PT</span>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleColumnHeaderToggle('ptEnabled')}
+                                                className={`text-[9px] font-bold px-2 py-0.5 rounded-full transition-all cursor-pointer shadow-2xs ${
+                                                    ptStatutoryState.allTrue
+                                                        ? 'bg-blue-600 text-white'
+                                                        : ptStatutoryState.allFalse
+                                                        ? 'bg-slate-200 text-slate-700'
+                                                        : 'bg-amber-200 text-amber-900 border border-amber-300'
+                                                }`}
+                                                title="Toggle PT for all rows"
+                                            >
+                                                {ptStatutoryState.allTrue ? '✓ All On' : ptStatutoryState.allFalse ? '✕ All Off' : `Mixed (${ptStatutoryState.trueCount})`}
+                                            </button>
+                                        </div>
+                                    </th>
+
+                                    <th style={{ position: 'sticky', top: 0, zIndex: 10 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[130px] bg-indigo-100/80">
+                                        <div className="flex items-center justify-between gap-1.5">
+                                            <span>Gratuity</span>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleColumnHeaderToggle('gratuityEnabled')}
+                                                className={`text-[9px] font-bold px-2 py-0.5 rounded-full transition-all cursor-pointer shadow-2xs ${
+                                                    gratuityStatutoryState.allTrue
+                                                        ? 'bg-indigo-600 text-white'
+                                                        : gratuityStatutoryState.allFalse
+                                                        ? 'bg-slate-200 text-slate-700'
+                                                        : 'bg-amber-200 text-amber-900 border border-amber-300'
+                                                }`}
+                                                title="Toggle Gratuity for all rows"
+                                            >
+                                                {gratuityStatutoryState.allTrue ? '✓ All On' : gratuityStatutoryState.allFalse ? '✕ All Off' : `Mixed (${gratuityStatutoryState.trueCount})`}
+                                            </button>
+                                        </div>
+                                    </th>
+
+                                    <th style={{ position: 'sticky', top: 0, zIndex: 10 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[110px] bg-slate-100">
+                                        <div className="flex items-center justify-between gap-1.5">
+                                            <span>LWF</span>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleColumnHeaderToggle('lwfEnabled')}
+                                                className={`text-[9px] font-bold px-2 py-0.5 rounded-full transition-all cursor-pointer shadow-2xs ${
+                                                    lwfStatutoryState.allTrue
+                                                        ? 'bg-blue-600 text-white'
+                                                        : lwfStatutoryState.allFalse
+                                                        ? 'bg-slate-200 text-slate-700'
+                                                        : 'bg-amber-200 text-amber-900 border border-amber-300'
+                                                }`}
+                                                title="Toggle LWF for all rows"
+                                            >
+                                                {lwfStatutoryState.allTrue ? '✓ All On' : lwfStatutoryState.allFalse ? '✕ All Off' : `Mixed (${lwfStatutoryState.trueCount})`}
+                                            </button>
+                                        </div>
+                                    </th>
+
+                                    <th style={{ position: 'sticky', top: 0, zIndex: 10 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[90px] bg-slate-100">
+                                        <div className="flex items-center justify-between gap-1.5">
+                                            <span>TDS</span>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleColumnHeaderToggle('tdsEnabled')}
+                                                className={`text-[9px] font-bold px-2 py-0.5 rounded-full transition-all cursor-pointer shadow-2xs ${
+                                                    tdsStatutoryState.allTrue
+                                                        ? 'bg-blue-600 text-white'
+                                                        : tdsStatutoryState.allFalse
+                                                        ? 'bg-slate-200 text-slate-700'
+                                                        : 'bg-amber-200 text-amber-900 border border-amber-300'
+                                                }`}
+                                                title="Toggle TDS for all rows"
+                                            >
+                                                {tdsStatutoryState.allTrue ? '✓ All On' : tdsStatutoryState.allFalse ? '✕ All Off' : `Mixed (${tdsStatutoryState.trueCount})`}
+                                            </button>
+                                        </div>
+                                    </th>
+
+                                    <th style={{ position: 'sticky', top: 0, zIndex: 10 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[90px] bg-emerald-100/80">
+                                        <div className="flex items-center justify-between gap-1.5">
+                                            <span>LTA</span>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleColumnHeaderToggle('ltaEnabled')}
+                                                className={`text-[9px] font-bold px-2 py-0.5 rounded-full transition-all cursor-pointer shadow-2xs ${
+                                                    ltaStatutoryState.allTrue
+                                                        ? 'bg-emerald-600 text-white'
+                                                        : ltaStatutoryState.allFalse
+                                                        ? 'bg-slate-200 text-slate-700'
+                                                        : 'bg-amber-200 text-amber-900 border border-amber-300'
+                                                }`}
+                                                title="Toggle LTA for all rows"
+                                            >
+                                                {ltaStatutoryState.allTrue ? '✓ All On' : ltaStatutoryState.allFalse ? '✕ All Off' : `Mixed (${ltaStatutoryState.trueCount})`}
+                                            </button>
+                                        </div>
+                                    </th>
+
+                                    <th style={{ position: 'sticky', top: 0, zIndex: 10 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[110px] text-right text-rose-700 bg-rose-100/70">
+                                        Deductions
+                                    </th>
+
+                                    <th style={{ position: 'sticky', top: 0, zIndex: 10 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[130px] text-right text-emerald-800 bg-emerald-100 font-extrabold">
+                                        Est. Take-Home
+                                    </th>
+
+                                    <th
+                                        style={{ position: 'sticky', top: 0, right: 0, zIndex: 50, width: '200px', minWidth: '200px', maxWidth: '200px', backgroundColor: '#f1f5f9' }}
+                                        className="py-3 px-3 text-center border-b border-l-2 border-slate-300 shadow-[-4px_0_8px_-2px_rgba(0,0,0,0.12)] w-[200px] min-w-[200px] max-w-[200px] uppercase text-[10px] font-black tracking-wider text-slate-700"
+                                    >
+                                        Actions
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-200">
+                                {loadingBulkProfiles ? (
+                                    <tr>
+                                        <td colSpan={26} className="py-12 text-center text-slate-500">
+                                            <RefreshCw className="animate-spin inline-block mr-2 text-blue-600" size={18} />
+                                            <span>Loading employee salary spreadsheet...</span>
+                                        </td>
+                                    </tr>
+                                ) : filteredBulkRows.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={26} className="py-12 text-center text-slate-500">
+                                            No employees match the current filters.
+                                        </td>
+                                    </tr>
+                                ) : (
+                                    filteredBulkRows.map((row, idx) => {
+                                        const modified = isRowModified(row);
+                                        const isSelected = selectedBulkDetailIds.includes(row._id);
+                                        const c = row.calculated || {};
+                                        const isRowEven = idx % 2 === 0;
+
+                                        const rowBg = modified
+                                            ? 'bg-amber-50 hover:bg-amber-100'
+                                            : isSelected
+                                            ? 'bg-blue-50 hover:bg-blue-100'
+                                            : isRowEven
+                                            ? 'bg-white hover:bg-slate-50'
+                                            : 'bg-slate-50 hover:bg-slate-100';
+
+                                        const stickyBgColor = modified
+                                            ? '#fef3c7'
+                                            : isSelected
+                                            ? '#eff6ff'
+                                            : isRowEven
+                                            ? '#ffffff'
+                                            : '#f8fafc';
+
+                                        return (
+                                            <tr
+                                                key={row._id}
+                                                className={`transition-colors font-sans ${rowBg}`}
+                                            >
+                                                {/* Checkbox (Sticky Left #1: 0 to 48px) */}
+                                                <td
+                                                    style={{ position: 'sticky', left: 0, zIndex: 20, width: '48px', minWidth: '48px', maxWidth: '48px', backgroundColor: stickyBgColor }}
+                                                    className="py-2.5 px-2 text-center border-b border-r border-slate-200 w-[48px] min-w-[48px] max-w-[48px] shadow-[2px_0_4px_rgba(0,0,0,0.04)]"
+                                                >
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={isSelected}
+                                                        onChange={() => handleToggleSelectBulkDetailOne(row._id)}
+                                                        className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                                    />
+                                                </td>
+
+                                                {/* Employee Info (Sticky Left #2: from 48px, 260px) */}
+                                                <td
+                                                    style={{ position: 'sticky', left: '48px', zIndex: 20, width: '260px', minWidth: '260px', maxWidth: '260px', backgroundColor: stickyBgColor }}
+                                                    className="py-2.5 px-3.5 border-b border-r-2 border-slate-300 shadow-[4px_0_8px_-2px_rgba(0,0,0,0.12)] w-[260px] min-w-[260px] max-w-[260px]"
+                                                >
+                                                    <div className="flex items-center gap-2.5 overflow-hidden">
+                                                        <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-700 font-extrabold text-xs flex items-center justify-center shrink-0 border border-blue-200">
+                                                            {row.firstName?.[0] || 'E'}
+                                                        </div>
+                                                        <div className="min-w-0 flex-1">
+                                                            <div className="font-bold text-slate-900 text-xs truncate flex items-center gap-1.5">
+                                                                <span className="truncate">{row.firstName} {row.lastName}</span>
+                                                                {modified && (
+                                                                    <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" title="Modified" />
+                                                                )}
+                                                            </div>
+                                                            <div className="text-[10px] text-slate-500 truncate flex items-center gap-1.5 mt-0.5">
+                                                                <span className="font-mono text-slate-600 font-semibold">{row.employeeCode || `EMP-${idx + 1}`}</span>
+                                                                <span>•</span>
+                                                                <span className="truncate">{row.department || row.designation || 'Staff'}</span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </td>
+
+                                                {/* Annual CTC Input Cell */}
+                                                <td className="py-2 px-2.5 border-b border-r border-slate-200 min-w-[140px] bg-slate-50">
+                                                    <div className="relative z-0">
+                                                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs select-none">₹</span>
+                                                        <input
+                                                            type="number"
+                                                            value={row.annualCTC || ''}
+                                                            onChange={(e) => handleRowFieldChange(row._id, 'annualCTC', e.target.value)}
+                                                            className="w-full pl-6 pr-2 py-1 text-xs font-mono font-bold border border-slate-300 rounded-lg focus:border-blue-500 focus:bg-white bg-white focus:outline-none shadow-2xs"
+                                                            placeholder="0"
+                                                        />
+                                                    </div>
+                                                </td>
+
+                                                {/* Monthly CTC */}
+                                                <td className="py-2.5 px-3 font-mono font-bold text-slate-800 border-b border-r border-slate-200 text-right min-w-[105px] bg-white">
+                                                    ₹{Math.round(c.monthlyCTC || 0).toLocaleString('en-IN')}
+                                                </td>
+
+                                                {/* Basic */}
+                                                <td className="py-2.5 px-3 font-mono text-slate-700 border-b border-r border-slate-200 text-right min-w-[95px] bg-white">
+                                                    ₹{Math.round(c.basicMaster || 0).toLocaleString('en-IN')}
+                                                </td>
+
+                                                {/* HRA */}
+                                                <td className="py-2.5 px-3 font-mono text-slate-700 border-b border-r border-slate-200 text-right min-w-[90px] bg-white">
+                                                    ₹{Math.round(c.hraMaster || 0).toLocaleString('en-IN')}
+                                                </td>
+
+                                                {/* Petrol Cell */}
+                                                <td className="py-2 px-2.5 border-b border-r border-slate-200 min-w-[125px] bg-sky-50">
+                                                    <div className="relative z-0">
+                                                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs select-none">₹</span>
+                                                        <input
+                                                            type="number"
+                                                            value={row.petrol !== undefined ? row.petrol : 0}
+                                                            onChange={(e) => handleRowFieldChange(row._id, 'petrol', e.target.value)}
+                                                            className="w-full pl-6 pr-2 py-1 text-xs font-mono font-bold border border-slate-300 rounded-lg focus:border-blue-500 focus:bg-white bg-white focus:outline-none shadow-2xs"
+                                                            placeholder="0"
+                                                        />
+                                                    </div>
+                                                </td>
+
+                                                {/* LTA Cell */}
+                                                <td className="py-2 px-2.5 border-b border-r border-slate-200 min-w-[130px] bg-emerald-50">
+                                                    <div className="relative z-0">
+                                                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs select-none">₹</span>
+                                                        <input
+                                                            type="number"
+                                                            value={!row.ltaEnabled ? 0 : (row.lta !== undefined && row.lta !== '' ? row.lta : (c.lta || 0))}
+                                                            disabled={!row.ltaEnabled}
+                                                            onChange={(e) => handleRowFieldChange(row._id, 'lta', e.target.value)}
+                                                            className={`w-full pl-6 pr-2 py-1 text-xs font-mono font-bold border rounded-lg focus:outline-none shadow-2xs ${
+                                                                !row.ltaEnabled
+                                                                    ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed'
+                                                                    : 'border-slate-300 focus:border-emerald-500 bg-white'
+                                                            }`}
+                                                            placeholder="0"
+                                                        />
+                                                    </div>
+                                                </td>
+
+                                                {/* Conveyance Cell */}
+                                                <td className="py-2 px-2.5 border-b border-r border-slate-200 min-w-[125px] bg-white">
+                                                    <div className="relative z-0">
+                                                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs select-none">₹</span>
+                                                        <input
+                                                            type="number"
+                                                            value={row.conveyance !== undefined ? row.conveyance : 0}
+                                                            onChange={(e) => handleRowFieldChange(row._id, 'conveyance', e.target.value)}
+                                                            className="w-full pl-6 pr-2 py-1 text-xs font-mono font-bold border border-slate-300 rounded-lg focus:border-blue-500 focus:bg-white bg-white focus:outline-none shadow-2xs"
+                                                            placeholder="0"
+                                                        />
+                                                    </div>
+                                                </td>
+
+                                                {/* Medical Allowance Cell */}
+                                                <td className="py-2 px-2.5 border-b border-r border-slate-200 min-w-[125px] bg-white">
+                                                    <div className="relative z-0">
+                                                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs select-none">₹</span>
+                                                        <input
+                                                            type="number"
+                                                            value={row.medicalAllowance !== undefined ? row.medicalAllowance : 0}
+                                                            onChange={(e) => handleRowFieldChange(row._id, 'medicalAllowance', e.target.value)}
+                                                            className="w-full pl-6 pr-2 py-1 text-xs font-mono font-bold border border-slate-300 rounded-lg focus:border-blue-500 focus:bg-white bg-white focus:outline-none shadow-2xs"
+                                                            placeholder="0"
+                                                        />
+                                                    </div>
+                                                </td>
+
+                                                {/* Meal Allowance Cell */}
+                                                <td className="py-2 px-2.5 border-b border-r border-slate-200 min-w-[125px] bg-white">
+                                                    <div className="relative z-0">
+                                                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs select-none">₹</span>
+                                                        <input
+                                                            type="number"
+                                                            value={row.mealAllowance !== undefined ? row.mealAllowance : 0}
+                                                            onChange={(e) => handleRowFieldChange(row._id, 'mealAllowance', e.target.value)}
+                                                            className="w-full pl-6 pr-2 py-1 text-xs font-mono font-bold border border-slate-300 rounded-lg focus:border-blue-500 focus:bg-white bg-white focus:outline-none shadow-2xs"
+                                                            placeholder="0"
+                                                        />
+                                                    </div>
+                                                </td>
+
+                                                {/* Broadband Cell */}
+                                                <td className="py-2 px-2.5 border-b border-r border-slate-200 min-w-[125px] bg-white">
+                                                    <div className="relative z-0">
+                                                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs select-none">₹</span>
+                                                        <input
+                                                            type="number"
+                                                            value={row.broadband !== undefined ? row.broadband : 0}
+                                                            onChange={(e) => handleRowFieldChange(row._id, 'broadband', e.target.value)}
+                                                            className="w-full pl-6 pr-2 py-1 text-xs font-mono font-bold border border-slate-300 rounded-lg focus:border-blue-500 focus:bg-white bg-white focus:outline-none shadow-2xs"
+                                                            placeholder="0"
+                                                        />
+                                                    </div>
+                                                </td>
+
+                                                {/* Custom Allowances Cell */}
+                                                <td className="py-2 px-2.5 border-b border-r border-slate-200 min-w-[135px] bg-white">
+                                                    <div className="relative z-0">
+                                                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs select-none">₹</span>
+                                                        <input
+                                                            type="number"
+                                                            value={row.customAllowances !== undefined ? row.customAllowances : 0}
+                                                            onChange={(e) => handleRowFieldChange(row._id, 'customAllowances', e.target.value)}
+                                                            className="w-full pl-6 pr-2 py-1 text-xs font-mono font-bold border border-slate-300 rounded-lg focus:border-blue-500 focus:bg-white bg-white focus:outline-none shadow-2xs"
+                                                            placeholder="0"
+                                                        />
+                                                    </div>
+                                                </td>
+
+                                                {/* Flexi Remainder */}
+                                                <td className="py-2.5 px-3 font-mono font-extrabold text-blue-700 border-b border-r border-slate-200 text-right min-w-[120px] bg-blue-50">
+                                                    ₹{Math.round(c.specialAllowance || 0).toLocaleString('en-IN')}
+                                                </td>
+
+                                                {/* Monthly Gross */}
+                                                <td className="py-2.5 px-3 font-mono font-black text-slate-900 border-b border-r border-slate-200 text-right min-w-[115px] bg-slate-100">
+                                                    ₹{Math.round(c.grossMaster || 0).toLocaleString('en-IN')}
+                                                </td>
+
+                                                {/* Medical Insurance (Deduction - Flexi) */}
+                                                <td className="py-2 px-2.5 border-b border-r border-slate-200 min-w-[145px] bg-rose-50">
+                                                    <div className="relative z-0">
+                                                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-rose-500 font-bold text-xs select-none">-₹</span>
+                                                        <input
+                                                            type="number"
+                                                            value={row.insuranceAmount !== undefined ? row.insuranceAmount : 1500}
+                                                            onChange={(e) => handleRowFieldChange(row._id, 'insuranceAmount', e.target.value)}
+                                                            className="w-full pl-7 pr-2 py-1 text-xs font-mono font-bold border border-rose-300 rounded-lg focus:border-rose-500 focus:bg-white bg-rose-50/60 text-rose-900 focus:outline-none shadow-2xs"
+                                                            placeholder="1500"
+                                                        />
+                                                    </div>
+                                                </td>
+
+                                                {/* Provident Fund (PF) Cell */}
+                                                <td className="py-2 px-3 border-b border-r border-slate-200 bg-blue-50/70 min-w-[185px]">
+                                                    <div className="space-y-1">
+                                                        <label className="flex items-center gap-1.5 cursor-pointer font-bold text-slate-900 text-xs select-none">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={Boolean(row.pfEnabled)}
+                                                                onChange={(e) => handleRowFieldChange(row._id, 'pfEnabled', e.target.checked)}
+                                                                className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                                            />
+                                                            <span>PF Active</span>
+                                                        </label>
+                                                        {row.pfEnabled ? (
+                                                            <div className="space-y-0.5 text-[10px]">
+                                                                <label className="inline-flex items-center gap-1 text-slate-600 cursor-pointer">
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        checked={Boolean(row.includePfInCTC)}
+                                                                        onChange={(e) => handleRowFieldChange(row._id, 'includePfInCTC', e.target.checked)}
+                                                                        className="w-3 h-3 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                                                    />
+                                                                    <span>In CTC</span>
+                                                                </label>
+                                                                <div className="font-mono text-blue-700 font-semibold whitespace-nowrap">
+                                                                    EE: ₹{Math.round(c.pfEmployee || 0).toLocaleString('en-IN')} | ER: ₹{Math.round(c.pfEmployer || 0).toLocaleString('en-IN')}
+                                                                </div>
+                                                            </div>
+                                                        ) : (
+                                                            <span className="text-[10px] text-slate-400 block font-medium">Exempt (₹0)</span>
+                                                        )}
+                                                    </div>
+                                                </td>
+
+                                                {/* ESI Cell */}
+                                                <td className="py-2 px-3 border-b border-r border-slate-200 bg-white min-w-[110px]">
+                                                    <div className="space-y-1">
+                                                        <label className="flex items-center gap-1.5 cursor-pointer font-bold text-slate-900 text-xs select-none">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={Boolean(row.esiEnabled)}
+                                                                onChange={(e) => handleRowFieldChange(row._id, 'esiEnabled', e.target.checked)}
+                                                                className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                                            />
+                                                            <span>ESI</span>
+                                                        </label>
+                                                        {row.esiEnabled && c.esiEmployee > 0 ? (
+                                                            <div className="text-[10px] font-mono text-slate-700 font-semibold whitespace-nowrap">
+                                                                EE: ₹{Math.round(c.esiEmployee || 0).toLocaleString('en-IN')}
+                                                            </div>
+                                                        ) : (
+                                                            <span className="text-[10px] text-slate-400 block font-medium">Exempt (₹0)</span>
+                                                        )}
+                                                    </div>
+                                                </td>
+
+                                                {/* PT Cell */}
+                                                <td className="py-2 px-3 border-b border-r border-slate-200 bg-white min-w-[100px]">
+                                                    <div className="space-y-1">
+                                                        <label className="flex items-center gap-1.5 cursor-pointer font-bold text-slate-900 text-xs select-none">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={Boolean(row.ptEnabled)}
+                                                                onChange={(e) => handleRowFieldChange(row._id, 'ptEnabled', e.target.checked)}
+                                                                className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                                            />
+                                                            <span>PT</span>
+                                                        </label>
+                                                        {row.ptEnabled ? (
+                                                            <div className="text-[10px] font-mono text-slate-700 font-semibold whitespace-nowrap">
+                                                                ₹{Math.round(c.professionalTax || 0).toLocaleString('en-IN')}
+                                                            </div>
+                                                        ) : (
+                                                            <span className="text-[10px] text-slate-400 block font-medium">₹0</span>
+                                                        )}
+                                                    </div>
+                                                </td>
+
+                                                {/* Gratuity Cell */}
+                                                <td className="py-2 px-3 border-b border-r border-slate-200 bg-indigo-50/70 min-w-[130px]">
+                                                    <div className="space-y-1">
+                                                        <label className="flex items-center gap-1.5 cursor-pointer font-bold text-slate-900 text-xs select-none">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={Boolean(row.gratuityEnabled)}
+                                                                onChange={(e) => handleRowFieldChange(row._id, 'gratuityEnabled', e.target.checked)}
+                                                                className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                                                            />
+                                                            <span>Gratuity</span>
+                                                        </label>
+                                                        {row.gratuityEnabled ? (
+                                                            <div className="space-y-0.5 text-[10px]">
+                                                                <label className="inline-flex items-center gap-1 text-slate-600 cursor-pointer">
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        checked={row.includeGratuityInCTC !== false}
+                                                                        onChange={(e) => handleRowFieldChange(row._id, 'includeGratuityInCTC', e.target.checked)}
+                                                                        className="w-3 h-3 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                                                                    />
+                                                                    <span>In CTC</span>
+                                                                </label>
+                                                                <div className="font-mono text-indigo-700 font-semibold whitespace-nowrap">
+                                                                    ₹{Math.round(c.gratuity || 0).toLocaleString('en-IN')}
+                                                                </div>
+                                                            </div>
+                                                        ) : (
+                                                            <span className="text-[10px] text-slate-400 block font-medium">Disabled (₹0)</span>
+                                                        )}
+                                                    </div>
+                                                </td>
+
+                                                {/* LWF Cell */}
+                                                <td className="py-2 px-3 border-b border-r border-slate-200 bg-white min-w-[110px]">
+                                                    <div className="space-y-1">
+                                                        <label className="flex items-center gap-1.5 cursor-pointer font-bold text-slate-900 text-xs select-none">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={Boolean(row.lwfEnabled)}
+                                                                onChange={(e) => handleRowFieldChange(row._id, 'lwfEnabled', e.target.checked)}
+                                                                className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                                            />
+                                                            <span>LWF</span>
+                                                        </label>
+                                                        {row.lwfEnabled ? (
+                                                            <div className="text-[10px] font-mono text-slate-700 font-semibold whitespace-nowrap">
+                                                                EE: ₹{Math.round(c.lwfEmployee || 0)} | ER: ₹{Math.round(c.lwfEmployer || 0)}
+                                                            </div>
+                                                        ) : (
+                                                            <span className="text-[10px] text-slate-400 block font-medium">₹0</span>
+                                                        )}
+                                                    </div>
+                                                </td>
+
+                                                {/* TDS Cell */}
+                                                <td className="py-2 px-3 border-b border-r border-slate-200 bg-white min-w-[90px]">
+                                                    <div className="space-y-1">
+                                                        <label className="flex items-center gap-1.5 cursor-pointer font-bold text-slate-900 text-xs select-none">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={Boolean(row.tdsEnabled)}
+                                                                onChange={(e) => handleRowFieldChange(row._id, 'tdsEnabled', e.target.checked)}
+                                                                className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                                            />
+                                                            <span>TDS</span>
+                                                        </label>
+                                                        <span className={`text-[10px] font-medium block ${row.tdsEnabled ? 'text-blue-700 font-semibold' : 'text-slate-400'}`}>
+                                                            {row.tdsEnabled ? 'Deduction On' : 'Disabled'}
+                                                        </span>
+                                                    </div>
+                                                </td>
+
+                                                {/* LTA Cell */}
+                                                <td className="py-2 px-3 border-b border-r border-slate-200 bg-emerald-50 min-w-[90px]">
+                                                    <div className="space-y-1">
+                                                        <label className="flex items-center gap-1.5 cursor-pointer font-bold text-slate-900 text-xs select-none">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={Boolean(row.ltaEnabled)}
+                                                                onChange={(e) => handleRowFieldChange(row._id, 'ltaEnabled', e.target.checked)}
+                                                                className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                                                            />
+                                                            <span>LTA</span>
+                                                        </label>
+                                                        <span className={`text-[10px] font-medium block ${row.ltaEnabled ? 'text-emerald-700 font-semibold' : 'text-slate-400'}`}>
+                                                            {row.ltaEnabled ? 'Eligible' : 'Exempt'}
+                                                        </span>
+                                                    </div>
+                                                </td>
+
+                                                {/* Total Deductions */}
+                                                <td className="py-2.5 px-3 font-mono font-bold text-rose-700 border-b border-r border-slate-200 text-right min-w-[110px] bg-rose-50/70">
+                                                    -₹{Math.round(c.totalDeductions || 0).toLocaleString('en-IN')}
+                                                </td>
+
+                                                {/* Est. Net Take-Home */}
+                                                <td className="py-2 px-3 border-b border-r border-slate-200 text-right min-w-[130px] bg-emerald-100/70">
+                                                    <span className="inline-block px-2.5 py-1 rounded-lg font-mono font-extrabold text-xs bg-emerald-100 text-emerald-800 border border-emerald-300 shadow-2xs whitespace-nowrap">
+                                                        ₹{Math.round(c.netTakeHome || 0).toLocaleString('en-IN')}
+                                                    </span>
+                                                </td>
+
+                                                {/* Row Actions (Sticky Right) */}
+                                                <td
+                                                    style={{ position: 'sticky', right: 0, zIndex: 20, width: '200px', minWidth: '200px', maxWidth: '200px', backgroundColor: stickyBgColor }}
+                                                    className="py-2.5 px-3 text-center border-b border-l-2 border-slate-300 shadow-[-4px_0_8px_-2px_rgba(0,0,0,0.12)] w-[200px] min-w-[200px] max-w-[200px]"
+                                                >
+                                                    <div className="flex items-center justify-center gap-1.5 whitespace-nowrap">
+                                                        {modified ? (
+                                                            <>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => handleSaveSingleRow(row)}
+                                                                    disabled={savingRowId === row._id || submittingBulkDetails}
+                                                                    className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-sm active:scale-95"
+                                                                    title={`Save revision for ${row.firstName} ${row.lastName || ''}`}
+                                                                >
+                                                                    {savingRowId === row._id ? (
+                                                                        <>
+                                                                            <RefreshCw size={12} className="animate-spin text-white" />
+                                                                            <span>Saving...</span>
+                                                                        </>
+                                                                    ) : (
+                                                                        <>
+                                                                            <Save size={12} />
+                                                                            <span>Save</span>
+                                                                        </>
+                                                                    )}
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => handleResetSingleRow(row._id)}
+                                                                    disabled={savingRowId === row._id || submittingBulkDetails}
+                                                                    className="px-2.5 py-1.5 rounded-lg border border-amber-300 text-amber-800 bg-amber-50 hover:bg-amber-100 font-bold text-xs flex items-center gap-1 transition-all cursor-pointer shadow-2xs active:scale-95"
+                                                                    title="Revert employee changes to original"
+                                                                >
+                                                                    <RotateCcw size={12} />
+                                                                    <span>Reset</span>
+                                                                </button>
+                                                            </>
+                                                        ) : (
+                                                            <div className="flex items-center justify-center gap-2 whitespace-nowrap">
+                                                                <span className="inline-flex items-center gap-1 text-[11px] text-emerald-700 font-bold bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200 shadow-2xs">
+                                                                    <Check size={12} className="text-emerald-600" />
+                                                                    <span>Synced</span>
+                                                                </span>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => handleSaveSingleRow(row)}
+                                                                    disabled={savingRowId === row._id || submittingBulkDetails}
+                                                                    className="px-2.5 py-1 rounded-lg border border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-100 font-bold text-xs flex items-center gap-1 transition-all cursor-pointer shadow-2xs active:scale-95"
+                                                                    title="Force re-save revision for this employee"
+                                                                >
+                                                                    {savingRowId === row._id ? (
+                                                                        <RefreshCw size={12} className="animate-spin text-slate-500" />
+                                                                    ) : (
+                                                                        <Save size={12} className="text-slate-500" />
+                                                                    )}
+                                                                    <span>Save</span>
+                                                                </button>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })
+                                )}
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             )}
