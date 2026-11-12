@@ -136,6 +136,7 @@ export const PMS_ACCESS_PERMISSIONS = [
     'pms.dev_plan.manage',
     'pms.continuous_feedback.use',
     'pms.reports.view',
+    'pms.analytics.view',
     'pms.admin'
 ];
 
@@ -157,6 +158,7 @@ export const canAccessPms = (user) => {
         'pms.calibration.manage',
         'pms.ratings.publish',
         'pms.reports.view',
+        'pms.analytics.view',
     ]);
 };
 
@@ -166,6 +168,43 @@ export const canManagePms = (user) => (
         isAdminUser(user)
         || hasAnyPermission(user, ['pms.admin', 'pms.cycle.manage', 'pms.calibration.manage', 'pms.ratings.publish'])
     )
+);
+
+export const REIMBURSEMENT_MANAGE_PERMISSIONS = ['reimbursement.manage', 'reimbursement.approval'];
+export const REIMBURSEMENT_PAY_PERMISSIONS = ['reimbursement.mark_paid', 'reimbursement.manage'];
+
+export const canManageReimbursements = (user) => (
+    isAdminUser(user)
+    || hasAnyPermission(user, REIMBURSEMENT_MANAGE_PERMISSIONS)
+);
+
+export const canPayReimbursements = (user) => (
+    isAdminUser(user)
+    || hasAnyPermission(user, REIMBURSEMENT_PAY_PERMISSIONS)
+);
+
+export const ESS_DOCUMENT_MANAGE_PERMISSIONS = ['ess_document.manage', 'ess_document.create', 'ess_document.delete'];
+export const canManageEssDocuments = (user) => (
+    isAdminUser(user)
+    || hasAnyPermission(user, ESS_DOCUMENT_MANAGE_PERMISSIONS)
+);
+
+export const HELPDESK_MANAGE_PERMISSIONS = ['helpdesk.manage', 'helpdesk.types.manage'];
+export const canManageHelpdesk = (user) => (
+    isAdminUser(user)
+    || hasAnyPermission(user, HELPDESK_MANAGE_PERMISSIONS)
+);
+
+export const LEAVE_MANAGE_PERMISSIONS = ['leave.manage', 'leave.view_all', 'leave.approve', 'leave.config.manage'];
+export const canManageLeaves = (user) => (
+    isAdminUser(user)
+    || hasAnyPermission(user, LEAVE_MANAGE_PERMISSIONS)
+);
+
+export const MEETING_PERMISSIONS = ['meeting.read', 'meeting.create', 'meeting.edit', 'meeting.delete', 'meeting.manage'];
+export const canManageMeetings = (user) => (
+    isAdminUser(user)
+    || hasAnyPermission(user, ['meeting.manage', 'meeting.edit', 'meeting.delete'])
 );
 
 
