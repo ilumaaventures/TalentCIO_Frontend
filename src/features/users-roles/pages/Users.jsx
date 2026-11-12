@@ -938,6 +938,7 @@ const Users = () => {
                 lwfEnabled: parseBool(mergedSalary.lwfEnabled, true),
                 gratuityEnabled: parseBool(mergedSalary.gratuityEnabled, true),
                 tdsEnabled: parseBool(mergedSalary.tdsEnabled, true),
+                ltaEnabled: parseBool(mergedSalary.ltaEnabled, true),
                 includePfInCTC: parseBool(mergedSalary.includePfInCTC, false),
                 includeGratuityInCTC: parseBool(mergedSalary.includeGratuityInCTC, true),
                 basicPercent: mergedSalary.basicPercent !== undefined && mergedSalary.basicPercent !== null ? Number(mergedSalary.basicPercent) : null,
@@ -965,8 +966,28 @@ const Users = () => {
             if (payrollConfig?.salaryComponents) {
                 payrollConfig.salaryComponents.forEach(c => {
                     if (c.linkedTo === 'fixed') {
-                        const val = mergedSalary[c.id] !== undefined ? mergedSalary[c.id] : (c.linkValue || 0);
-                        source[c.id] = parseFloat(String(val).replace(/[^0-9.]/g, '')) || 0;
+                        const isIns = c.id === 'medical_insurance' || c.id === 'insurance' || (c.name && c.name.toLowerCase().includes('insurance'));
+                        if (isIns) {
+                            const rawIns = updatedSalaryFields?.insuranceAmount !== undefined ? updatedSalaryFields.insuranceAmount
+                                : (updatedSalaryFields?.insurance !== undefined ? updatedSalaryFields.insurance
+                                : (updatedSalaryFields?.medical_insurance !== undefined ? updatedSalaryFields.medical_insurance
+                                : (mergedSalary.insuranceAmount !== undefined ? mergedSalary.insuranceAmount
+                                : (mergedSalary.insurance !== undefined ? mergedSalary.insurance
+                                : (mergedSalary.medical_insurance !== undefined ? mergedSalary.medical_insurance : '0')))));
+                            const parsedVal = parseFloat(String(rawIns).replace(/[^0-9.]/g, '')) || 0;
+                            source[c.id] = parsedVal;
+                            source.insuranceAmount = parsedVal;
+                            source.insurance = parsedVal;
+                            source.medical_insurance = parsedVal;
+                            const strIns = rawIns !== undefined && rawIns !== null ? String(rawIns) : '';
+                            mergedSalary[c.id] = strIns;
+                            mergedSalary.insuranceAmount = strIns;
+                            mergedSalary.insurance = strIns;
+                            mergedSalary.medical_insurance = strIns;
+                        } else {
+                            const val = mergedSalary[c.id] !== undefined ? mergedSalary[c.id] : (c.linkValue || 0);
+                            source[c.id] = parseFloat(String(val).replace(/[^0-9.]/g, '')) || 0;
+                        }
                     }
                 });
             }
@@ -998,6 +1019,15 @@ const Users = () => {
 
                 if (master.earningsMap) {
                     Object.entries(master.earningsMap).forEach(([id, val]) => {
+                        mergedSalary[id] = String(val);
+                    });
+                }
+                if (master.deductionsMap) {
+                    Object.entries(master.deductionsMap).forEach(([id, val]) => {
+                        const isIns = id === 'medical_insurance' || id === 'insurance' || (id.toLowerCase().includes('insurance'));
+                        if (isIns && (updatedSalaryFields?.insuranceAmount !== undefined || updatedSalaryFields?.insurance !== undefined || updatedSalaryFields?.medical_insurance !== undefined)) {
+                            return;
+                        }
                         mergedSalary[id] = String(val);
                     });
                 }

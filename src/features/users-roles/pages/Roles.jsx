@@ -119,6 +119,7 @@ const MODULE_ICONS = {
     'DOSSIER': FileText,
     'HELP DESK': LifeBuoy,
     'LEAVES': Plane,
+    'MEETINGS': Calendar,
     'PERFORMANCE MANAGEMENT': Award,
     'PROJECTS': FolderKanban,
     'ROLE MANAGEMENT': ShieldCheck,
@@ -139,6 +140,7 @@ const MODULE_DISPLAY_NAMES = {
     'DOSSIER': 'Employee Dossier',
     'HELP DESK': 'Help Desk',
     'LEAVES': 'Leaves',
+    'MEETINGS': 'Meetings',
     'PERFORMANCE MANAGEMENT': 'Performance Management',
     'PROJECTS': 'Projects',
     'ROLE MANAGEMENT': 'Role Management',
@@ -333,6 +335,7 @@ const Roles = () => {
         else if (key.startsWith('discussion.')) groupName = 'DISCUSSIONS';
         else if (key.startsWith('dossier.') || key.startsWith('employee.revision.') || groupName === 'DOSSIER') groupName = 'EMPLOYEE DOSSIER';
         else if (key.startsWith('leave.')) groupName = 'LEAVES';
+        else if (key.startsWith('meeting.')) groupName = 'MEETINGS';
         else if (key.startsWith('crm.')) groupName = 'SALES CRM';
 
         const moduleMapping = {
@@ -346,6 +349,7 @@ const Roles = () => {
             'ROLE MANAGEMENT': 'userManagement',
             'TALENT ACQUISITION': 'talentAcquisition',
             'DISCUSSIONS': 'meetingsOfMinutes',
+            'MEETINGS': 'meetingsOfMinutes',
             'EMPLOYEE DOSSIER': 'employeeDossier',
             'DOSSIER': 'employeeDossier',
             'HELP DESK': 'helpdesk',

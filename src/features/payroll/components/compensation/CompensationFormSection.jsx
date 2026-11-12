@@ -792,10 +792,17 @@ const CompensationFormSection = ({ formData, calculateSalaryBreakdown, onChange,
                                     formulaLabel = `Calculated Remainder`;
                                 }
 
-                                const value = c.id === 'basic' ? (salary.basicMaster || salary.basic || '0')
+                                const isLta = c.id === 'lta' || (c.id && c.id.toLowerCase() === 'lta') || (c.name && c.name.toLowerCase() === 'lta') || (c.name && c.name.toLowerCase().includes('leave travel'));
+                                const isLtaDisabled = isLta && !parseBool(salary.ltaEnabled, true);
+                                const isCompDisabled = isLtaDisabled || (salary[c.id + 'Enabled'] !== undefined && !parseBool(salary[c.id + 'Enabled'], true));
+
+                                let value = c.id === 'basic' ? (salary.basicMaster || salary.basic || '0')
                                     : c.id === 'hra' ? (salary.hraMaster || salary.hra || '0')
                                     : c.id === 'special' || c.id === 'flexi' ? (salary.flexi || salary.specialAllowance || '0')
                                     : (salary[c.id] !== undefined ? salary[c.id] : '0');
+                                if (isCompDisabled) {
+                                    value = '0';
+                                }
 
                                 return (
                                     <div key={c.id} className={`rounded-xl p-3 space-y-1.5 transition-colors ${isDeduction ? 'bg-rose-50/40 border border-rose-200/80' : 'bg-slate-50/70 border border-slate-200/80'}`}>
@@ -804,8 +811,8 @@ const CompensationFormSection = ({ formData, calculateSalaryBreakdown, onChange,
                                                 <label className="text-[11px] font-bold text-slate-700">
                                                     {c.name} {formulaLabel && <span className="text-[10px] font-normal text-slate-500">({formulaLabel})</span>}
                                                 </label>
-                                                {c.id === 'lta' && !parseBool(salary.ltaEnabled, true) ? (
-                                                    <span className="text-[9px] font-bold text-slate-500 bg-slate-100 border border-slate-200 px-1.5 py-0.2 rounded" title="LTA is disabled in Statutory Toggles">
+                                                {isCompDisabled ? (
+                                                    <span className="text-[9px] font-bold text-slate-500 bg-slate-100 border border-slate-200 px-1.5 py-0.2 rounded" title={`${c.name || 'Component'} is disabled in Statutory Toggles`}>
                                                         Disabled via Toggle
                                                     </span>
                                                 ) : isDeduction ? (
@@ -846,9 +853,10 @@ const CompensationFormSection = ({ formData, calculateSalaryBreakdown, onChange,
                                         {isFixed ? (
                                             <input
                                                 type="number"
-                                                value={(c.id === 'lta' && !parseBool(salary.ltaEnabled, true)) ? 0 : (value || '')}
-                                                disabled={c.id === 'lta' && !parseBool(salary.ltaEnabled, true)}
+                                                value={isCompDisabled ? 0 : (value || '')}
+                                                disabled={isCompDisabled}
                                                 onChange={(e) => {
+                                                    if (isCompDisabled) return;
                                                     const val = e.target.value;
                                                     const isIns = c.id === 'medical_insurance' || c.id === 'insurance' || (c.name && c.name.toLowerCase().includes('insurance'));
                                                     if (isIns) {
@@ -858,17 +866,19 @@ const CompensationFormSection = ({ formData, calculateSalaryBreakdown, onChange,
                                                             insurance: val,
                                                             medical_insurance: val
                                                         });
+                                                    } else if (isLta) {
+                                                        onBreakdownChange({ [c.id]: val, lta: val });
                                                     } else {
                                                         onBreakdownChange({ [c.id]: val });
                                                     }
                                                 }}
-                                                className={`zoho-input text-xs ${isDeduction ? 'focus:border-rose-400' : ''} ${c.id === 'lta' && !parseBool(salary.ltaEnabled, true) ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : ''}`}
+                                                className={`zoho-input text-xs ${isDeduction ? 'focus:border-rose-400' : ''} ${isCompDisabled ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : ''}`}
                                                 placeholder="0"
                                             />
                                         ) : (
-                                            <div className="flex items-center justify-between border border-slate-200 bg-white rounded-lg px-3 py-1.5 h-[34px]">
-                                                <span className={`text-xs font-bold ${isDeduction ? 'text-rose-600' : 'text-slate-800'}`}>
-                                                    {isDeduction ? '-' : ''}₹{parseFloat(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                                            <div className={`flex items-center justify-between border rounded-lg px-3 py-1.5 h-[34px] ${isCompDisabled ? 'bg-slate-50 border-slate-200 opacity-60' : 'bg-white border-slate-200'}`}>
+                                                <span className={`text-xs font-bold ${isCompDisabled ? 'text-slate-400 line-through' : (isDeduction ? 'text-rose-600' : 'text-slate-800')}`}>
+                                                    {isDeduction && !isCompDisabled ? '-' : ''}₹{parseFloat(isCompDisabled ? 0 : (value || 0)).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
                                                 </span>
                                                 <span className="text-[9px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded-full uppercase">{currentFreq.replace('_', ' ')}</span>
                                             </div>
