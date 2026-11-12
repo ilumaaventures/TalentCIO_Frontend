@@ -215,6 +215,7 @@ const SalaryCalculator = ({ embedded = false }) => {
       ptEnabled: form.ptEnabled,
       lwfEnabled: form.lwfEnabled,
       gratuityEnabled: form.gratuityEnabled,
+      ltaEnabled: form.ltaEnabled,
       includePfInCTC: form.includePfInCTC,
       includeGratuityInCTC: form.includeGratuityInCTC,
       deductions: {

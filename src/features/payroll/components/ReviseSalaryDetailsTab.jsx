@@ -50,6 +50,7 @@ import {
     Info
 } from 'lucide-react';
 import CompensationFormSection from './compensation/CompensationFormSection';
+import DocPreviewer from '@/components/common/DocPreviewer';
 import { buildMasterSalaryStructure, fmtMoney, parseBool } from '@/features/payroll/utils/payroll';
 
 const REASON_TEMPLATES = [
@@ -86,6 +87,11 @@ const DEFAULT_SALARY_DRAFT = {
     includePfInCTC: false,
     includeGratuityInCTC: true,
     ptState: 'MH',
+    insuranceAmount: '0',
+    insurance: '0',
+    medical_insurance: '0',
+    joiningBonus: '0',
+    employerNPS: '0',
     customAllowances: [],
     customDeductions: [],
     rateCard: []
@@ -241,7 +247,13 @@ const computeAnnexureRows = (salary = {}, config = {}) => {
             if (freq === 'quarterly') monthlyAmt = Math.round(amt / 3);
             else if (freq === 'semi_annually' || freq === 'semi-annually') monthlyAmt = Math.round(amt / 6);
             else if (freq === 'annually' || freq === 'one_time') monthlyAmt = Math.round(amt / 12);
-            additionalCustomRows.push({ name, monthly: monthlyAmt });
+
+            const inCTC = item.addedInAnnualCTC !== false && item.inCTC !== false && item.includeInCTC !== false;
+            additionalCustomRows.push({
+                name: name,
+                monthly: monthlyAmt,
+                inCTC
+            });
         }
     });
 
@@ -276,10 +288,10 @@ const computeAnnexureRows = (salary = {}, config = {}) => {
     if (salary.gratuityEnabled === false) gratuity = 0;
 
     if (!flexi && monthlyCTC > 0) {
-        const customRowsSum = additionalCustomRows.reduce((sum, r) => sum + r.monthly, 0);
+        const customInCTCRowsSum = additionalCustomRows.filter(r => r.inCTC !== false).reduce((sum, r) => sum + r.monthly, 0);
         const dynamicEarnSum = additionalEarnings.reduce((sum, r) => sum + r.monthly, 0);
         const flexiDedSum = additionalDeductionsFromFlexi.reduce((sum, r) => sum + r.monthly, 0);
-        const nonFlexiSum = basic + hra + (special || 0) + broadband + petrol + lta + customRowsSum + dynamicEarnSum + pfEmployer + lwfEmployer + gratuity + insurance + flexiDedSum;
+        const nonFlexiSum = basic + hra + (special || 0) + broadband + petrol + lta + customInCTCRowsSum + dynamicEarnSum + pfEmployer + lwfEmployer + gratuity + insurance + flexiDedSum;
         if (monthlyCTC > nonFlexiSum) {
             flexi = monthlyCTC - nonFlexiSum;
         }
@@ -360,6 +372,62 @@ const computeAnnexureRows = (salary = {}, config = {}) => {
     return rows;
 };
 
+const DEFAULT_COLUMN_WIDTHS = {
+    checkbox: 44,
+    employee: 220,
+    annualCTC: 120,
+    monthlyCTC: 95,
+    basic: 85,
+    hra: 80,
+    petrol: 110,
+    lta: 115,
+    conveyance: 110,
+    medical: 110,
+    meal: 110,
+    broadband: 110,
+    flexiRemainder: 105,
+    monthlyGross: 105,
+    insurance: 125,
+    pf: 165,
+    esi: 95,
+    pt: 85,
+    gratuity: 115,
+    lwf: 95,
+    tds: 85,
+    ltaStatutory: 85,
+    deductions: 100,
+    takeHome: 115,
+    actions: 140
+};
+
+const MIN_COLUMN_WIDTHS = {
+    checkbox: 36,
+    employee: 140,
+    annualCTC: 90,
+    monthlyCTC: 70,
+    basic: 65,
+    hra: 65,
+    petrol: 80,
+    lta: 80,
+    conveyance: 80,
+    medical: 80,
+    meal: 80,
+    broadband: 80,
+    flexiRemainder: 80,
+    monthlyGross: 80,
+    insurance: 95,
+    pf: 130,
+    esi: 75,
+    pt: 70,
+    gratuity: 95,
+    lwf: 75,
+    tds: 70,
+    ltaStatutory: 70,
+    deductions: 85,
+    takeHome: 95,
+    actions: 110
+};
+
 const ReviseSalaryDetailsTab = () => {
     const { user: currentUser } = useAuth();
     const [subTab, setSubTab] = useState('single'); // 'single' | 'bulk' | 'templates' | 'logs'
@@ -408,6 +476,8 @@ const ReviseSalaryDetailsTab = () => {
     const [singleCustomReason, setSingleCustomReason] = useState('');
     const [singleBackdatedConfirmed, setSingleBackdatedConfirmed] = useState(false);
     const [submittingSingle, setSubmittingSingle] = useState(false);
+    const [savingSalaryAndProceeding, setSavingSalaryAndProceeding] = useState(false);
+    const [currentRevisionId, setCurrentRevisionId] = useState(null);
     const [employeeRevisions, setEmployeeRevisions] = useState([]);
     const [loadingRevisions, setLoadingRevisions] = useState(false);
 
@@ -416,6 +486,12 @@ const ReviseSalaryDetailsTab = () => {
     const [singleSendEmail, setSingleSendEmail] = useState(false);
     const [singleSaveToDossier, setSingleSaveToDossier] = useState(true);
     const [actionLoadingRevId, setActionLoadingRevId] = useState(null);
+
+    // In-app preview modal state
+    const [showPreviewLetterModal, setShowPreviewLetterModal] = useState(false);
+    const [previewLetterLoading, setPreviewLetterLoading] = useState(false);
+    const [previewLetterFile, setPreviewLetterFile] = useState(null);
+    const [previewLetterFileName, setPreviewLetterFileName] = useState('');
 
     // Bulk revision state
     const [selectedBulkEmployeeIds, setSelectedBulkEmployeeIds] = useState([]);
@@ -442,6 +518,115 @@ const ReviseSalaryDetailsTab = () => {
     const [submittingBulkDetails, setSubmittingBulkDetails] = useState(false);
     const [savingRowId, setSavingRowId] = useState(null);
     const [bulkActionTarget, setBulkActionTarget] = useState('all'); // 'all' | 'selected'
+
+    // Resizable table columns state (persisted to localStorage)
+    const STORAGE_KEY_COL_WIDTHS = 'payroll_bulk_table_col_widths_v3';
+    const [columnWidths, setColumnWidths] = useState(() => {
+        try {
+            const saved = localStorage.getItem(STORAGE_KEY_COL_WIDTHS) || localStorage.getItem('payroll_bulk_table_col_widths_v2');
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                if (parsed && typeof parsed === 'object') {
+                    return {
+                        ...DEFAULT_COLUMN_WIDTHS,
+                        ...parsed,
+                        actions: Math.max(Number(parsed.actions) || 0, DEFAULT_COLUMN_WIDTHS.actions)
+                    };
+                }
+            }
+        } catch { }
+        return DEFAULT_COLUMN_WIDTHS;
+    });
+    const [activeResizingCol, setActiveResizingCol] = useState(null);
+    const resizingRef = useRef({ colKey: null, startX: 0, startWidth: 0 });
+
+    const handleStartResize = useCallback((e, colKey) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        const currentW = columnWidths[colKey] || DEFAULT_COLUMN_WIDTHS[colKey] || 120;
+        resizingRef.current = {
+            colKey,
+            startX: e.clientX,
+            startWidth: currentW
+        };
+        setActiveResizingCol(colKey);
+
+        document.body.style.cursor = 'col-resize';
+        document.body.style.userSelect = 'none';
+
+        const onMouseMove = (moveEvent) => {
+            const delta = colKey === 'actions'
+                ? resizingRef.current.startX - moveEvent.clientX
+                : moveEvent.clientX - resizingRef.current.startX;
+            const minW = MIN_COLUMN_WIDTHS[colKey] || 60;
+            const newW = Math.max(minW, Math.round(resizingRef.current.startWidth + delta));
+
+            setColumnWidths(prev => ({
+                ...prev,
+                [colKey]: newW
+            }));
+        };
+
+        const onMouseUp = () => {
+            window.removeEventListener('mousemove', onMouseMove);
+            window.removeEventListener('mouseup', onMouseUp);
+            document.body.style.cursor = '';
+            document.body.style.userSelect = '';
+            setActiveResizingCol(null);
+
+            setColumnWidths(latest => {
+                try {
+                    localStorage.setItem(STORAGE_KEY_COL_WIDTHS, JSON.stringify(latest));
+                } catch { }
+                return latest;
+            });
+        };
+
+        window.addEventListener('mousemove', onMouseMove);
+        window.addEventListener('mouseup', onMouseUp);
+    }, [columnWidths]);
+
+    const handleResetColumnWidth = useCallback((colKey) => {
+        const defW = DEFAULT_COLUMN_WIDTHS[colKey] || 120;
+        setColumnWidths(prev => {
+            const next = { ...prev, [colKey]: defW };
+            try {
+                localStorage.setItem(STORAGE_KEY_COL_WIDTHS, JSON.stringify(next));
+            } catch { }
+            return next;
+        });
+    }, []);
+
+    const handleResetAllColumnWidths = useCallback(() => {
+        setColumnWidths(DEFAULT_COLUMN_WIDTHS);
+        try {
+            localStorage.removeItem(STORAGE_KEY_COL_WIDTHS);
+        } catch { }
+        toast.success('Column widths reset to defaults');
+    }, []);
+
+    const totalTableWidth = useMemo(() => {
+        return Object.values(columnWidths).reduce((sum, w) => sum + (Number(w) || 0), 0);
+    }, [columnWidths]);
+
+    const renderResizeHandle = useCallback((colKey, isLeft = false) => (
+        <div
+            onMouseDown={(e) => handleStartResize(e, colKey)}
+            onDoubleClick={(e) => {
+                e.stopPropagation();
+                handleResetColumnWidth(colKey);
+            }}
+            className={`absolute ${isLeft ? 'left-0' : 'right-0'} top-0 bottom-0 w-2.5 cursor-col-resize select-none z-30 flex items-center justify-center group/resize transition-colors ${activeResizingCol === colKey ? 'bg-blue-600/30' : 'hover:bg-blue-400/25'
+                }`}
+            title="Drag edge to resize column width (Double-click to reset)"
+        >
+            <div
+                className={`w-[2px] h-4 rounded-full transition-colors ${activeResizingCol === colKey ? 'bg-blue-600' : 'bg-slate-300 group-hover/resize:bg-blue-500'
+                    }`}
+            />
+        </div>
+    ), [handleStartResize, handleResetColumnWidth, activeResizingCol]);
 
     // Revision logs state
     const [companyRevisions, setCompanyRevisions] = useState([]);
@@ -586,18 +771,28 @@ const ReviseSalaryDetailsTab = () => {
                 activeConfig.salaryComponents.forEach(c => {
                     if (c.linkedTo === 'fixed') {
                         const isIns = c.id === 'medical_insurance' || c.id === 'insurance' || (c.name && c.name.toLowerCase().includes('insurance'));
-                        let val = mergedSalary[c.id];
-                        if (isIns && (val === undefined || val === null || val === '')) {
-                            val = mergedSalary.insuranceAmount ?? mergedSalary.insurance ?? mergedSalary.medical_insurance;
-                        }
-                        if (val === undefined) val = c.linkValue || 0;
-                        const parsedVal = parseFloat(String(val).replace(/[^0-9.]/g, '')) || 0;
-                        source[c.id] = parsedVal;
-                        if (isIns && (updatedSalaryFields?.[c.id] !== undefined || updatedSalaryFields?.insuranceAmount !== undefined || updatedSalaryFields?.insurance !== undefined)) {
+                        if (isIns) {
+                            const rawIns = updatedSalaryFields?.insuranceAmount !== undefined ? updatedSalaryFields.insuranceAmount
+                                : (updatedSalaryFields?.insurance !== undefined ? updatedSalaryFields.insurance
+                                    : (updatedSalaryFields?.medical_insurance !== undefined ? updatedSalaryFields.medical_insurance
+                                        : (mergedSalary.insuranceAmount !== undefined ? mergedSalary.insuranceAmount
+                                            : (mergedSalary.insurance !== undefined ? mergedSalary.insurance
+                                                : (mergedSalary.medical_insurance !== undefined ? mergedSalary.medical_insurance : '0')))));
+                            const parsedVal = parseFloat(String(rawIns).replace(/[^0-9.]/g, '')) || 0;
+                            source[c.id] = parsedVal;
                             source.insuranceAmount = parsedVal;
                             source.insurance = parsedVal;
                             source.medical_insurance = parsedVal;
-                            mergedSalary.insuranceAmount = String(parsedVal);
+                            const strIns = rawIns !== undefined && rawIns !== null ? String(rawIns) : '';
+                            mergedSalary[c.id] = strIns;
+                            mergedSalary.insuranceAmount = strIns;
+                            mergedSalary.insurance = strIns;
+                            mergedSalary.medical_insurance = strIns;
+                        } else {
+                            let val = mergedSalary[c.id];
+                            if (val === undefined) val = c.linkValue || 0;
+                            const parsedVal = parseFloat(String(val).replace(/[^0-9.]/g, '')) || 0;
+                            source[c.id] = parsedVal;
                         }
                     }
                 });
@@ -625,6 +820,10 @@ const ReviseSalaryDetailsTab = () => {
                 }
                 if (master.deductionsMap) {
                     Object.entries(master.deductionsMap).forEach(([id, val]) => {
+                        const isIns = id === 'medical_insurance' || id === 'insurance' || (id.toLowerCase().includes('insurance')) || Boolean(activeConfig?.salaryComponents?.some(c => c.id === id && (c.id === 'insurance' || c.id === 'medical_insurance' || (c.name && c.name.toLowerCase().includes('insurance')))));
+                        if (isIns && (updatedSalaryFields?.insuranceAmount !== undefined || updatedSalaryFields?.insurance !== undefined || updatedSalaryFields?.medical_insurance !== undefined)) {
+                            return;
+                        }
                         mergedSalary[id] = String(val);
                     });
                 }
@@ -634,6 +833,9 @@ const ReviseSalaryDetailsTab = () => {
                 ...mergedSalary,
                 annualCTC: String(annualCTC),
                 monthlyCTC: String(monthlyCTC),
+                totalAnnualCTC: String(master?.totalAnnualCTC || annualCTC),
+                annualBonus: String(master?.annualBonus || 0),
+                potentialPackage: String(master?.potentialPackage || annualCTC),
                 basic: basicVal,
                 monthlyGross: grossVal
             };
@@ -711,6 +913,9 @@ const ReviseSalaryDetailsTab = () => {
                 includePfInCTC: parseBool(breakup.includePfInCTC),
                 includeGratuityInCTC: breakup.includeGratuityInCTC !== undefined ? parseBool(breakup.includeGratuityInCTC) : true,
                 ptState: breakup.ptState || 'MH',
+                insuranceAmount: breakup.insuranceAmount !== undefined ? String(breakup.insuranceAmount) : (breakup.insurance !== undefined ? String(breakup.insurance) : (breakup.medical_insurance !== undefined ? String(breakup.medical_insurance) : '0')),
+                insurance: breakup.insurance !== undefined ? String(breakup.insurance) : (breakup.insuranceAmount !== undefined ? String(breakup.insuranceAmount) : '0'),
+                medical_insurance: breakup.medical_insurance !== undefined ? String(breakup.medical_insurance) : (breakup.insuranceAmount !== undefined ? String(breakup.insuranceAmount) : '0'),
                 customAllowances: Array.isArray(breakup.customAllowances) ? breakup.customAllowances : [],
                 customDeductions: Array.isArray(breakup.customDeductions) ? breakup.customDeductions : []
             };
@@ -720,6 +925,7 @@ const ReviseSalaryDetailsTab = () => {
 
             // Default to Step 1 (Salary) when employee loads
             setSingleStep('salary');
+            setCurrentRevisionId(null);
         } catch (err) {
             console.error('Error fetching employee dossier for revision:', err);
             toast.error('Failed to load employee dossier');
@@ -731,6 +937,7 @@ const ReviseSalaryDetailsTab = () => {
 
     const handleSelectEmployee = (userId) => {
         setSelectedUserId(userId);
+        setCurrentRevisionId(null);
         fetchEmployeeDossier(userId);
     };
 
@@ -762,6 +969,92 @@ const ReviseSalaryDetailsTab = () => {
             return matchesDept && matchesSearch;
         });
     }, [employees, selectedDeptFilter, employeeSearch]);
+
+    // Save Salary breakdown to database and continue to Revision Parameters & Letter Dispatch (Save and Continue)
+    const handleSaveAndContinue = async () => {
+        if (!selectedUserId) {
+            toast.error('Please select an employee first');
+            return;
+        }
+
+        const numAnnualCTC = parseFloat(String(salaryDraft.annualCTC || '0').replace(/[^0-9.]/g, '')) || 0;
+        if (numAnnualCTC <= 0) {
+            toast.error('Please enter a valid Annual CTC greater than zero.');
+            return;
+        }
+
+        try {
+            setSavingSalaryAndProceeding(true);
+
+            const comp = selectedEmployeeProfile?.compensation || selectedEmployeeProfile?.employeeProfile?.compensation || {};
+            const previousCTC = parseFloat(comp.ctc ? comp.ctc * 12 : (comp.salaryBreakup?.annualCTC || 0));
+
+            const changes = [
+                {
+                    module: 'compensation',
+                    field: 'annualCTC',
+                    fieldLabel: 'Annual CTC',
+                    previousValue: previousCTC,
+                    revisedValue: numAnnualCTC,
+                    previousDisplayValue: previousCTC ? `₹${previousCTC.toLocaleString('en-IN')}/yr` : 'Not Set',
+                    revisedDisplayValue: `₹${numAnnualCTC.toLocaleString('en-IN')}/yr`
+                }
+            ];
+
+            const resolvedReason = (singleReason === 'Other' ? singleCustomReason.trim() : singleReason) || 'Salary Restructuring';
+
+            const payload = {
+                effectiveDate: singleEffectiveDate || format(new Date(), 'yyyy-MM-dd'),
+                reason: resolvedReason,
+                changes,
+                confirmBackdated: true,
+                metadata: {
+                    salaryBreakup: { ...salaryDraft },
+                    templateId: selectedTemplateId,
+                    customTemplateContent: employeeCustomFormat || null
+                }
+            };
+
+            let savedRev = null;
+            if (currentRevisionId) {
+                try {
+                    const patchRes = await api.patch(`/employees/${selectedUserId}/revisions/${currentRevisionId}`, payload);
+                    savedRev = patchRes.data?.revision || { _id: currentRevisionId };
+                } catch (patchErr) {
+                    console.warn('Patch revision failed, creating new revision:', patchErr);
+                    const res = await api.post(`/employees/${selectedUserId}/revisions`, payload);
+                    savedRev = res.data?.revision;
+                    if (savedRev?._id) setCurrentRevisionId(savedRev._id);
+                }
+            } else {
+                const res = await api.post(`/employees/${selectedUserId}/revisions`, payload);
+                savedRev = res.data?.revision;
+                if (savedRev?._id) setCurrentRevisionId(savedRev._id);
+            }
+
+            // Also synchronize dossier compensation directly
+            try {
+                await api.patch(`/dossier/${selectedUserId}/compensation`, {
+                    salaryBreakup: { ...salaryDraft },
+                    ctc: Math.round(numAnnualCTC / 12)
+                });
+            } catch (dErr) {
+                // Non-blocking fallback
+            }
+
+            toast.success('Salary structure saved to database successfully!');
+            await fetchEmployeeDossier(selectedUserId);
+
+            // Move to Step 2: Revision Parameters & Letter Dispatch
+            setSingleStep('parameters');
+            window.scrollTo({ top: 100, behavior: 'smooth' });
+        } catch (err) {
+            console.error('Error saving salary before proceeding:', err);
+            toast.error(err.response?.data?.message || 'Failed to save salary details to database');
+        } finally {
+            setSavingSalaryAndProceeding(false);
+        }
+    };
 
     // Single revision submission with optional letter generation & email
     const handleSingleSubmit = async (e) => {
@@ -824,14 +1117,39 @@ const ReviseSalaryDetailsTab = () => {
                 }
             };
 
-            const res = await api.post(`/employees/${selectedUserId}/revisions`, payload);
-            const savedRevision = res.data?.revision;
-            toast.success(res.data?.message || 'Salary revision recorded successfully');
+            let savedRevision = null;
+            if (currentRevisionId) {
+                try {
+                    const patchRes = await api.patch(`/employees/${selectedUserId}/revisions/${currentRevisionId}`, payload);
+                    savedRevision = patchRes.data?.revision || { _id: currentRevisionId };
+                    toast.success(patchRes.data?.message || 'Salary revision updated successfully');
+                } catch (patchErr) {
+                    console.warn('Patch failed during final submit, posting revision:', patchErr);
+                    const res = await api.post(`/employees/${selectedUserId}/revisions`, payload);
+                    savedRevision = res.data?.revision;
+                    toast.success(res.data?.message || 'Salary revision recorded successfully');
+                }
+            } else {
+                const res = await api.post(`/employees/${selectedUserId}/revisions`, payload);
+                savedRevision = res.data?.revision;
+                toast.success(res.data?.message || 'Salary revision recorded successfully');
+            }
+
+            // Also ensure dossier compensation is up to date
+            try {
+                await api.patch(`/dossier/${selectedUserId}/compensation`, {
+                    salaryBreakup: { ...salaryDraft },
+                    ctc: Math.round(numAnnualCTC / 12)
+                });
+            } catch (dErr) {
+                // Non-blocking fallback
+            }
 
             // If user checked "Generate & Dispatch Revised Offer Letter"
-            if (singleGenerateLetter && savedRevision?._id) {
+            const finalRevId = savedRevision?._id || currentRevisionId;
+            if (singleGenerateLetter && finalRevId) {
                 try {
-                    const letterRes = await api.post(`/employees/${selectedUserId}/revisions/${savedRevision._id}/letter`, {
+                    const letterRes = await api.post(`/employees/${selectedUserId}/revisions/${finalRevId}/letter`, {
                         templateId: selectedTemplateId,
                         customContent: employeeCustomFormat || null,
                         sendEmail: singleSendEmail,
@@ -845,6 +1163,7 @@ const ReviseSalaryDetailsTab = () => {
                 }
             }
 
+            setCurrentRevisionId(null);
             await fetchEmployeeDossier(selectedUserId);
         } catch (err) {
             console.error('Error recording revision:', err);
@@ -906,6 +1225,61 @@ const ReviseSalaryDetailsTab = () => {
         }
     };
 
+    // Open in-app preview modal for the generated revision letter
+    const handleOpenPreviewLetterModal = async (customRevId = null) => {
+        if (!selectedUserId) {
+            toast.error('Select an employee to preview letter');
+            return;
+        }
+        try {
+            setPreviewLetterLoading(true);
+            const targetRevId = customRevId || currentRevisionId || 'latest';
+            let response;
+            if (employeeCustomFormat && !customRevId) {
+                response = await api.post(`/employees/${selectedUserId}/revisions/${targetRevId}/letter/download`, {
+                    templateId: selectedTemplateId,
+                    customContent: employeeCustomFormat
+                }, { responseType: 'blob' });
+            } else {
+                response = await api.get(`/employees/${selectedUserId}/revisions/${targetRevId}/letter/download`, {
+                    params: { templateId: selectedTemplateId },
+                    responseType: 'blob'
+                });
+            }
+
+            const empFirst = selectedEmployeeProfile?.personal?.firstName || selectedEmployeeProfile?.user?.firstName || 'Employee';
+            const empLast = selectedEmployeeProfile?.personal?.lastName || selectedEmployeeProfile?.user?.lastName || '';
+            const safeEmpName = `${empFirst}_${empLast}`.replace(/[^a-zA-Z0-9]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '').trim() || 'Employee';
+            const fileName = `${safeEmpName}_Revision_Offer_Letter.docx`;
+
+            const fileObj = new File([response.data], fileName, {
+                type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+            });
+
+            setPreviewLetterFile(fileObj);
+            setPreviewLetterFileName(fileName);
+            setShowPreviewLetterModal(true);
+        } catch (err) {
+            console.error('Letter preview error:', err);
+            toast.error('Failed to generate preview letter. Please verify that salary details are saved.');
+        } finally {
+            setPreviewLetterLoading(false);
+        }
+    };
+
+    const handleDownloadCurrentPreviewFile = () => {
+        if (!previewLetterFile) return;
+        const url = window.URL.createObjectURL(previewLetterFile);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = previewLetterFileName || 'Revision_Offer_Letter.docx';
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+        toast.success('Preview offer letter downloaded');
+    };
+
     // Download preview letter for selected employee with current draft
     const handleDownloadPreviewLetter = async () => {
         if (!selectedUserId) {
@@ -914,14 +1288,15 @@ const ReviseSalaryDetailsTab = () => {
         }
         try {
             setPreviewDownloading(true);
+            const targetRevId = currentRevisionId || 'latest';
             let response;
             if (employeeCustomFormat) {
-                response = await api.post(`/employees/${selectedUserId}/revisions/latest/letter/download`, {
+                response = await api.post(`/employees/${selectedUserId}/revisions/${targetRevId}/letter/download`, {
                     templateId: selectedTemplateId,
                     customContent: employeeCustomFormat
                 }, { responseType: 'blob' });
             } else {
-                response = await api.get(`/employees/${selectedUserId}/revisions/latest/letter/download`, {
+                response = await api.get(`/employees/${selectedUserId}/revisions/${targetRevId}/letter/download`, {
                     params: { templateId: selectedTemplateId },
                     responseType: 'blob'
                 });
@@ -991,7 +1366,7 @@ const ReviseSalaryDetailsTab = () => {
             const res = await api.post(`/employees/${selectedUserId}/revisions/${revId}/letter`, {
                 templateId: selectedTemplateId,
                 sendEmail: true,
-                saveToDossier: true
+                saveToDossier: Boolean(singleSaveToDossier)
             });
             toast.success(res.data?.message || 'Offer letter emailed successfully');
             await fetchEmployeeDossier(selectedUserId);
@@ -1205,7 +1580,8 @@ const ReviseSalaryDetailsTab = () => {
         const mealAllowance = parseFloat(String(rowData.mealAllowance !== undefined ? rowData.mealAllowance : (rowData.meal || '0')).replace(/[^0-9.]/g, '')) || 0;
         const broadband = parseFloat(String(rowData.broadband || '0').replace(/[^0-9.]/g, '')) || 0;
         const customAllowances = parseFloat(String(rowData.customAllowances || '0').replace(/[^0-9.]/g, '')) || 0;
-        const insuranceAmount = parseFloat(String(rowData.insuranceAmount !== undefined ? rowData.insuranceAmount : (rowData.medical_insurance || '1500')).replace(/[^0-9.]/g, '')) || 0;
+        const customAllowancesInCTC = rowData.customAllowancesInCTC !== false;
+        const insuranceAmount = parseFloat(String(rowData.insuranceAmount !== undefined ? rowData.insuranceAmount : (rowData.medical_insurance !== undefined ? rowData.medical_insurance : '0')).replace(/[^0-9.]/g, '')) || 0;
 
         const ltaEnabled = parseBool(rowData.ltaEnabled, true);
         let lta = 0;
@@ -1213,9 +1589,19 @@ const ReviseSalaryDetailsTab = () => {
             if (rowData.lta !== undefined && rowData.lta !== null && rowData.lta !== '') {
                 lta = parseFloat(String(rowData.lta).replace(/[^0-9.]/g, '')) || 0;
             } else {
-                const ltaComp = activeConfig?.salaryComponents?.find(c => c.id === 'lta');
+                const ltaComp = activeConfig?.salaryComponents?.find(c => c.id === 'lta' || (c.name && c.name.toLowerCase() === 'lta') || (c.name && c.name.toLowerCase().includes('leave travel')));
                 const pct = ltaComp?.linkValue ? Number(ltaComp.linkValue) : 0.0833;
-                lta = Math.round(monthlyCTC * (pct > 1 ? pct / 100 : pct));
+                const normalizedPct = pct > 1 ? pct / 100 : pct;
+                if (ltaComp?.linkedTo === 'basic_percent') {
+                    const basic = Math.round(monthlyCTC * ((rowData.basicPercent || 50) / 100));
+                    lta = Math.round(basic * normalizedPct);
+                } else if (ltaComp?.linkedTo === 'ctc_percent') {
+                    lta = Math.round(monthlyCTC * normalizedPct);
+                } else if (ltaComp?.linkedTo === 'fixed') {
+                    lta = Math.round(Number(ltaComp.linkValue) || 0);
+                } else {
+                    lta = Math.round(monthlyCTC * 0.0833);
+                }
             }
         }
 
@@ -1248,13 +1634,18 @@ const ReviseSalaryDetailsTab = () => {
             insuranceAmount,
             insurance: insuranceAmount,
             medical_insurance: insuranceAmount,
-            customAllowances: customAllowances > 0 ? [{ name: 'Custom Allowance', amount: customAllowances }] : [],
-            otherAllowances: customAllowances > 0 ? [{ name: 'Custom Allowance', amount: customAllowances }] : []
+            customAllowancesInCTC,
+            customAllowances: customAllowances > 0 ? [{ name: 'Custom Allowance', amount: customAllowances, addedInAnnualCTC: customAllowancesInCTC }] : [],
+            otherAllowances: customAllowances > 0 ? [{ name: 'Custom Allowance', amount: customAllowances, addedInAnnualCTC: customAllowancesInCTC }] : []
         };
 
         if (activeConfig?.salaryComponents) {
             activeConfig.salaryComponents.forEach(c => {
-                if (c.linkedTo === 'fixed') {
+                const isLta = c.id === 'lta' || (c.name && c.name.toLowerCase() === 'lta') || (c.name && c.name.toLowerCase().includes('leave travel'));
+                if (isLta) {
+                    source[c.id] = ltaEnabled ? lta : 0;
+                    source.lta = ltaEnabled ? lta : 0;
+                } else if (c.linkedTo === 'fixed') {
                     if (c.id === 'petrol') source.petrol = petrol;
                     else if (c.id === 'conveyance') source.conveyance = conveyance;
                     else if (c.id === 'medical' || c.id === 'medicalAllowance' || (c.name && c.name.toLowerCase().includes('medical') && !c.name.toLowerCase().includes('insurance'))) {
@@ -1268,7 +1659,6 @@ const ReviseSalaryDetailsTab = () => {
                         source.mealAllowance = mealAllowance;
                     }
                     else if (c.id === 'broadband') source.broadband = broadband;
-                    else if (c.id === 'lta') source.lta = lta;
                     else if (c.id === 'medical_insurance' || c.id === 'insurance' || (c.name && c.name.toLowerCase().includes('insurance'))) {
                         source[c.id] = insuranceAmount;
                         source.insurance = insuranceAmount;
@@ -1284,6 +1674,7 @@ const ReviseSalaryDetailsTab = () => {
         }
 
         const master = buildMasterSalaryStructure(source, activeConfig, annualCTC, monthlyCTC);
+        const resolvedLta = ltaEnabled ? (master?.lta !== undefined ? master.lta : lta) : 0;
         return {
             annualCTC: Math.round(annualCTC),
             monthlyCTC: Math.round(monthlyCTC),
@@ -1291,7 +1682,7 @@ const ReviseSalaryDetailsTab = () => {
             hraMaster: Math.round(master?.hraMaster || 0),
             specialAllowance: Math.round(master?.specialAllowance || master?.flexi || 0),
             petrol: Math.round(petrol),
-            lta: Math.round(lta),
+            lta: Math.round(resolvedLta),
             conveyance: Math.round(conveyance),
             medicalAllowance: Math.round(medicalAllowance),
             mealAllowance: Math.round(mealAllowance),
@@ -1309,7 +1700,7 @@ const ReviseSalaryDetailsTab = () => {
             gratuity: Math.round(master?.gratuity || 0),
             tds: Math.round(master?.tds || 0),
             netTakeHome: Math.round(master?.netTakeHome || 0),
-            totalDeductions: Math.round((master?.pfEmployee || 0) + (master?.esiEmployee || 0) + (master?.professionalTax || 0) + (master?.lwfEmployee || 0) + (master?.tds || 0))
+            totalDeductions: Math.round(master?.totalDeductions ?? ((master?.pfEmployee || 0) + (master?.esiEmployee || 0) + (master?.professionalTax || 0) + (master?.lwfEmployee || 0) + (master?.tds || 0)))
         };
     }, [payrollConfig]);
 
@@ -1334,8 +1725,14 @@ const ReviseSalaryDetailsTab = () => {
             const list = res.data?.employees || [];
             const rows = list.map(emp => {
                 const b = emp.salaryBreakup || {};
-                const annualCTC = String(emp.annualCTC || b.annualCTC || '600000');
-                const monthlyCTC = String(emp.monthlyCTC || b.monthlyCTC || Math.round(Number(annualCTC) / 12));
+                const rawAnnual = (emp.annualCTC !== undefined && emp.annualCTC !== null && emp.annualCTC !== '')
+                    ? emp.annualCTC
+                    : ((b.annualCTC !== undefined && b.annualCTC !== null && b.annualCTC !== '') ? b.annualCTC : '0');
+                const annualCTC = String(rawAnnual);
+                const rawMonthly = (emp.monthlyCTC !== undefined && emp.monthlyCTC !== null && emp.monthlyCTC !== '')
+                    ? emp.monthlyCTC
+                    : ((b.monthlyCTC !== undefined && b.monthlyCTC !== null && b.monthlyCTC !== '') ? b.monthlyCTC : Math.round(Number(annualCTC) / 12));
+                const monthlyCTC = String(rawMonthly);
                 const insComp = activeConfig.salaryComponents?.find(c =>
                     c.id === 'medical_insurance' || c.id === 'insurance' || (c.name && c.name.toLowerCase().includes('insurance'))
                 );
@@ -1347,7 +1744,7 @@ const ReviseSalaryDetailsTab = () => {
                     initialInsurance = b.medical_insurance;
                 }
                 if (initialInsurance === undefined) {
-                    initialInsurance = '1500';
+                    initialInsurance = '0';
                 }
 
                 const rowData = {
@@ -1381,6 +1778,9 @@ const ReviseSalaryDetailsTab = () => {
                     mealAllowance: b.mealAllowance !== undefined ? String(b.mealAllowance) : (b.meal !== undefined ? String(b.meal) : '0'),
                     broadband: b.broadband !== undefined ? String(b.broadband) : '0',
                     customAllowances: b.customAllowances !== undefined ? (Array.isArray(b.customAllowances) ? String(b.customAllowances.reduce((s, x) => s + (Number(x.amount) || 0), 0)) : String(b.customAllowances)) : '0',
+                    customAllowancesInCTC: b.customAllowancesInCTC !== undefined
+                        ? parseBool(b.customAllowancesInCTC, true)
+                        : (Array.isArray(b.customAllowances) && b.customAllowances.length > 0 ? (b.customAllowances[0].addedInAnnualCTC !== false && b.customAllowances[0].inCTC !== false) : true),
                     insuranceAmount: String(initialInsurance)
                 };
                 const calculated = computeRowSalary(rowData, activeConfig);
@@ -1406,11 +1806,25 @@ const ReviseSalaryDetailsTab = () => {
                         mealAllowance: rowData.mealAllowance,
                         broadband: rowData.broadband,
                         customAllowances: rowData.customAllowances,
+                        customAllowancesInCTC: rowData.customAllowancesInCTC,
                         insuranceAmount: rowData.insuranceAmount
                     }
                 };
             });
-            setBulkGridData(rows);
+            setBulkGridData(prev => {
+                if (!prev || prev.length === 0) return rows;
+                const prevMap = new Map(prev.map(r => [r._id, r]));
+                return rows.map(newRow => {
+                    const existing = prevMap.get(newRow._id);
+                    if (existing && isRowModified(existing)) {
+                        return {
+                            ...existing,
+                            original: newRow.original
+                        };
+                    }
+                    return newRow;
+                });
+            });
         } catch (err) {
             console.error('Failed to load bulk employee profiles:', err);
             // Fallback: Populate from employees if endpoint fails
@@ -1448,7 +1862,7 @@ const ReviseSalaryDetailsTab = () => {
                         mealAllowance: '0',
                         broadband: '0',
                         customAllowances: '0',
-                        insuranceAmount: '1500'
+                        insuranceAmount: '0'
                     };
                     const calculated = computeRowSalary(rowData, payrollConfigRef.current || payrollConfig);
                     return {
@@ -1491,7 +1905,8 @@ const ReviseSalaryDetailsTab = () => {
             String(row.mealAllowance || 0) !== String(o.mealAllowance || 0) ||
             String(row.broadband || 0) !== String(o.broadband || 0) ||
             String(row.insuranceAmount || 0) !== String(o.insuranceAmount || 0) ||
-            String(row.customAllowances || 0) !== String(o.customAllowances || 0)
+            String(row.customAllowances || 0) !== String(o.customAllowances || 0) ||
+            Boolean(row.customAllowancesInCTC !== false) !== Boolean(o.customAllowancesInCTC !== false)
         );
     }, []);
 
@@ -1767,7 +2182,7 @@ const ReviseSalaryDetailsTab = () => {
                 row.customAllowances || 0,
                 c.specialAllowance || 0,
                 c.grossMaster || 0,
-                row.insuranceAmount || 1500,
+                row.insuranceAmount !== undefined ? row.insuranceAmount : 0,
                 row.pfEnabled ? 'Yes' : 'No',
                 row.includePfInCTC ? 'Yes' : 'No',
                 c.pfEmployee || 0,
@@ -1804,7 +2219,7 @@ const ReviseSalaryDetailsTab = () => {
 
     const buildCustomBreakup = useCallback((row) => {
         const c = row.calculated || {};
-        const insVal = parseFloat(String(row.insuranceAmount !== undefined ? row.insuranceAmount : '1500')) || 0;
+        const insVal = parseFloat(String(row.insuranceAmount !== undefined ? row.insuranceAmount : '0')) || 0;
         const dynamicCompMap = {};
         (payrollConfigRef.current?.salaryComponents || payrollConfig?.salaryComponents || []).forEach(comp => {
             if (comp.id === 'medical_insurance' || comp.id === 'insurance' || (comp.name && comp.name.toLowerCase().includes('insurance'))) {
@@ -1845,8 +2260,9 @@ const ReviseSalaryDetailsTab = () => {
             insuranceAmount: insVal,
             insurance: insVal,
             medical_insurance: insVal,
-            customAllowances: parseFloat(String(row.customAllowances || '0')) > 0 ? [{ name: 'Custom Allowance', amount: parseFloat(String(row.customAllowances || '0')) }] : [],
-            otherAllowances: parseFloat(String(row.customAllowances || '0')) > 0 ? [{ name: 'Custom Allowance', amount: parseFloat(String(row.customAllowances || '0')) }] : [],
+            customAllowancesInCTC: row.customAllowancesInCTC !== false,
+            customAllowances: parseFloat(String(row.customAllowances || '0')) > 0 ? [{ name: 'Custom Allowance', amount: parseFloat(String(row.customAllowances || '0')), addedInAnnualCTC: row.customAllowancesInCTC !== false }] : [],
+            otherAllowances: parseFloat(String(row.customAllowances || '0')) > 0 ? [{ name: 'Custom Allowance', amount: parseFloat(String(row.customAllowances || '0')), addedInAnnualCTC: row.customAllowancesInCTC !== false }] : [],
             basic: String(c.basicMaster || 0),
             hra: String(c.hraMaster || 0),
             specialAllowance: String(c.specialAllowance || 0),
@@ -1879,7 +2295,8 @@ const ReviseSalaryDetailsTab = () => {
                     mealAllowance: r.mealAllowance,
                     broadband: r.broadband,
                     insuranceAmount: r.insuranceAmount,
-                    customAllowances: r.customAllowances
+                    customAllowances: r.customAllowances,
+                    customAllowancesInCTC: r.customAllowancesInCTC !== false
                 }
             };
         }));
@@ -2030,11 +2447,10 @@ const ReviseSalaryDetailsTab = () => {
                     <button
                         type="button"
                         onClick={() => setSubTab('single')}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                            subTab === 'single'
+                        className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${subTab === 'single'
                                 ? 'bg-blue-600 text-white shadow-sm'
                                 : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-                        }`}
+                            }`}
                     >
                         <User size={15} />
                         <span>Individual Revision</span>
@@ -2043,17 +2459,15 @@ const ReviseSalaryDetailsTab = () => {
                     <button
                         type="button"
                         onClick={() => setSubTab('bulk_details')}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                            subTab === 'bulk_details'
+                        className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${subTab === 'bulk_details'
                                 ? 'bg-blue-600 text-white shadow-sm'
                                 : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-                        }`}
+                            }`}
                     >
                         <Table size={15} />
                         <span>Bulk Salary Details</span>
-                        <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-extrabold ${
-                            subTab === 'bulk_details' ? 'bg-blue-500 text-white' : 'bg-emerald-100 text-emerald-800'
-                        }`}>
+                        <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-extrabold ${subTab === 'bulk_details' ? 'bg-blue-500 text-white' : 'bg-emerald-100 text-emerald-800'
+                            }`}>
                             Excel Grid
                         </span>
                     </button>
@@ -2061,11 +2475,10 @@ const ReviseSalaryDetailsTab = () => {
                     <button
                         type="button"
                         onClick={() => setSubTab('bulk')}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                            subTab === 'bulk'
+                        className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${subTab === 'bulk'
                                 ? 'bg-blue-600 text-white shadow-sm'
                                 : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-                        }`}
+                            }`}
                     >
                         <Users size={15} />
                         <span>Bulk Restructure & Letters</span>
@@ -2074,11 +2487,10 @@ const ReviseSalaryDetailsTab = () => {
                     <button
                         type="button"
                         onClick={() => setSubTab('templates')}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                            subTab === 'templates'
+                        className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${subTab === 'templates'
                                 ? 'bg-blue-600 text-white shadow-sm'
                                 : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-                        }`}
+                            }`}
                     >
                         <FileSignature size={15} />
                         <span>Template Settings</span>
@@ -2090,11 +2502,10 @@ const ReviseSalaryDetailsTab = () => {
                     <button
                         type="button"
                         onClick={() => setSubTab('logs')}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                            subTab === 'logs'
+                        className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${subTab === 'logs'
                                 ? 'bg-blue-600 text-white shadow-sm'
                                 : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-                        }`}
+                            }`}
                     >
                         <History size={15} />
                         <span>Revision Logs & Timeline</span>
@@ -2179,11 +2590,10 @@ const ReviseSalaryDetailsTab = () => {
                                         <div
                                             key={emp._id}
                                             onClick={() => handleSelectEmployee(emp._id)}
-                                            className={`p-3 rounded-xl cursor-pointer transition-all ${
-                                                isSelected
+                                            className={`p-3 rounded-xl cursor-pointer transition-all ${isSelected
                                                     ? 'bg-blue-50 border border-blue-200 text-blue-900 shadow-2xs'
                                                     : 'hover:bg-slate-50 border border-transparent text-slate-700'
-                                            }`}
+                                                }`}
                                         >
                                             <div className="flex items-center justify-between">
                                                 <span className="text-xs font-bold truncate">
@@ -2284,11 +2694,10 @@ const ReviseSalaryDetailsTab = () => {
                                     <button
                                         type="button"
                                         onClick={() => setSingleStep('salary')}
-                                        className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                                            singleStep === 'salary'
+                                        className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs font-bold transition-all cursor-pointer ${singleStep === 'salary'
                                                 ? 'bg-white text-blue-600 shadow-xs'
                                                 : 'text-slate-600 hover:text-slate-900'
-                                        }`}
+                                            }`}
                                     >
                                         <DollarSign size={15} />
                                         <span>1. Salary & Compensation Structure</span>
@@ -2296,12 +2705,18 @@ const ReviseSalaryDetailsTab = () => {
 
                                     <button
                                         type="button"
-                                        onClick={() => setSingleStep('parameters')}
-                                        className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                                            singleStep === 'parameters'
+                                        onClick={() => {
+                                            if (singleStep === 'salary' && Number(salaryDraft.annualCTC || 0) > 0) {
+                                                handleSaveAndContinue();
+                                            } else {
+                                                setSingleStep('parameters');
+                                            }
+                                        }}
+                                        disabled={savingSalaryAndProceeding}
+                                        className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs font-bold transition-all cursor-pointer ${singleStep === 'parameters'
                                                 ? 'bg-white text-blue-600 shadow-xs'
                                                 : 'text-slate-600 hover:text-slate-900'
-                                        }`}
+                                            }`}
                                     >
                                         <Calendar size={15} />
                                         <span>2. Revision Parameters & Letter Dispatch</span>
@@ -2326,11 +2741,22 @@ const ReviseSalaryDetailsTab = () => {
                                             </div>
                                             <button
                                                 type="button"
-                                                onClick={() => setSingleStep('parameters')}
-                                                className="flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-xl text-xs font-bold transition-all cursor-pointer"
+                                                onClick={handleSaveAndContinue}
+                                                disabled={savingSalaryAndProceeding}
+                                                className="flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-50 hover:bg-blue-100 disabled:opacity-60 text-blue-700 rounded-xl text-xs font-bold transition-all cursor-pointer"
                                             >
-                                                <span>Go to Parameters & Dispatch</span>
-                                                <ArrowRight size={13} />
+                                                {savingSalaryAndProceeding ? (
+                                                    <>
+                                                        <RefreshCw className="animate-spin" size={13} />
+                                                        <span>Saving & Continuing...</span>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <Save size={13} />
+                                                        <span>Save & Go to Parameters & Dispatch</span>
+                                                        <ArrowRight size={13} />
+                                                    </>
+                                                )}
                                             </button>
                                         </div>
 
@@ -2356,14 +2782,22 @@ const ReviseSalaryDetailsTab = () => {
 
                                             <button
                                                 type="button"
-                                                onClick={() => {
-                                                    setSingleStep('parameters');
-                                                    window.scrollTo({ top: 100, behavior: 'smooth' });
-                                                }}
-                                                className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-sm transition-all cursor-pointer"
+                                                onClick={handleSaveAndContinue}
+                                                disabled={savingSalaryAndProceeding}
+                                                className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white rounded-xl text-xs font-bold shadow-sm transition-all cursor-pointer"
                                             >
-                                                <span>Proceed to Revision Parameters & Letter Dispatch</span>
-                                                <ArrowRight size={15} />
+                                                {savingSalaryAndProceeding ? (
+                                                    <>
+                                                        <RefreshCw className="animate-spin" size={15} />
+                                                        <span>Saving Salary & Continuing...</span>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <Save size={15} />
+                                                        <span>Proceed to Revision Parameters & Letter Dispatch</span>
+                                                        <ArrowRight size={15} />
+                                                    </>
+                                                )}
                                             </button>
                                         </div>
                                     </div>
@@ -2486,11 +2920,11 @@ const ReviseSalaryDetailsTab = () => {
                                                                     <ExternalLink size={11} />
                                                                 </button>
                                                             </div>
-                                                            <div className="flex items-center gap-2">
+                                                            <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
                                                                 <select
                                                                     value={selectedTemplateId}
                                                                     onChange={(e) => setSelectedTemplateId(e.target.value)}
-                                                                    className="flex-1 px-3.5 py-2 rounded-xl border border-slate-300 text-xs font-semibold text-slate-800 bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none cursor-pointer"
+                                                                    className="flex-1 px-3.5 py-2 rounded-xl border border-slate-300 text-xs font-semibold text-slate-800 bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none cursor-pointer min-w-[200px]"
                                                                 >
                                                                     {availableTemplates.map(t => (
                                                                         <option key={t._id} value={t._id}>{t.name}</option>
@@ -2505,6 +2939,21 @@ const ReviseSalaryDetailsTab = () => {
                                                                 >
                                                                     <Edit3 size={13} className="text-indigo-600" />
                                                                     <span>Edit Format</span>
+                                                                </button>
+
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => handleOpenPreviewLetterModal()}
+                                                                    disabled={previewLetterLoading}
+                                                                    className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shrink-0 shadow-xs"
+                                                                    title="Preview the generated offer letter directly in the browser to check that it is completely correct"
+                                                                >
+                                                                    {previewLetterLoading ? (
+                                                                        <RefreshCw size={13} className="animate-spin" />
+                                                                    ) : (
+                                                                        <Eye size={13} />
+                                                                    )}
+                                                                    <span>Preview Letter</span>
                                                                 </button>
 
                                                                 <button
@@ -2699,18 +3148,26 @@ const ReviseSalaryDetailsTab = () => {
                                                                 )) || 'Compensation updated'}
                                                             </td>
                                                             <td className="py-2.5 px-3">
-                                                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                                                                    rev.status === 'applied'
+                                                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${rev.status === 'applied'
                                                                         ? 'bg-emerald-50 text-emerald-700'
                                                                         : rev.status === 'scheduled'
-                                                                        ? 'bg-blue-50 text-blue-700'
-                                                                        : 'bg-slate-100 text-slate-600'
-                                                                }`}>
+                                                                            ? 'bg-blue-50 text-blue-700'
+                                                                            : 'bg-slate-100 text-slate-600'
+                                                                    }`}>
                                                                     {rev.status || 'Applied'}
                                                                 </span>
                                                             </td>
                                                             <td className="py-2.5 px-3 text-right">
                                                                 <div className="flex items-center justify-end gap-1.5">
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => handleOpenPreviewLetterModal(rev._id)}
+                                                                        disabled={previewLetterLoading}
+                                                                        className="p-1.5 rounded-lg border border-slate-200 text-emerald-600 hover:bg-emerald-50 transition-all cursor-pointer"
+                                                                        title="Preview Revised Offer Letter in Browser"
+                                                                    >
+                                                                        <Eye size={14} />
+                                                                    </button>
                                                                     <button
                                                                         type="button"
                                                                         onClick={() => handleDownloadLetter(rev._id)}
@@ -2841,11 +3298,10 @@ const ReviseSalaryDetailsTab = () => {
                                 <button
                                     type="button"
                                     onClick={() => setBulkActionTarget('all')}
-                                    className={`px-3 py-1 rounded-lg font-bold text-xs transition-all cursor-pointer ${
-                                        bulkActionTarget === 'all'
+                                    className={`px-3 py-1 rounded-lg font-bold text-xs transition-all cursor-pointer ${bulkActionTarget === 'all'
                                             ? 'bg-blue-600 text-white shadow-2xs'
                                             : 'text-slate-600 hover:bg-slate-100'
-                                    }`}
+                                        }`}
                                 >
                                     All Filtered ({filteredBulkRows.length})
                                 </button>
@@ -2853,11 +3309,10 @@ const ReviseSalaryDetailsTab = () => {
                                     type="button"
                                     onClick={() => setBulkActionTarget('selected')}
                                     disabled={selectedBulkDetailIds.length === 0}
-                                    className={`px-3 py-1 rounded-lg font-bold text-xs transition-all cursor-pointer ${
-                                        bulkActionTarget === 'selected'
+                                    className={`px-3 py-1 rounded-lg font-bold text-xs transition-all cursor-pointer ${bulkActionTarget === 'selected'
                                             ? 'bg-blue-600 text-white shadow-2xs'
                                             : 'text-slate-600 hover:bg-slate-100 disabled:opacity-40'
-                                    }`}
+                                        }`}
                                 >
                                     Selected Only ({selectedBulkDetailIds.length})
                                 </button>
@@ -2893,11 +3348,10 @@ const ReviseSalaryDetailsTab = () => {
                                     <button
                                         type="button"
                                         onClick={() => applyStatutoryToAll('pfEnabled', true)}
-                                        className={`px-2 py-1.5 rounded-md text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
-                                            pfStatutoryState.allTrue
+                                        className={`px-2 py-1.5 rounded-md text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${pfStatutoryState.allTrue
                                                 ? 'bg-blue-600 text-white shadow-xs'
                                                 : 'text-slate-600 hover:text-slate-900 hover:bg-white'
-                                        }`}
+                                            }`}
                                     >
                                         <Check size={12} className={pfStatutoryState.allTrue ? 'text-white' : 'text-slate-400'} />
                                         <span>✓ Enable PF All</span>
@@ -2905,11 +3359,10 @@ const ReviseSalaryDetailsTab = () => {
                                     <button
                                         type="button"
                                         onClick={() => applyStatutoryToAll('pfEnabled', false)}
-                                        className={`px-2 py-1.5 rounded-md text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
-                                            pfStatutoryState.allFalse
+                                        className={`px-2 py-1.5 rounded-md text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${pfStatutoryState.allFalse
                                                 ? 'bg-slate-800 text-white shadow-xs'
                                                 : 'text-slate-600 hover:text-slate-900 hover:bg-white'
-                                        }`}
+                                            }`}
                                     >
                                         <X size={12} className={pfStatutoryState.allFalse ? 'text-white' : 'text-slate-400'} />
                                         <span>✕ Disable PF All</span>
@@ -2919,11 +3372,10 @@ const ReviseSalaryDetailsTab = () => {
                                     <button
                                         type="button"
                                         onClick={() => applyStatutoryToAll('includePfInCTC', true)}
-                                        className={`px-1.5 py-1 rounded-md text-[10px] font-bold flex items-center justify-center gap-0.5 transition-all cursor-pointer ${
-                                            pfInCtcStatutoryState.allTrue
+                                        className={`px-1.5 py-1 rounded-md text-[10px] font-bold flex items-center justify-center gap-0.5 transition-all cursor-pointer ${pfInCtcStatutoryState.allTrue
                                                 ? 'bg-indigo-600 text-white shadow-xs'
                                                 : 'text-slate-600 hover:text-slate-900 hover:bg-white'
-                                        }`}
+                                            }`}
                                         title="Employer PF reduces gross take-home"
                                     >
                                         <span>+ In CTC: All</span>
@@ -2931,11 +3383,10 @@ const ReviseSalaryDetailsTab = () => {
                                     <button
                                         type="button"
                                         onClick={() => applyStatutoryToAll('includePfInCTC', false)}
-                                        className={`px-1.5 py-1 rounded-md text-[10px] font-bold flex items-center justify-center gap-0.5 transition-all cursor-pointer ${
-                                            pfInCtcStatutoryState.allFalse
+                                        className={`px-1.5 py-1 rounded-md text-[10px] font-bold flex items-center justify-center gap-0.5 transition-all cursor-pointer ${pfInCtcStatutoryState.allFalse
                                                 ? 'bg-slate-700 text-white shadow-xs'
                                                 : 'text-slate-600 hover:text-slate-900 hover:bg-white'
-                                        }`}
+                                            }`}
                                         title="Employer PF outside CTC take-home calculation"
                                     >
                                         <span>- Ex CTC: All</span>
@@ -2970,11 +3421,10 @@ const ReviseSalaryDetailsTab = () => {
                                     <button
                                         type="button"
                                         onClick={() => applyStatutoryToAll('esiEnabled', true)}
-                                        className={`px-2 py-1.5 rounded-md text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
-                                            esiStatutoryState.allTrue
+                                        className={`px-2 py-1.5 rounded-md text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${esiStatutoryState.allTrue
                                                 ? 'bg-blue-600 text-white shadow-xs'
                                                 : 'text-slate-600 hover:text-slate-900 hover:bg-white'
-                                        }`}
+                                            }`}
                                     >
                                         <Check size={12} className={esiStatutoryState.allTrue ? 'text-white' : 'text-slate-400'} />
                                         <span>✓ Enable ESI All</span>
@@ -2982,11 +3432,10 @@ const ReviseSalaryDetailsTab = () => {
                                     <button
                                         type="button"
                                         onClick={() => applyStatutoryToAll('esiEnabled', false)}
-                                        className={`px-2 py-1.5 rounded-md text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
-                                            esiStatutoryState.allFalse
+                                        className={`px-2 py-1.5 rounded-md text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${esiStatutoryState.allFalse
                                                 ? 'bg-slate-800 text-white shadow-xs'
                                                 : 'text-slate-600 hover:text-slate-900 hover:bg-white'
-                                        }`}
+                                            }`}
                                     >
                                         <X size={12} className={esiStatutoryState.allFalse ? 'text-white' : 'text-slate-400'} />
                                         <span>✕ Disable ESI All</span>
@@ -3019,11 +3468,10 @@ const ReviseSalaryDetailsTab = () => {
                                         <button
                                             type="button"
                                             onClick={() => applyStatutoryToAll('gratuityEnabled', true)}
-                                            className={`px-2 py-1.5 rounded-md text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
-                                                gratuityStatutoryState.allTrue
+                                            className={`px-2 py-1.5 rounded-md text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${gratuityStatutoryState.allTrue
                                                     ? 'bg-indigo-600 text-white shadow-xs'
                                                     : 'text-slate-600 hover:text-slate-900 hover:bg-white'
-                                            }`}
+                                                }`}
                                         >
                                             <Check size={12} className={gratuityStatutoryState.allTrue ? 'text-white' : 'text-slate-400'} />
                                             <span>✓ Gratuity All</span>
@@ -3031,11 +3479,10 @@ const ReviseSalaryDetailsTab = () => {
                                         <button
                                             type="button"
                                             onClick={() => applyStatutoryToAll('gratuityEnabled', false)}
-                                            className={`px-2 py-1.5 rounded-md text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
-                                                gratuityStatutoryState.allFalse
+                                            className={`px-2 py-1.5 rounded-md text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${gratuityStatutoryState.allFalse
                                                     ? 'bg-slate-800 text-white shadow-xs'
                                                     : 'text-slate-600 hover:text-slate-900 hover:bg-white'
-                                            }`}
+                                                }`}
                                         >
                                             <X size={12} className={gratuityStatutoryState.allFalse ? 'text-white' : 'text-slate-400'} />
                                             <span>✕ Disable Gratuity</span>
@@ -3045,22 +3492,20 @@ const ReviseSalaryDetailsTab = () => {
                                         <button
                                             type="button"
                                             onClick={() => applyStatutoryToAll('includeGratuityInCTC', true)}
-                                            className={`px-1.5 py-1 rounded-md text-[10px] font-bold flex items-center justify-center gap-0.5 transition-all cursor-pointer ${
-                                                gratuityInCtcStatutoryState.allTrue
+                                            className={`px-1.5 py-1 rounded-md text-[10px] font-bold flex items-center justify-center gap-0.5 transition-all cursor-pointer ${gratuityInCtcStatutoryState.allTrue
                                                     ? 'bg-indigo-600 text-white shadow-xs'
                                                     : 'text-slate-600 hover:text-slate-900 hover:bg-white'
-                                            }`}
+                                                }`}
                                         >
                                             <span>+ In CTC</span>
                                         </button>
                                         <button
                                             type="button"
                                             onClick={() => applyStatutoryToAll('includeGratuityInCTC', false)}
-                                            className={`px-1.5 py-1 rounded-md text-[10px] font-bold flex items-center justify-center gap-0.5 transition-all cursor-pointer ${
-                                                gratuityInCtcStatutoryState.allFalse
+                                            className={`px-1.5 py-1 rounded-md text-[10px] font-bold flex items-center justify-center gap-0.5 transition-all cursor-pointer ${gratuityInCtcStatutoryState.allFalse
                                                     ? 'bg-slate-700 text-white shadow-xs'
                                                     : 'text-slate-600 hover:text-slate-900 hover:bg-white'
-                                            }`}
+                                                }`}
                                         >
                                             <span>- Ex CTC</span>
                                         </button>
@@ -3095,11 +3540,10 @@ const ReviseSalaryDetailsTab = () => {
                                     <button
                                         type="button"
                                         onClick={() => applyStatutoryToAll('ptEnabled', true)}
-                                        className={`px-2 py-1.5 rounded-md text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
-                                            ptStatutoryState.allTrue
+                                        className={`px-2 py-1.5 rounded-md text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${ptStatutoryState.allTrue
                                                 ? 'bg-blue-600 text-white shadow-xs'
                                                 : 'text-slate-600 hover:text-slate-900 hover:bg-white'
-                                        }`}
+                                            }`}
                                     >
                                         <Check size={12} className={ptStatutoryState.allTrue ? 'text-white' : 'text-slate-400'} />
                                         <span>✓ Enable PT All</span>
@@ -3107,11 +3551,10 @@ const ReviseSalaryDetailsTab = () => {
                                     <button
                                         type="button"
                                         onClick={() => applyStatutoryToAll('ptEnabled', false)}
-                                        className={`px-2 py-1.5 rounded-md text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
-                                            ptStatutoryState.allFalse
+                                        className={`px-2 py-1.5 rounded-md text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${ptStatutoryState.allFalse
                                                 ? 'bg-slate-800 text-white shadow-xs'
                                                 : 'text-slate-600 hover:text-slate-900 hover:bg-white'
-                                        }`}
+                                            }`}
                                     >
                                         <X size={12} className={ptStatutoryState.allFalse ? 'text-white' : 'text-slate-400'} />
                                         <span>✕ Disable PT All</span>
@@ -3144,11 +3587,10 @@ const ReviseSalaryDetailsTab = () => {
                                         <button
                                             type="button"
                                             onClick={() => applyStatutoryToAll('lwfEnabled', true)}
-                                            className={`px-2 py-1.5 rounded-md text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
-                                                lwfStatutoryState.allTrue
+                                            className={`px-2 py-1.5 rounded-md text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${lwfStatutoryState.allTrue
                                                     ? 'bg-blue-600 text-white shadow-xs'
                                                     : 'text-slate-600 hover:text-slate-900 hover:bg-white'
-                                            }`}
+                                                }`}
                                         >
                                             <Check size={12} className={lwfStatutoryState.allTrue ? 'text-white' : 'text-slate-400'} />
                                             <span>✓ Enable LWF All</span>
@@ -3156,11 +3598,10 @@ const ReviseSalaryDetailsTab = () => {
                                         <button
                                             type="button"
                                             onClick={() => applyStatutoryToAll('lwfEnabled', false)}
-                                            className={`px-2 py-1.5 rounded-md text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
-                                                lwfStatutoryState.allFalse
+                                            className={`px-2 py-1.5 rounded-md text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${lwfStatutoryState.allFalse
                                                     ? 'bg-slate-800 text-white shadow-xs'
                                                     : 'text-slate-600 hover:text-slate-900 hover:bg-white'
-                                            }`}
+                                                }`}
                                         >
                                             <X size={12} className={lwfStatutoryState.allFalse ? 'text-white' : 'text-slate-400'} />
                                             <span>✕ Disable LWF All</span>
@@ -3196,11 +3637,10 @@ const ReviseSalaryDetailsTab = () => {
                                     <button
                                         type="button"
                                         onClick={() => applyStatutoryToAll('ltaEnabled', true)}
-                                        className={`px-2 py-1.5 rounded-md text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
-                                            ltaStatutoryState.allTrue
+                                        className={`px-2 py-1.5 rounded-md text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${ltaStatutoryState.allTrue
                                                 ? 'bg-emerald-600 text-white shadow-xs'
                                                 : 'text-slate-600 hover:text-slate-900 hover:bg-white'
-                                        }`}
+                                            }`}
                                     >
                                         <Check size={12} className={ltaStatutoryState.allTrue ? 'text-white' : 'text-slate-400'} />
                                         <span>✓ Enable LTA All</span>
@@ -3208,11 +3648,10 @@ const ReviseSalaryDetailsTab = () => {
                                     <button
                                         type="button"
                                         onClick={() => applyStatutoryToAll('ltaEnabled', false)}
-                                        className={`px-2 py-1.5 rounded-md text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
-                                            ltaStatutoryState.allFalse
+                                        className={`px-2 py-1.5 rounded-md text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${ltaStatutoryState.allFalse
                                                 ? 'bg-slate-800 text-white shadow-xs'
                                                 : 'text-slate-600 hover:text-slate-900 hover:bg-white'
-                                        }`}
+                                            }`}
                                     >
                                         <X size={12} className={ltaStatutoryState.allFalse ? 'text-white' : 'text-slate-400'} />
                                         <span>✕ Disable LTA All</span>
@@ -3245,11 +3684,10 @@ const ReviseSalaryDetailsTab = () => {
                                         <button
                                             type="button"
                                             onClick={() => applyStatutoryToAll('tdsEnabled', true)}
-                                            className={`px-2 py-1.5 rounded-md text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
-                                                tdsStatutoryState.allTrue
+                                            className={`px-2 py-1.5 rounded-md text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${tdsStatutoryState.allTrue
                                                     ? 'bg-blue-600 text-white shadow-xs'
                                                     : 'text-slate-600 hover:text-slate-900 hover:bg-white'
-                                            }`}
+                                                }`}
                                         >
                                             <Check size={12} className={tdsStatutoryState.allTrue ? 'text-white' : 'text-slate-400'} />
                                             <span>✓ Enable TDS All</span>
@@ -3257,11 +3695,10 @@ const ReviseSalaryDetailsTab = () => {
                                         <button
                                             type="button"
                                             onClick={() => applyStatutoryToAll('tdsEnabled', false)}
-                                            className={`px-2 py-1.5 rounded-md text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
-                                                tdsStatutoryState.allFalse
+                                            className={`px-2 py-1.5 rounded-md text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${tdsStatutoryState.allFalse
                                                     ? 'bg-slate-800 text-white shadow-xs'
                                                     : 'text-slate-600 hover:text-slate-900 hover:bg-white'
-                                            }`}
+                                                }`}
                                         >
                                             <X size={12} className={tdsStatutoryState.allFalse ? 'text-white' : 'text-slate-400'} />
                                             <span>✕ Disable TDS All</span>
@@ -3359,6 +3796,17 @@ const ReviseSalaryDetailsTab = () => {
                                     ))}
                                 </select>
                             </div>
+
+                            {/* Reset Column Widths */}
+                            <button
+                                type="button"
+                                onClick={handleResetAllColumnWidths}
+                                className="px-2.5 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:text-slate-900 bg-white hover:bg-slate-50 flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
+                                title="Reset all column widths to default (Double-click any column edge to reset individual column)"
+                            >
+                                <SlidersHorizontal size={13} className="text-slate-500" />
+                                <span className="hidden sm:inline">Reset Widths</span>
+                            </button>
                         </div>
 
                         {/* Revision Parameters & Save Execution */}
@@ -3429,8 +3877,8 @@ const ReviseSalaryDetailsTab = () => {
                                             {selectedBulkDetailIds.length > 0
                                                 ? ` (${selectedBulkDetailIds.length} Selected)`
                                                 : bulkGridMetrics.modifiedCount > 0
-                                                ? ` (${bulkGridMetrics.modifiedCount} Modified)`
-                                                : ''}
+                                                    ? ` (${bulkGridMetrics.modifiedCount} Modified)`
+                                                    : ''}
                                         </span>
                                     </>
                                 )}
@@ -3475,280 +3923,357 @@ const ReviseSalaryDetailsTab = () => {
                     )}
 
                     {/* Interactive Excel Spreadsheet Table */}
-                    <div className="relative overflow-x-auto border border-slate-300 rounded-2xl bg-white shadow-xs max-h-[720px] overflow-y-auto">
-                        <table className="w-full text-left text-xs border-separate border-spacing-0 whitespace-nowrap table-auto">
-                            <thead className="sticky top-0 z-40 bg-slate-100 text-slate-700 uppercase text-[10px] tracking-wider border-b border-slate-300">
+                    <div className="relative overflow-x-auto border border-slate-300 rounded-xl bg-white shadow-xs max-h-[min(70vh,680px)] min-h-[360px] overflow-y-auto font-sans antialiased [-webkit-font-smoothing:antialiased] [-moz-osx-font-smoothing:grayscale] [text-rendering:optimizeLegibility]">
+                        <table style={{ width: `${totalTableWidth}px`, minWidth: `${totalTableWidth}px` }} className="text-left text-[11px] leading-tight border-separate border-spacing-0 whitespace-nowrap table-fixed tabular-nums select-text">
+                            <thead className="sticky top-0 z-40 bg-slate-100 text-slate-700 uppercase text-[9.5px] font-bold tracking-wide border-b border-slate-300">
                                 <tr>
-                                    {/* Checkbox (Sticky Left #1: 0 to 48px) */}
+                                    {/* Checkbox (Sticky Left #1: 0 to width) */}
                                     <th
-                                        style={{ position: 'sticky', top: 0, left: 0, zIndex: 50, width: '48px', minWidth: '48px', maxWidth: '48px', backgroundColor: '#f1f5f9' }}
-                                        className="py-3 px-2 w-[48px] min-w-[48px] max-w-[48px] text-center border-b border-r border-slate-300 shadow-[2px_0_4px_rgba(0,0,0,0.06)]"
+                                        style={{ position: 'sticky', top: 0, left: 0, zIndex: 50, width: `${columnWidths.checkbox}px`, minWidth: `${columnWidths.checkbox}px`, maxWidth: `${columnWidths.checkbox}px`, backgroundColor: '#f1f5f9' }}
+                                        className="relative py-2 px-1.5 text-center border-b border-r border-slate-300 shadow-[2px_0_4px_rgba(0,0,0,0.06)]"
                                     >
                                         <input
                                             type="checkbox"
                                             checked={filteredBulkRows.length > 0 && selectedBulkDetailIds.length === filteredBulkRows.length}
                                             onChange={handleToggleSelectAllBulkDetails}
-                                            className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                            className="w-3.5 h-3.5 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
                                             title="Select all rows"
                                         />
+                                        {renderResizeHandle('checkbox')}
                                     </th>
 
-                                    {/* Employee Info (Sticky Left #2: from 48px, 260px) */}
+                                    {/* Employee Info (Sticky Left #2: from checkbox width) */}
                                     <th
-                                        style={{ position: 'sticky', top: 0, left: '48px', zIndex: 50, width: '260px', minWidth: '260px', maxWidth: '260px', backgroundColor: '#f1f5f9' }}
-                                        className="py-3 px-3.5 border-b border-r-2 border-slate-300 shadow-[4px_0_8px_-2px_rgba(0,0,0,0.12)] w-[260px] min-w-[260px] max-w-[260px]"
+                                        style={{ position: 'sticky', top: 0, left: `${columnWidths.checkbox}px`, zIndex: 50, width: `${columnWidths.employee}px`, minWidth: `${columnWidths.employee}px`, maxWidth: `${columnWidths.employee}px`, backgroundColor: '#f1f5f9' }}
+                                        className="relative py-2 px-2.5 border-b border-r-2 border-slate-300 shadow-[4px_0_8px_-2px_rgba(0,0,0,0.12)] truncate text-slate-800"
                                     >
-                                        Employee
+                                        <span>Employee</span>
+                                        {renderResizeHandle('employee')}
                                     </th>
 
                                     {/* Base Compensation Inputs */}
-                                    <th style={{ position: 'sticky', top: 0, zIndex: 10 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[140px] bg-slate-50">
-                                        Annual CTC (₹)
+                                    <th
+                                        style={{ position: 'sticky', top: 0, zIndex: 10, width: `${columnWidths.annualCTC}px`, minWidth: `${columnWidths.annualCTC}px`, maxWidth: `${columnWidths.annualCTC}px` }}
+                                        className="relative py-2 px-2 border-b border-r border-slate-200 bg-slate-50 truncate"
+                                    >
+                                        <span>Annual CTC (₹)</span>
+                                        {renderResizeHandle('annualCTC')}
                                     </th>
-                                    <th style={{ position: 'sticky', top: 0, zIndex: 10 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[105px] text-right bg-slate-100">
-                                        Monthly CTC
+                                    <th
+                                        style={{ position: 'sticky', top: 0, zIndex: 10, width: `${columnWidths.monthlyCTC}px`, minWidth: `${columnWidths.monthlyCTC}px`, maxWidth: `${columnWidths.monthlyCTC}px` }}
+                                        className="relative py-2 px-2 border-b border-r border-slate-200 text-right bg-slate-100 truncate"
+                                    >
+                                        <span>Monthly CTC</span>
+                                        {renderResizeHandle('monthlyCTC')}
                                     </th>
-                                    <th style={{ position: 'sticky', top: 0, zIndex: 10 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[95px] text-right bg-slate-100">
-                                        Basic
+                                    <th
+                                        style={{ position: 'sticky', top: 0, zIndex: 10, width: `${columnWidths.basic}px`, minWidth: `${columnWidths.basic}px`, maxWidth: `${columnWidths.basic}px` }}
+                                        className="relative py-2 px-2 border-b border-r border-slate-200 text-right bg-slate-100 truncate"
+                                    >
+                                        <span>Basic</span>
+                                        {renderResizeHandle('basic')}
                                     </th>
-                                    <th style={{ position: 'sticky', top: 0, zIndex: 10 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[90px] text-right bg-slate-100">
-                                        HRA
+                                    <th
+                                        style={{ position: 'sticky', top: 0, zIndex: 10, width: `${columnWidths.hra}px`, minWidth: `${columnWidths.hra}px`, maxWidth: `${columnWidths.hra}px` }}
+                                        className="relative py-2 px-2 border-b border-r border-slate-200 text-right bg-slate-100 truncate"
+                                    >
+                                        <span>HRA</span>
+                                        {renderResizeHandle('hra')}
                                     </th>
 
                                     {/* Allowances (In CTC) */}
-                                    <th style={{ position: 'sticky', top: 0, zIndex: 10 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[125px] bg-sky-50">
-                                        <div className="flex items-center justify-between gap-1">
-                                            <span>Petrol</span>
-                                            <span className="text-[9px] font-bold text-sky-700 bg-sky-100 px-1 py-0.2 rounded">In CTC</span>
+                                    <th
+                                        style={{ position: 'sticky', top: 0, zIndex: 10, width: `${columnWidths.petrol}px`, minWidth: `${columnWidths.petrol}px`, maxWidth: `${columnWidths.petrol}px` }}
+                                        className="relative py-2 px-2 border-b border-r border-slate-200 bg-sky-50"
+                                    >
+                                        <div className="flex items-center justify-between gap-1 pr-1 truncate">
+                                            <span className="truncate">Petrol</span>
+                                            <span className="text-[8.5px] font-bold text-sky-700 bg-sky-100 px-1 py-0.2 rounded shrink-0">In CTC</span>
                                         </div>
+                                        {renderResizeHandle('petrol')}
                                     </th>
 
-                                    <th style={{ position: 'sticky', top: 0, zIndex: 10 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[130px] bg-emerald-50">
-                                        <div className="flex items-center justify-between gap-1">
-                                            <span>LTA</span>
-                                            <span className="text-[9px] font-bold text-emerald-700 bg-emerald-100 px-1 py-0.2 rounded">In CTC</span>
+                                    <th
+                                        style={{ position: 'sticky', top: 0, zIndex: 10, width: `${columnWidths.lta}px`, minWidth: `${columnWidths.lta}px`, maxWidth: `${columnWidths.lta}px` }}
+                                        className="relative py-2 px-2 border-b border-r border-slate-200 bg-emerald-50"
+                                    >
+                                        <div className="flex items-center justify-between gap-1 pr-1 truncate">
+                                            <span className="truncate">LTA</span>
+                                            <span className="text-[8.5px] font-bold text-emerald-700 bg-emerald-100 px-1 py-0.2 rounded shrink-0">In CTC</span>
                                         </div>
+                                        {renderResizeHandle('lta')}
                                     </th>
 
-                                    <th style={{ position: 'sticky', top: 0, zIndex: 10 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[125px] bg-slate-100">
-                                        <div className="flex items-center justify-between gap-1">
-                                            <span>Conveyance</span>
-                                            <span className="text-[9px] font-semibold text-slate-600 bg-slate-200 px-1 py-0.2 rounded">In CTC</span>
+                                    <th
+                                        style={{ position: 'sticky', top: 0, zIndex: 10, width: `${columnWidths.conveyance}px`, minWidth: `${columnWidths.conveyance}px`, maxWidth: `${columnWidths.conveyance}px` }}
+                                        className="relative py-2 px-2 border-b border-r border-slate-200 bg-slate-100"
+                                    >
+                                        <div className="flex items-center justify-between gap-1 pr-1 truncate">
+                                            <span className="truncate">Conveyance</span>
+                                            <span className="text-[8.5px] font-semibold text-slate-600 bg-slate-200 px-1 py-0.2 rounded shrink-0">In CTC</span>
                                         </div>
+                                        {renderResizeHandle('conveyance')}
                                     </th>
 
-                                    <th style={{ position: 'sticky', top: 0, zIndex: 10 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[125px] bg-slate-100">
-                                        <div className="flex items-center justify-between gap-1">
-                                            <span>Medical Allow.</span>
-                                            <span className="text-[9px] font-semibold text-slate-600 bg-slate-200 px-1 py-0.2 rounded">In CTC</span>
+                                    <th
+                                        style={{ position: 'sticky', top: 0, zIndex: 10, width: `${columnWidths.medical}px`, minWidth: `${columnWidths.medical}px`, maxWidth: `${columnWidths.medical}px` }}
+                                        className="relative py-2 px-2 border-b border-r border-slate-200 bg-slate-100"
+                                    >
+                                        <div className="flex items-center justify-between gap-1 pr-1 truncate">
+                                            <span className="truncate">Medical Allow.</span>
+                                            <span className="text-[8.5px] font-semibold text-slate-600 bg-slate-200 px-1 py-0.2 rounded shrink-0">In CTC</span>
                                         </div>
+                                        {renderResizeHandle('medical')}
                                     </th>
 
-                                    <th style={{ position: 'sticky', top: 0, zIndex: 10 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[125px] bg-slate-100">
-                                        <div className="flex items-center justify-between gap-1">
-                                            <span>Meal Allow.</span>
-                                            <span className="text-[9px] font-semibold text-slate-600 bg-slate-200 px-1 py-0.2 rounded">In CTC</span>
+                                    <th
+                                        style={{ position: 'sticky', top: 0, zIndex: 10, width: `${columnWidths.meal}px`, minWidth: `${columnWidths.meal}px`, maxWidth: `${columnWidths.meal}px` }}
+                                        className="relative py-2 px-2 border-b border-r border-slate-200 bg-slate-100"
+                                    >
+                                        <div className="flex items-center justify-between gap-1 pr-1 truncate">
+                                            <span className="truncate">Meal Allow.</span>
+                                            <span className="text-[8.5px] font-semibold text-slate-600 bg-slate-200 px-1 py-0.2 rounded shrink-0">In CTC</span>
                                         </div>
+                                        {renderResizeHandle('meal')}
                                     </th>
 
-                                    <th style={{ position: 'sticky', top: 0, zIndex: 10 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[125px] bg-slate-100">
-                                        <div className="flex items-center justify-between gap-1">
-                                            <span>Broadband</span>
-                                            <span className="text-[9px] font-semibold text-slate-600 bg-slate-200 px-1 py-0.2 rounded">In CTC</span>
+                                    <th
+                                        style={{ position: 'sticky', top: 0, zIndex: 10, width: `${columnWidths.broadband}px`, minWidth: `${columnWidths.broadband}px`, maxWidth: `${columnWidths.broadband}px` }}
+                                        className="relative py-2 px-2 border-b border-r border-slate-200 bg-slate-100"
+                                    >
+                                        <div className="flex items-center justify-between gap-1 pr-1 truncate">
+                                            <span className="truncate">Broadband</span>
+                                            <span className="text-[8.5px] font-semibold text-slate-600 bg-slate-200 px-1 py-0.2 rounded shrink-0">In CTC</span>
                                         </div>
-                                    </th>
-
-                                    <th style={{ position: 'sticky', top: 0, zIndex: 10 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[135px] bg-slate-100">
-                                        <div className="flex items-center justify-between gap-1">
-                                            <span>Custom Allow.</span>
-                                            <span className="text-[9px] font-semibold text-slate-600 bg-slate-200 px-1 py-0.2 rounded">In CTC</span>
-                                        </div>
+                                        {renderResizeHandle('broadband')}
                                     </th>
 
                                     {/* Remainder & Gross */}
-                                    <th style={{ position: 'sticky', top: 0, zIndex: 10 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[120px] text-right bg-blue-100/80 text-blue-900 font-extrabold">
-                                        Flexi Remainder
+                                    <th
+                                        style={{ position: 'sticky', top: 0, zIndex: 10, width: `${columnWidths.flexiRemainder}px`, minWidth: `${columnWidths.flexiRemainder}px`, maxWidth: `${columnWidths.flexiRemainder}px` }}
+                                        className="relative py-2 px-2 border-b border-r border-slate-200 text-right bg-blue-100/80 text-blue-900 font-extrabold truncate"
+                                    >
+                                        <span>Flexi Remainder</span>
+                                        {renderResizeHandle('flexiRemainder')}
                                     </th>
-                                    <th style={{ position: 'sticky', top: 0, zIndex: 10 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[115px] bg-slate-200 text-right font-black text-slate-900">
-                                        Monthly Gross
+                                    <th
+                                        style={{ position: 'sticky', top: 0, zIndex: 10, width: `${columnWidths.monthlyGross}px`, minWidth: `${columnWidths.monthlyGross}px`, maxWidth: `${columnWidths.monthlyGross}px` }}
+                                        className="relative py-2 px-2 border-b border-r border-slate-200 bg-slate-200 text-right font-black text-slate-900 truncate"
+                                    >
+                                        <span>Monthly Gross</span>
+                                        {renderResizeHandle('monthlyGross')}
                                     </th>
 
                                     {/* Deductions (From Flexi) */}
-                                    <th style={{ position: 'sticky', top: 0, zIndex: 10 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[145px] bg-rose-100/80 text-rose-900">
-                                        <div className="flex items-center justify-between gap-1">
-                                            <span>Medical Insurance</span>
-                                            <span className="text-[9px] font-extrabold text-rose-700 bg-rose-200 px-1 py-0.2 rounded">Deduct (Flexi)</span>
+                                    <th
+                                        style={{ position: 'sticky', top: 0, zIndex: 10, width: `${columnWidths.insurance}px`, minWidth: `${columnWidths.insurance}px`, maxWidth: `${columnWidths.insurance}px` }}
+                                        className="relative py-2 px-2 border-b border-r border-slate-200 bg-rose-100/80 text-rose-900"
+                                    >
+                                        <div className="flex items-center justify-between gap-1 pr-1 truncate">
+                                            <span className="truncate">Medical Insurance</span>
+                                            <span className="text-[8.5px] font-extrabold text-rose-700 bg-rose-200 px-1 py-0.2 rounded shrink-0">Deduct</span>
                                         </div>
+                                        {renderResizeHandle('insurance')}
                                     </th>
 
-                                    {/* Statutory Toggles (with Column Header Toggle-All) */}
-                                    <th style={{ position: 'sticky', top: 0, zIndex: 10 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[185px] bg-blue-100/80">
-                                        <div className="flex items-center justify-between gap-1.5">
+                                    {/* Statutory Toggles */}
+                                    <th
+                                        style={{ position: 'sticky', top: 0, zIndex: 10, width: `${columnWidths.pf}px`, minWidth: `${columnWidths.pf}px`, maxWidth: `${columnWidths.pf}px` }}
+                                        className="relative py-2 px-2 border-b border-r border-slate-200 bg-blue-100/80"
+                                    >
+                                        <div className="flex items-center justify-between gap-1 pr-1">
                                             <span>PF</span>
                                             <button
                                                 type="button"
                                                 onClick={() => handleColumnHeaderToggle('pfEnabled')}
-                                                className={`text-[9px] font-bold px-2 py-0.5 rounded-full transition-all cursor-pointer shadow-2xs ${
-                                                    pfStatutoryState.allTrue
+                                                className={`text-[8.5px] font-bold px-1.5 py-0.5 rounded-full transition-all cursor-pointer shadow-2xs shrink-0 ${pfStatutoryState.allTrue
                                                         ? 'bg-blue-600 text-white'
                                                         : pfStatutoryState.allFalse
-                                                        ? 'bg-slate-200 text-slate-700'
-                                                        : 'bg-amber-200 text-amber-900 border border-amber-300'
-                                                }`}
+                                                            ? 'bg-slate-200 text-slate-700'
+                                                            : 'bg-amber-200 text-amber-900 border border-amber-300'
+                                                    }`}
                                                 title="Toggle PF for all rows"
                                             >
-                                                {pfStatutoryState.allTrue ? '✓ All On' : pfStatutoryState.allFalse ? '✕ All Off' : `Mixed (${pfStatutoryState.trueCount})`}
+                                                {pfStatutoryState.allTrue ? '✓ All' : pfStatutoryState.allFalse ? '✕ Off' : `Mix (${pfStatutoryState.trueCount})`}
                                             </button>
                                         </div>
+                                        {renderResizeHandle('pf')}
                                     </th>
 
-                                    <th style={{ position: 'sticky', top: 0, zIndex: 10 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[110px] bg-slate-100">
-                                        <div className="flex items-center justify-between gap-1.5">
+                                    <th
+                                        style={{ position: 'sticky', top: 0, zIndex: 10, width: `${columnWidths.esi}px`, minWidth: `${columnWidths.esi}px`, maxWidth: `${columnWidths.esi}px` }}
+                                        className="relative py-2 px-2 border-b border-r border-slate-200 bg-slate-100"
+                                    >
+                                        <div className="flex items-center justify-between gap-1 pr-1">
                                             <span>ESI</span>
                                             <button
                                                 type="button"
                                                 onClick={() => handleColumnHeaderToggle('esiEnabled')}
-                                                className={`text-[9px] font-bold px-2 py-0.5 rounded-full transition-all cursor-pointer shadow-2xs ${
-                                                    esiStatutoryState.allTrue
+                                                className={`text-[8.5px] font-bold px-1.5 py-0.5 rounded-full transition-all cursor-pointer shadow-2xs shrink-0 ${esiStatutoryState.allTrue
                                                         ? 'bg-blue-600 text-white'
                                                         : esiStatutoryState.allFalse
-                                                        ? 'bg-slate-200 text-slate-700'
-                                                        : 'bg-amber-200 text-amber-900 border border-amber-300'
-                                                }`}
+                                                            ? 'bg-slate-200 text-slate-700'
+                                                            : 'bg-amber-200 text-amber-900 border border-amber-300'
+                                                    }`}
                                                 title="Toggle ESI for all rows"
                                             >
-                                                {esiStatutoryState.allTrue ? '✓ All On' : esiStatutoryState.allFalse ? '✕ All Off' : `Mixed (${esiStatutoryState.trueCount})`}
+                                                {esiStatutoryState.allTrue ? '✓ All' : esiStatutoryState.allFalse ? '✕ Off' : `Mix (${esiStatutoryState.trueCount})`}
                                             </button>
                                         </div>
+                                        {renderResizeHandle('esi')}
                                     </th>
 
-                                    <th style={{ position: 'sticky', top: 0, zIndex: 10 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[100px] bg-slate-100">
-                                        <div className="flex items-center justify-between gap-1.5">
+                                    <th
+                                        style={{ position: 'sticky', top: 0, zIndex: 10, width: `${columnWidths.pt}px`, minWidth: `${columnWidths.pt}px`, maxWidth: `${columnWidths.pt}px` }}
+                                        className="relative py-2 px-2 border-b border-r border-slate-200 bg-slate-100"
+                                    >
+                                        <div className="flex items-center justify-between gap-1 pr-1">
                                             <span>PT</span>
                                             <button
                                                 type="button"
                                                 onClick={() => handleColumnHeaderToggle('ptEnabled')}
-                                                className={`text-[9px] font-bold px-2 py-0.5 rounded-full transition-all cursor-pointer shadow-2xs ${
-                                                    ptStatutoryState.allTrue
+                                                className={`text-[8.5px] font-bold px-1.5 py-0.5 rounded-full transition-all cursor-pointer shadow-2xs shrink-0 ${ptStatutoryState.allTrue
                                                         ? 'bg-blue-600 text-white'
                                                         : ptStatutoryState.allFalse
-                                                        ? 'bg-slate-200 text-slate-700'
-                                                        : 'bg-amber-200 text-amber-900 border border-amber-300'
-                                                }`}
+                                                            ? 'bg-slate-200 text-slate-700'
+                                                            : 'bg-amber-200 text-amber-900 border border-amber-300'
+                                                    }`}
                                                 title="Toggle PT for all rows"
                                             >
-                                                {ptStatutoryState.allTrue ? '✓ All On' : ptStatutoryState.allFalse ? '✕ All Off' : `Mixed (${ptStatutoryState.trueCount})`}
+                                                {ptStatutoryState.allTrue ? '✓ All' : ptStatutoryState.allFalse ? '✕ Off' : `Mix (${ptStatutoryState.trueCount})`}
                                             </button>
                                         </div>
+                                        {renderResizeHandle('pt')}
                                     </th>
 
-                                    <th style={{ position: 'sticky', top: 0, zIndex: 10 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[130px] bg-indigo-100/80">
-                                        <div className="flex items-center justify-between gap-1.5">
+                                    <th
+                                        style={{ position: 'sticky', top: 0, zIndex: 10, width: `${columnWidths.gratuity}px`, minWidth: `${columnWidths.gratuity}px`, maxWidth: `${columnWidths.gratuity}px` }}
+                                        className="relative py-2 px-2 border-b border-r border-slate-200 bg-indigo-100/80"
+                                    >
+                                        <div className="flex items-center justify-between gap-1 pr-1">
                                             <span>Gratuity</span>
                                             <button
                                                 type="button"
                                                 onClick={() => handleColumnHeaderToggle('gratuityEnabled')}
-                                                className={`text-[9px] font-bold px-2 py-0.5 rounded-full transition-all cursor-pointer shadow-2xs ${
-                                                    gratuityStatutoryState.allTrue
+                                                className={`text-[8.5px] font-bold px-1.5 py-0.5 rounded-full transition-all cursor-pointer shadow-2xs shrink-0 ${gratuityStatutoryState.allTrue
                                                         ? 'bg-indigo-600 text-white'
                                                         : gratuityStatutoryState.allFalse
-                                                        ? 'bg-slate-200 text-slate-700'
-                                                        : 'bg-amber-200 text-amber-900 border border-amber-300'
-                                                }`}
+                                                            ? 'bg-slate-200 text-slate-700'
+                                                            : 'bg-amber-200 text-amber-900 border border-amber-300'
+                                                    }`}
                                                 title="Toggle Gratuity for all rows"
                                             >
-                                                {gratuityStatutoryState.allTrue ? '✓ All On' : gratuityStatutoryState.allFalse ? '✕ All Off' : `Mixed (${gratuityStatutoryState.trueCount})`}
+                                                {gratuityStatutoryState.allTrue ? '✓ All' : gratuityStatutoryState.allFalse ? '✕ Off' : `Mix (${gratuityStatutoryState.trueCount})`}
                                             </button>
                                         </div>
+                                        {renderResizeHandle('gratuity')}
                                     </th>
 
-                                    <th style={{ position: 'sticky', top: 0, zIndex: 10 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[110px] bg-slate-100">
-                                        <div className="flex items-center justify-between gap-1.5">
+                                    <th
+                                        style={{ position: 'sticky', top: 0, zIndex: 10, width: `${columnWidths.lwf}px`, minWidth: `${columnWidths.lwf}px`, maxWidth: `${columnWidths.lwf}px` }}
+                                        className="relative py-2 px-2 border-b border-r border-slate-200 bg-slate-100"
+                                    >
+                                        <div className="flex items-center justify-between gap-1 pr-1">
                                             <span>LWF</span>
                                             <button
                                                 type="button"
                                                 onClick={() => handleColumnHeaderToggle('lwfEnabled')}
-                                                className={`text-[9px] font-bold px-2 py-0.5 rounded-full transition-all cursor-pointer shadow-2xs ${
-                                                    lwfStatutoryState.allTrue
+                                                className={`text-[8.5px] font-bold px-1.5 py-0.5 rounded-full transition-all cursor-pointer shadow-2xs shrink-0 ${lwfStatutoryState.allTrue
                                                         ? 'bg-blue-600 text-white'
                                                         : lwfStatutoryState.allFalse
-                                                        ? 'bg-slate-200 text-slate-700'
-                                                        : 'bg-amber-200 text-amber-900 border border-amber-300'
-                                                }`}
+                                                            ? 'bg-slate-200 text-slate-700'
+                                                            : 'bg-amber-200 text-amber-900 border border-amber-300'
+                                                    }`}
                                                 title="Toggle LWF for all rows"
                                             >
-                                                {lwfStatutoryState.allTrue ? '✓ All On' : lwfStatutoryState.allFalse ? '✕ All Off' : `Mixed (${lwfStatutoryState.trueCount})`}
+                                                {lwfStatutoryState.allTrue ? '✓ All' : lwfStatutoryState.allFalse ? '✕ Off' : `Mix (${lwfStatutoryState.trueCount})`}
                                             </button>
                                         </div>
+                                        {renderResizeHandle('lwf')}
                                     </th>
 
-                                    <th style={{ position: 'sticky', top: 0, zIndex: 10 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[90px] bg-slate-100">
-                                        <div className="flex items-center justify-between gap-1.5">
+                                    <th
+                                        style={{ position: 'sticky', top: 0, zIndex: 10, width: `${columnWidths.tds}px`, minWidth: `${columnWidths.tds}px`, maxWidth: `${columnWidths.tds}px` }}
+                                        className="relative py-2 px-2 border-b border-r border-slate-200 bg-slate-100"
+                                    >
+                                        <div className="flex items-center justify-between gap-1 pr-1">
                                             <span>TDS</span>
                                             <button
                                                 type="button"
                                                 onClick={() => handleColumnHeaderToggle('tdsEnabled')}
-                                                className={`text-[9px] font-bold px-2 py-0.5 rounded-full transition-all cursor-pointer shadow-2xs ${
-                                                    tdsStatutoryState.allTrue
+                                                className={`text-[8.5px] font-bold px-1.5 py-0.5 rounded-full transition-all cursor-pointer shadow-2xs shrink-0 ${tdsStatutoryState.allTrue
                                                         ? 'bg-blue-600 text-white'
                                                         : tdsStatutoryState.allFalse
-                                                        ? 'bg-slate-200 text-slate-700'
-                                                        : 'bg-amber-200 text-amber-900 border border-amber-300'
-                                                }`}
+                                                            ? 'bg-slate-200 text-slate-700'
+                                                            : 'bg-amber-200 text-amber-900 border border-amber-300'
+                                                    }`}
                                                 title="Toggle TDS for all rows"
                                             >
-                                                {tdsStatutoryState.allTrue ? '✓ All On' : tdsStatutoryState.allFalse ? '✕ All Off' : `Mixed (${tdsStatutoryState.trueCount})`}
+                                                {tdsStatutoryState.allTrue ? '✓ All' : tdsStatutoryState.allFalse ? '✕ Off' : `Mix (${tdsStatutoryState.trueCount})`}
                                             </button>
                                         </div>
+                                        {renderResizeHandle('tds')}
                                     </th>
 
-                                    <th style={{ position: 'sticky', top: 0, zIndex: 10 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[90px] bg-emerald-100/80">
-                                        <div className="flex items-center justify-between gap-1.5">
+                                    <th
+                                        style={{ position: 'sticky', top: 0, zIndex: 10, width: `${columnWidths.ltaStatutory}px`, minWidth: `${columnWidths.ltaStatutory}px`, maxWidth: `${columnWidths.ltaStatutory}px` }}
+                                        className="relative py-2 px-2 border-b border-r border-slate-200 bg-emerald-100/80"
+                                    >
+                                        <div className="flex items-center justify-between gap-1 pr-1">
                                             <span>LTA</span>
                                             <button
                                                 type="button"
                                                 onClick={() => handleColumnHeaderToggle('ltaEnabled')}
-                                                className={`text-[9px] font-bold px-2 py-0.5 rounded-full transition-all cursor-pointer shadow-2xs ${
-                                                    ltaStatutoryState.allTrue
+                                                className={`text-[8.5px] font-bold px-1.5 py-0.5 rounded-full transition-all cursor-pointer shadow-2xs shrink-0 ${ltaStatutoryState.allTrue
                                                         ? 'bg-emerald-600 text-white'
                                                         : ltaStatutoryState.allFalse
-                                                        ? 'bg-slate-200 text-slate-700'
-                                                        : 'bg-amber-200 text-amber-900 border border-amber-300'
-                                                }`}
+                                                            ? 'bg-slate-200 text-slate-700'
+                                                            : 'bg-amber-200 text-amber-900 border border-amber-300'
+                                                    }`}
                                                 title="Toggle LTA for all rows"
                                             >
-                                                {ltaStatutoryState.allTrue ? '✓ All On' : ltaStatutoryState.allFalse ? '✕ All Off' : `Mixed (${ltaStatutoryState.trueCount})`}
+                                                {ltaStatutoryState.allTrue ? '✓ All' : ltaStatutoryState.allFalse ? '✕ Off' : `Mix (${ltaStatutoryState.trueCount})`}
                                             </button>
                                         </div>
-                                    </th>
-
-                                    <th style={{ position: 'sticky', top: 0, zIndex: 10 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[110px] text-right text-rose-700 bg-rose-100/70">
-                                        Deductions
-                                    </th>
-
-                                    <th style={{ position: 'sticky', top: 0, zIndex: 10 }} className="py-3 px-3 border-b border-r border-slate-200 min-w-[130px] text-right text-emerald-800 bg-emerald-100 font-extrabold">
-                                        Est. Take-Home
+                                        {renderResizeHandle('ltaStatutory')}
                                     </th>
 
                                     <th
-                                        style={{ position: 'sticky', top: 0, right: 0, zIndex: 50, width: '200px', minWidth: '200px', maxWidth: '200px', backgroundColor: '#f1f5f9' }}
-                                        className="py-3 px-3 text-center border-b border-l-2 border-slate-300 shadow-[-4px_0_8px_-2px_rgba(0,0,0,0.12)] w-[200px] min-w-[200px] max-w-[200px] uppercase text-[10px] font-black tracking-wider text-slate-700"
+                                        style={{ position: 'sticky', top: 0, zIndex: 10, width: `${columnWidths.deductions}px`, minWidth: `${columnWidths.deductions}px`, maxWidth: `${columnWidths.deductions}px` }}
+                                        className="relative py-2 px-2 border-b border-r border-slate-200 text-right text-rose-700 bg-rose-100/70 truncate"
                                     >
-                                        Actions
+                                        <span>Deductions</span>
+                                        {renderResizeHandle('deductions')}
+                                    </th>
+
+                                    <th
+                                        style={{ position: 'sticky', top: 0, zIndex: 10, width: `${columnWidths.takeHome}px`, minWidth: `${columnWidths.takeHome}px`, maxWidth: `${columnWidths.takeHome}px` }}
+                                        className="relative py-2 px-2 border-b border-r border-slate-200 text-right text-emerald-800 bg-emerald-100 font-extrabold truncate"
+                                    >
+                                        <span>Est. Take-Home</span>
+                                        {renderResizeHandle('takeHome')}
+                                    </th>
+
+                                    <th
+                                        style={{ position: 'sticky', top: 0, right: 0, zIndex: 50, width: `${columnWidths.actions}px`, minWidth: `${columnWidths.actions}px`, maxWidth: `${columnWidths.actions}px`, backgroundColor: '#f1f5f9' }}
+                                        className="relative py-2 px-2 text-center border-b border-l-2 border-slate-300 shadow-[-4px_0_8px_-2px_rgba(0,0,0,0.12)] uppercase text-[9.5px] font-black tracking-wide text-slate-700 select-none truncate"
+                                    >
+                                        <span>Actions</span>
+                                        {renderResizeHandle('actions', true)}
                                     </th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-slate-200">
+                            <tbody className="divide-y divide-slate-200 text-[11px]">
                                 {loadingBulkProfiles ? (
                                     <tr>
-                                        <td colSpan={26} className="py-12 text-center text-slate-500">
-                                            <RefreshCw className="animate-spin inline-block mr-2 text-blue-600" size={18} />
+                                        <td colSpan={25} className="py-10 text-center text-slate-500 text-xs">
+                                            <RefreshCw className="animate-spin inline-block mr-2 text-blue-600" size={16} />
                                             <span>Loading employee salary spreadsheet...</span>
                                         </td>
                                     </tr>
                                 ) : filteredBulkRows.length === 0 ? (
                                     <tr>
-                                        <td colSpan={26} className="py-12 text-center text-slate-500">
+                                        <td colSpan={25} className="py-10 text-center text-slate-500 text-xs">
                                             No employees match the current filters.
                                         </td>
                                     </tr>
@@ -3762,55 +4287,55 @@ const ReviseSalaryDetailsTab = () => {
                                         const rowBg = modified
                                             ? 'bg-amber-50 hover:bg-amber-100'
                                             : isSelected
-                                            ? 'bg-blue-50 hover:bg-blue-100'
-                                            : isRowEven
-                                            ? 'bg-white hover:bg-slate-50'
-                                            : 'bg-slate-50 hover:bg-slate-100';
+                                                ? 'bg-blue-50 hover:bg-blue-100'
+                                                : isRowEven
+                                                    ? 'bg-white hover:bg-slate-50'
+                                                    : 'bg-slate-50 hover:bg-slate-100';
 
                                         const stickyBgColor = modified
                                             ? '#fef3c7'
                                             : isSelected
-                                            ? '#eff6ff'
-                                            : isRowEven
-                                            ? '#ffffff'
-                                            : '#f8fafc';
+                                                ? '#eff6ff'
+                                                : isRowEven
+                                                    ? '#ffffff'
+                                                    : '#f8fafc';
 
                                         return (
                                             <tr
                                                 key={row._id}
                                                 className={`transition-colors font-sans ${rowBg}`}
                                             >
-                                                {/* Checkbox (Sticky Left #1: 0 to 48px) */}
+                                                {/* Checkbox (Sticky Left #1: 0 to columnWidths.checkbox) */}
                                                 <td
-                                                    style={{ position: 'sticky', left: 0, zIndex: 20, width: '48px', minWidth: '48px', maxWidth: '48px', backgroundColor: stickyBgColor }}
-                                                    className="py-2.5 px-2 text-center border-b border-r border-slate-200 w-[48px] min-w-[48px] max-w-[48px] shadow-[2px_0_4px_rgba(0,0,0,0.04)]"
+                                                    style={{ position: 'sticky', left: 0, zIndex: 20, width: `${columnWidths.checkbox}px`, minWidth: `${columnWidths.checkbox}px`, maxWidth: `${columnWidths.checkbox}px`, backgroundColor: stickyBgColor }}
+                                                    className="py-1.5 px-1.5 text-center border-b border-r border-slate-200 shadow-[2px_0_4px_rgba(0,0,0,0.04)]"
                                                 >
                                                     <input
                                                         type="checkbox"
                                                         checked={isSelected}
                                                         onChange={() => handleToggleSelectBulkDetailOne(row._id)}
-                                                        className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                                        className="w-3.5 h-3.5 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
                                                     />
                                                 </td>
 
-                                                {/* Employee Info (Sticky Left #2: from 48px, 260px) */}
+                                                {/* Employee Info (Sticky Left #2: offset by columnWidths.checkbox) */}
                                                 <td
-                                                    style={{ position: 'sticky', left: '48px', zIndex: 20, width: '260px', minWidth: '260px', maxWidth: '260px', backgroundColor: stickyBgColor }}
-                                                    className="py-2.5 px-3.5 border-b border-r-2 border-slate-300 shadow-[4px_0_8px_-2px_rgba(0,0,0,0.12)] w-[260px] min-w-[260px] max-w-[260px]"
+                                                    style={{ position: 'sticky', left: `${columnWidths.checkbox}px`, zIndex: 20, width: `${columnWidths.employee}px`, minWidth: `${columnWidths.employee}px`, maxWidth: `${columnWidths.employee}px`, backgroundColor: stickyBgColor }}
+                                                    className="py-1.5 px-2.5 border-b border-r-2 border-slate-300 shadow-[4px_0_8px_-2px_rgba(0,0,0,0.12)]"
                                                 >
-                                                    <div className="flex items-center gap-2.5 overflow-hidden">
-                                                        <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-700 font-extrabold text-xs flex items-center justify-center shrink-0 border border-blue-200">
+                                                    <div className="flex items-center gap-2 overflow-hidden">
+                                                        <div className="w-6 h-6 rounded-full bg-blue-100 text-blue-700 font-extrabold text-[9.5px] flex items-center justify-center shrink-0 border border-blue-200">
                                                             {row.firstName?.[0] || 'E'}
                                                         </div>
                                                         <div className="min-w-0 flex-1">
-                                                            <div className="font-bold text-slate-900 text-xs truncate flex items-center gap-1.5">
+                                                            <div className="font-bold text-slate-900 text-[11px] leading-tight truncate flex items-center gap-1.5">
                                                                 <span className="truncate">{row.firstName} {row.lastName}</span>
                                                                 {modified && (
-                                                                    <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" title="Modified" />
+                                                                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" title="Modified" />
                                                                 )}
                                                             </div>
-                                                            <div className="text-[10px] text-slate-500 truncate flex items-center gap-1.5 mt-0.5">
-                                                                <span className="font-mono text-slate-600 font-semibold">{row.employeeCode || `EMP-${idx + 1}`}</span>
+                                                            <div className="text-[9.5px] leading-tight text-slate-500 truncate flex items-center gap-1 mt-0.5">
+                                                                <span className="font-mono tabular-nums text-slate-600 font-semibold">{row.employeeCode || `EMP-${idx + 1}`}</span>
                                                                 <span>•</span>
                                                                 <span className="truncate">{row.department || row.designation || 'Staff'}</span>
                                                             </div>
@@ -3819,345 +4344,396 @@ const ReviseSalaryDetailsTab = () => {
                                                 </td>
 
                                                 {/* Annual CTC Input Cell */}
-                                                <td className="py-2 px-2.5 border-b border-r border-slate-200 min-w-[140px] bg-slate-50">
+                                                <td
+                                                    style={{ width: `${columnWidths.annualCTC}px`, minWidth: `${columnWidths.annualCTC}px`, maxWidth: `${columnWidths.annualCTC}px` }}
+                                                    className="py-1 px-1.5 border-b border-r border-slate-200 bg-slate-50"
+                                                >
                                                     <div className="relative z-0">
-                                                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs select-none">₹</span>
+                                                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-[10px] select-none">₹</span>
                                                         <input
                                                             type="number"
                                                             value={row.annualCTC || ''}
                                                             onChange={(e) => handleRowFieldChange(row._id, 'annualCTC', e.target.value)}
-                                                            className="w-full pl-6 pr-2 py-1 text-xs font-mono font-bold border border-slate-300 rounded-lg focus:border-blue-500 focus:bg-white bg-white focus:outline-none shadow-2xs"
+                                                            className="w-full h-6.5 pl-5 pr-1.5 py-0.5 text-[11px] font-mono tabular-nums font-bold border border-slate-300 rounded focus:border-blue-500 focus:bg-white bg-white focus:outline-none shadow-2xs"
                                                             placeholder="0"
                                                         />
                                                     </div>
                                                 </td>
 
                                                 {/* Monthly CTC */}
-                                                <td className="py-2.5 px-3 font-mono font-bold text-slate-800 border-b border-r border-slate-200 text-right min-w-[105px] bg-white">
+                                                <td
+                                                    style={{ width: `${columnWidths.monthlyCTC}px`, minWidth: `${columnWidths.monthlyCTC}px`, maxWidth: `${columnWidths.monthlyCTC}px` }}
+                                                    className="py-1.5 px-2 font-mono tabular-nums font-bold text-slate-800 border-b border-r border-slate-200 text-right bg-white truncate text-[11px]"
+                                                >
                                                     ₹{Math.round(c.monthlyCTC || 0).toLocaleString('en-IN')}
                                                 </td>
 
                                                 {/* Basic */}
-                                                <td className="py-2.5 px-3 font-mono text-slate-700 border-b border-r border-slate-200 text-right min-w-[95px] bg-white">
+                                                <td
+                                                    style={{ width: `${columnWidths.basic}px`, minWidth: `${columnWidths.basic}px`, maxWidth: `${columnWidths.basic}px` }}
+                                                    className="py-1.5 px-2 font-mono tabular-nums text-slate-700 border-b border-r border-slate-200 text-right bg-white truncate text-[11px]"
+                                                >
                                                     ₹{Math.round(c.basicMaster || 0).toLocaleString('en-IN')}
                                                 </td>
 
                                                 {/* HRA */}
-                                                <td className="py-2.5 px-3 font-mono text-slate-700 border-b border-r border-slate-200 text-right min-w-[90px] bg-white">
+                                                <td
+                                                    style={{ width: `${columnWidths.hra}px`, minWidth: `${columnWidths.hra}px`, maxWidth: `${columnWidths.hra}px` }}
+                                                    className="py-1.5 px-2 font-mono tabular-nums text-slate-700 border-b border-r border-slate-200 text-right bg-white truncate text-[11px]"
+                                                >
                                                     ₹{Math.round(c.hraMaster || 0).toLocaleString('en-IN')}
                                                 </td>
 
                                                 {/* Petrol Cell */}
-                                                <td className="py-2 px-2.5 border-b border-r border-slate-200 min-w-[125px] bg-sky-50">
+                                                <td
+                                                    style={{ width: `${columnWidths.petrol}px`, minWidth: `${columnWidths.petrol}px`, maxWidth: `${columnWidths.petrol}px` }}
+                                                    className="py-1 px-1.5 border-b border-r border-slate-200 bg-sky-50"
+                                                >
                                                     <div className="relative z-0">
-                                                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs select-none">₹</span>
+                                                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-[10px] select-none">₹</span>
                                                         <input
                                                             type="number"
                                                             value={row.petrol !== undefined ? row.petrol : 0}
                                                             onChange={(e) => handleRowFieldChange(row._id, 'petrol', e.target.value)}
-                                                            className="w-full pl-6 pr-2 py-1 text-xs font-mono font-bold border border-slate-300 rounded-lg focus:border-blue-500 focus:bg-white bg-white focus:outline-none shadow-2xs"
+                                                            className="w-full h-6.5 pl-5 pr-1.5 py-0.5 text-[11px] font-mono tabular-nums font-bold border border-slate-300 rounded focus:border-blue-500 focus:bg-white bg-white focus:outline-none shadow-2xs"
                                                             placeholder="0"
                                                         />
                                                     </div>
                                                 </td>
 
                                                 {/* LTA Cell */}
-                                                <td className="py-2 px-2.5 border-b border-r border-slate-200 min-w-[130px] bg-emerald-50">
+                                                <td
+                                                    style={{ width: `${columnWidths.lta}px`, minWidth: `${columnWidths.lta}px`, maxWidth: `${columnWidths.lta}px` }}
+                                                    className="py-1 px-1.5 border-b border-r border-slate-200 bg-emerald-50"
+                                                >
                                                     <div className="relative z-0">
-                                                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs select-none">₹</span>
+                                                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-[10px] select-none">₹</span>
                                                         <input
                                                             type="number"
                                                             value={!row.ltaEnabled ? 0 : (row.lta !== undefined && row.lta !== '' ? row.lta : (c.lta || 0))}
                                                             disabled={!row.ltaEnabled}
                                                             onChange={(e) => handleRowFieldChange(row._id, 'lta', e.target.value)}
-                                                            className={`w-full pl-6 pr-2 py-1 text-xs font-mono font-bold border rounded-lg focus:outline-none shadow-2xs ${
-                                                                !row.ltaEnabled
+                                                            className={`w-full h-6.5 pl-5 pr-1.5 py-0.5 text-[11px] font-mono tabular-nums font-bold border rounded focus:outline-none shadow-2xs ${!row.ltaEnabled
                                                                     ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed'
                                                                     : 'border-slate-300 focus:border-emerald-500 bg-white'
-                                                            }`}
+                                                                }`}
                                                             placeholder="0"
                                                         />
                                                     </div>
                                                 </td>
 
                                                 {/* Conveyance Cell */}
-                                                <td className="py-2 px-2.5 border-b border-r border-slate-200 min-w-[125px] bg-white">
+                                                <td
+                                                    style={{ width: `${columnWidths.conveyance}px`, minWidth: `${columnWidths.conveyance}px`, maxWidth: `${columnWidths.conveyance}px` }}
+                                                    className="py-1 px-1.5 border-b border-r border-slate-200 bg-white"
+                                                >
                                                     <div className="relative z-0">
-                                                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs select-none">₹</span>
+                                                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-[10px] select-none">₹</span>
                                                         <input
                                                             type="number"
                                                             value={row.conveyance !== undefined ? row.conveyance : 0}
                                                             onChange={(e) => handleRowFieldChange(row._id, 'conveyance', e.target.value)}
-                                                            className="w-full pl-6 pr-2 py-1 text-xs font-mono font-bold border border-slate-300 rounded-lg focus:border-blue-500 focus:bg-white bg-white focus:outline-none shadow-2xs"
+                                                            className="w-full h-6.5 pl-5 pr-1.5 py-0.5 text-[11px] font-mono tabular-nums font-bold border border-slate-300 rounded focus:border-blue-500 focus:bg-white bg-white focus:outline-none shadow-2xs"
                                                             placeholder="0"
                                                         />
                                                     </div>
                                                 </td>
 
                                                 {/* Medical Allowance Cell */}
-                                                <td className="py-2 px-2.5 border-b border-r border-slate-200 min-w-[125px] bg-white">
+                                                <td
+                                                    style={{ width: `${columnWidths.medical}px`, minWidth: `${columnWidths.medical}px`, maxWidth: `${columnWidths.medical}px` }}
+                                                    className="py-1 px-1.5 border-b border-r border-slate-200 bg-white"
+                                                >
                                                     <div className="relative z-0">
-                                                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs select-none">₹</span>
+                                                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-[10px] select-none">₹</span>
                                                         <input
                                                             type="number"
                                                             value={row.medicalAllowance !== undefined ? row.medicalAllowance : 0}
                                                             onChange={(e) => handleRowFieldChange(row._id, 'medicalAllowance', e.target.value)}
-                                                            className="w-full pl-6 pr-2 py-1 text-xs font-mono font-bold border border-slate-300 rounded-lg focus:border-blue-500 focus:bg-white bg-white focus:outline-none shadow-2xs"
+                                                            className="w-full h-6.5 pl-5 pr-1.5 py-0.5 text-[11px] font-mono tabular-nums font-bold border border-slate-300 rounded focus:border-blue-500 focus:bg-white bg-white focus:outline-none shadow-2xs"
                                                             placeholder="0"
                                                         />
                                                     </div>
                                                 </td>
 
                                                 {/* Meal Allowance Cell */}
-                                                <td className="py-2 px-2.5 border-b border-r border-slate-200 min-w-[125px] bg-white">
+                                                <td
+                                                    style={{ width: `${columnWidths.meal}px`, minWidth: `${columnWidths.meal}px`, maxWidth: `${columnWidths.meal}px` }}
+                                                    className="py-1 px-1.5 border-b border-r border-slate-200 bg-white"
+                                                >
                                                     <div className="relative z-0">
-                                                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs select-none">₹</span>
+                                                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-[10px] select-none">₹</span>
                                                         <input
                                                             type="number"
                                                             value={row.mealAllowance !== undefined ? row.mealAllowance : 0}
                                                             onChange={(e) => handleRowFieldChange(row._id, 'mealAllowance', e.target.value)}
-                                                            className="w-full pl-6 pr-2 py-1 text-xs font-mono font-bold border border-slate-300 rounded-lg focus:border-blue-500 focus:bg-white bg-white focus:outline-none shadow-2xs"
+                                                            className="w-full h-6.5 pl-5 pr-1.5 py-0.5 text-[11px] font-mono tabular-nums font-bold border border-slate-300 rounded focus:border-blue-500 focus:bg-white bg-white focus:outline-none shadow-2xs"
                                                             placeholder="0"
                                                         />
                                                     </div>
                                                 </td>
 
                                                 {/* Broadband Cell */}
-                                                <td className="py-2 px-2.5 border-b border-r border-slate-200 min-w-[125px] bg-white">
+                                                <td
+                                                    style={{ width: `${columnWidths.broadband}px`, minWidth: `${columnWidths.broadband}px`, maxWidth: `${columnWidths.broadband}px` }}
+                                                    className="py-1 px-1.5 border-b border-r border-slate-200 bg-white"
+                                                >
                                                     <div className="relative z-0">
-                                                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs select-none">₹</span>
+                                                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-[10px] select-none">₹</span>
                                                         <input
                                                             type="number"
                                                             value={row.broadband !== undefined ? row.broadband : 0}
                                                             onChange={(e) => handleRowFieldChange(row._id, 'broadband', e.target.value)}
-                                                            className="w-full pl-6 pr-2 py-1 text-xs font-mono font-bold border border-slate-300 rounded-lg focus:border-blue-500 focus:bg-white bg-white focus:outline-none shadow-2xs"
-                                                            placeholder="0"
-                                                        />
-                                                    </div>
-                                                </td>
-
-                                                {/* Custom Allowances Cell */}
-                                                <td className="py-2 px-2.5 border-b border-r border-slate-200 min-w-[135px] bg-white">
-                                                    <div className="relative z-0">
-                                                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs select-none">₹</span>
-                                                        <input
-                                                            type="number"
-                                                            value={row.customAllowances !== undefined ? row.customAllowances : 0}
-                                                            onChange={(e) => handleRowFieldChange(row._id, 'customAllowances', e.target.value)}
-                                                            className="w-full pl-6 pr-2 py-1 text-xs font-mono font-bold border border-slate-300 rounded-lg focus:border-blue-500 focus:bg-white bg-white focus:outline-none shadow-2xs"
+                                                            className="w-full h-6.5 pl-5 pr-1.5 py-0.5 text-[11px] font-mono tabular-nums font-bold border border-slate-300 rounded focus:border-blue-500 focus:bg-white bg-white focus:outline-none shadow-2xs"
                                                             placeholder="0"
                                                         />
                                                     </div>
                                                 </td>
 
                                                 {/* Flexi Remainder */}
-                                                <td className="py-2.5 px-3 font-mono font-extrabold text-blue-700 border-b border-r border-slate-200 text-right min-w-[120px] bg-blue-50">
+                                                <td
+                                                    style={{ width: `${columnWidths.flexiRemainder}px`, minWidth: `${columnWidths.flexiRemainder}px`, maxWidth: `${columnWidths.flexiRemainder}px` }}
+                                                    className="py-1.5 px-2 font-mono tabular-nums font-bold text-blue-700 border-b border-r border-slate-200 text-right bg-blue-50 truncate text-[11px]"
+                                                >
                                                     ₹{Math.round(c.specialAllowance || 0).toLocaleString('en-IN')}
                                                 </td>
 
                                                 {/* Monthly Gross */}
-                                                <td className="py-2.5 px-3 font-mono font-black text-slate-900 border-b border-r border-slate-200 text-right min-w-[115px] bg-slate-100">
+                                                <td
+                                                    style={{ width: `${columnWidths.monthlyGross}px`, minWidth: `${columnWidths.monthlyGross}px`, maxWidth: `${columnWidths.monthlyGross}px` }}
+                                                    className="py-1.5 px-2 font-mono tabular-nums font-black text-slate-900 border-b border-r border-slate-200 text-right bg-slate-100 truncate text-[11px]"
+                                                >
                                                     ₹{Math.round(c.grossMaster || 0).toLocaleString('en-IN')}
                                                 </td>
 
                                                 {/* Medical Insurance (Deduction - Flexi) */}
-                                                <td className="py-2 px-2.5 border-b border-r border-slate-200 min-w-[145px] bg-rose-50">
+                                                <td
+                                                    style={{ width: `${columnWidths.insurance}px`, minWidth: `${columnWidths.insurance}px`, maxWidth: `${columnWidths.insurance}px` }}
+                                                    className="py-1 px-1.5 border-b border-r border-slate-200 bg-rose-50"
+                                                >
                                                     <div className="relative z-0">
-                                                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-rose-500 font-bold text-xs select-none">-₹</span>
+                                                        <span className="absolute left-1.5 top-1/2 -translate-y-1/2 text-rose-500 font-bold text-[10px] select-none">-₹</span>
                                                         <input
                                                             type="number"
-                                                            value={row.insuranceAmount !== undefined ? row.insuranceAmount : 1500}
+                                                            value={row.insuranceAmount !== undefined ? row.insuranceAmount : 0}
                                                             onChange={(e) => handleRowFieldChange(row._id, 'insuranceAmount', e.target.value)}
-                                                            className="w-full pl-7 pr-2 py-1 text-xs font-mono font-bold border border-rose-300 rounded-lg focus:border-rose-500 focus:bg-white bg-rose-50/60 text-rose-900 focus:outline-none shadow-2xs"
-                                                            placeholder="1500"
+                                                            className="w-full h-6.5 pl-5 pr-1.5 py-0.5 text-[11px] font-mono tabular-nums font-bold border border-rose-300 rounded focus:border-rose-500 focus:bg-white bg-rose-50/60 text-rose-900 focus:outline-none shadow-2xs"
+                                                            placeholder="0"
                                                         />
                                                     </div>
                                                 </td>
 
                                                 {/* Provident Fund (PF) Cell */}
-                                                <td className="py-2 px-3 border-b border-r border-slate-200 bg-blue-50/70 min-w-[185px]">
-                                                    <div className="space-y-1">
-                                                        <label className="flex items-center gap-1.5 cursor-pointer font-bold text-slate-900 text-xs select-none">
+                                                <td
+                                                    style={{ width: `${columnWidths.pf}px`, minWidth: `${columnWidths.pf}px`, maxWidth: `${columnWidths.pf}px` }}
+                                                    className="py-1.5 px-2 border-b border-r border-slate-200 bg-blue-50/70 overflow-hidden text-[10px]"
+                                                >
+                                                    <div className="space-y-0.5">
+                                                        <label className="flex items-center gap-1 cursor-pointer font-bold text-slate-900 select-none">
                                                             <input
                                                                 type="checkbox"
                                                                 checked={Boolean(row.pfEnabled)}
                                                                 onChange={(e) => handleRowFieldChange(row._id, 'pfEnabled', e.target.checked)}
-                                                                className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                                                className="w-3.5 h-3.5 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
                                                             />
                                                             <span>PF Active</span>
                                                         </label>
                                                         {row.pfEnabled ? (
-                                                            <div className="space-y-0.5 text-[10px]">
+                                                            <div className="space-y-0 text-[9px] leading-tight">
                                                                 <label className="inline-flex items-center gap-1 text-slate-600 cursor-pointer">
                                                                     <input
                                                                         type="checkbox"
                                                                         checked={Boolean(row.includePfInCTC)}
                                                                         onChange={(e) => handleRowFieldChange(row._id, 'includePfInCTC', e.target.checked)}
-                                                                        className="w-3 h-3 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                                                        className="w-2.5 h-2.5 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
                                                                     />
                                                                     <span>In CTC</span>
                                                                 </label>
-                                                                <div className="font-mono text-blue-700 font-semibold whitespace-nowrap">
+                                                                <div className="font-mono tabular-nums text-blue-700 font-semibold whitespace-nowrap">
                                                                     EE: ₹{Math.round(c.pfEmployee || 0).toLocaleString('en-IN')} | ER: ₹{Math.round(c.pfEmployer || 0).toLocaleString('en-IN')}
                                                                 </div>
                                                             </div>
                                                         ) : (
-                                                            <span className="text-[10px] text-slate-400 block font-medium">Exempt (₹0)</span>
+                                                            <span className="text-[9px] text-slate-400 block font-medium">Exempt (₹0)</span>
                                                         )}
                                                     </div>
                                                 </td>
 
                                                 {/* ESI Cell */}
-                                                <td className="py-2 px-3 border-b border-r border-slate-200 bg-white min-w-[110px]">
-                                                    <div className="space-y-1">
-                                                        <label className="flex items-center gap-1.5 cursor-pointer font-bold text-slate-900 text-xs select-none">
+                                                <td
+                                                    style={{ width: `${columnWidths.esi}px`, minWidth: `${columnWidths.esi}px`, maxWidth: `${columnWidths.esi}px` }}
+                                                    className="py-1.5 px-2 border-b border-r border-slate-200 bg-white overflow-hidden text-[10px]"
+                                                >
+                                                    <div className="space-y-0.5">
+                                                        <label className="flex items-center gap-1 cursor-pointer font-bold text-slate-900 select-none">
                                                             <input
                                                                 type="checkbox"
                                                                 checked={Boolean(row.esiEnabled)}
                                                                 onChange={(e) => handleRowFieldChange(row._id, 'esiEnabled', e.target.checked)}
-                                                                className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                                                className="w-3.5 h-3.5 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
                                                             />
                                                             <span>ESI</span>
                                                         </label>
                                                         {row.esiEnabled && c.esiEmployee > 0 ? (
-                                                            <div className="text-[10px] font-mono text-slate-700 font-semibold whitespace-nowrap">
+                                                            <div className="text-[9px] font-mono tabular-nums text-slate-700 font-semibold whitespace-nowrap">
                                                                 EE: ₹{Math.round(c.esiEmployee || 0).toLocaleString('en-IN')}
                                                             </div>
                                                         ) : (
-                                                            <span className="text-[10px] text-slate-400 block font-medium">Exempt (₹0)</span>
+                                                            <span className="text-[9px] text-slate-400 block font-medium">Exempt (₹0)</span>
                                                         )}
                                                     </div>
                                                 </td>
 
                                                 {/* PT Cell */}
-                                                <td className="py-2 px-3 border-b border-r border-slate-200 bg-white min-w-[100px]">
-                                                    <div className="space-y-1">
-                                                        <label className="flex items-center gap-1.5 cursor-pointer font-bold text-slate-900 text-xs select-none">
+                                                <td
+                                                    style={{ width: `${columnWidths.pt}px`, minWidth: `${columnWidths.pt}px`, maxWidth: `${columnWidths.pt}px` }}
+                                                    className="py-1.5 px-2 border-b border-r border-slate-200 bg-white overflow-hidden text-[10px]"
+                                                >
+                                                    <div className="space-y-0.5">
+                                                        <label className="flex items-center gap-1 cursor-pointer font-bold text-slate-900 select-none">
                                                             <input
                                                                 type="checkbox"
                                                                 checked={Boolean(row.ptEnabled)}
                                                                 onChange={(e) => handleRowFieldChange(row._id, 'ptEnabled', e.target.checked)}
-                                                                className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                                                className="w-3.5 h-3.5 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
                                                             />
                                                             <span>PT</span>
                                                         </label>
                                                         {row.ptEnabled ? (
-                                                            <div className="text-[10px] font-mono text-slate-700 font-semibold whitespace-nowrap">
+                                                            <div className="text-[9px] font-mono tabular-nums text-slate-700 font-semibold whitespace-nowrap">
                                                                 ₹{Math.round(c.professionalTax || 0).toLocaleString('en-IN')}
                                                             </div>
                                                         ) : (
-                                                            <span className="text-[10px] text-slate-400 block font-medium">₹0</span>
+                                                            <span className="text-[9px] text-slate-400 block font-medium">₹0</span>
                                                         )}
                                                     </div>
                                                 </td>
 
                                                 {/* Gratuity Cell */}
-                                                <td className="py-2 px-3 border-b border-r border-slate-200 bg-indigo-50/70 min-w-[130px]">
-                                                    <div className="space-y-1">
-                                                        <label className="flex items-center gap-1.5 cursor-pointer font-bold text-slate-900 text-xs select-none">
+                                                <td
+                                                    style={{ width: `${columnWidths.gratuity}px`, minWidth: `${columnWidths.gratuity}px`, maxWidth: `${columnWidths.gratuity}px` }}
+                                                    className="py-1.5 px-2 border-b border-r border-slate-200 bg-indigo-50/70 overflow-hidden text-[10px]"
+                                                >
+                                                    <div className="space-y-0.5">
+                                                        <label className="flex items-center gap-1 cursor-pointer font-bold text-slate-900 select-none">
                                                             <input
                                                                 type="checkbox"
                                                                 checked={Boolean(row.gratuityEnabled)}
                                                                 onChange={(e) => handleRowFieldChange(row._id, 'gratuityEnabled', e.target.checked)}
-                                                                className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                                                                className="w-3.5 h-3.5 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
                                                             />
                                                             <span>Gratuity</span>
                                                         </label>
                                                         {row.gratuityEnabled ? (
-                                                            <div className="space-y-0.5 text-[10px]">
+                                                            <div className="space-y-0 text-[9px] leading-tight">
                                                                 <label className="inline-flex items-center gap-1 text-slate-600 cursor-pointer">
                                                                     <input
                                                                         type="checkbox"
                                                                         checked={row.includeGratuityInCTC !== false}
                                                                         onChange={(e) => handleRowFieldChange(row._id, 'includeGratuityInCTC', e.target.checked)}
-                                                                        className="w-3 h-3 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                                                                        className="w-2.5 h-2.5 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
                                                                     />
                                                                     <span>In CTC</span>
                                                                 </label>
-                                                                <div className="font-mono text-indigo-700 font-semibold whitespace-nowrap">
+                                                                <div className="font-mono tabular-nums text-indigo-700 font-semibold whitespace-nowrap">
                                                                     ₹{Math.round(c.gratuity || 0).toLocaleString('en-IN')}
                                                                 </div>
                                                             </div>
                                                         ) : (
-                                                            <span className="text-[10px] text-slate-400 block font-medium">Disabled (₹0)</span>
+                                                            <span className="text-[9px] text-slate-400 block font-medium">Disabled (₹0)</span>
                                                         )}
                                                     </div>
                                                 </td>
 
                                                 {/* LWF Cell */}
-                                                <td className="py-2 px-3 border-b border-r border-slate-200 bg-white min-w-[110px]">
-                                                    <div className="space-y-1">
-                                                        <label className="flex items-center gap-1.5 cursor-pointer font-bold text-slate-900 text-xs select-none">
+                                                <td
+                                                    style={{ width: `${columnWidths.lwf}px`, minWidth: `${columnWidths.lwf}px`, maxWidth: `${columnWidths.lwf}px` }}
+                                                    className="py-1.5 px-2 border-b border-r border-slate-200 bg-white overflow-hidden text-[10px]"
+                                                >
+                                                    <div className="space-y-0.5">
+                                                        <label className="flex items-center gap-1 cursor-pointer font-bold text-slate-900 select-none">
                                                             <input
                                                                 type="checkbox"
                                                                 checked={Boolean(row.lwfEnabled)}
                                                                 onChange={(e) => handleRowFieldChange(row._id, 'lwfEnabled', e.target.checked)}
-                                                                className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                                                className="w-3.5 h-3.5 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
                                                             />
                                                             <span>LWF</span>
                                                         </label>
                                                         {row.lwfEnabled ? (
-                                                            <div className="text-[10px] font-mono text-slate-700 font-semibold whitespace-nowrap">
+                                                            <div className="text-[9px] font-mono tabular-nums text-slate-700 font-semibold whitespace-nowrap">
                                                                 EE: ₹{Math.round(c.lwfEmployee || 0)} | ER: ₹{Math.round(c.lwfEmployer || 0)}
                                                             </div>
                                                         ) : (
-                                                            <span className="text-[10px] text-slate-400 block font-medium">₹0</span>
+                                                            <span className="text-[9px] text-slate-400 block font-medium">₹0</span>
                                                         )}
                                                     </div>
                                                 </td>
 
                                                 {/* TDS Cell */}
-                                                <td className="py-2 px-3 border-b border-r border-slate-200 bg-white min-w-[90px]">
-                                                    <div className="space-y-1">
-                                                        <label className="flex items-center gap-1.5 cursor-pointer font-bold text-slate-900 text-xs select-none">
+                                                <td
+                                                    style={{ width: `${columnWidths.tds}px`, minWidth: `${columnWidths.tds}px`, maxWidth: `${columnWidths.tds}px` }}
+                                                    className="py-1.5 px-2 border-b border-r border-slate-200 bg-white overflow-hidden text-[10px]"
+                                                >
+                                                    <div className="space-y-0.5">
+                                                        <label className="flex items-center gap-1 cursor-pointer font-bold text-slate-900 select-none">
                                                             <input
                                                                 type="checkbox"
                                                                 checked={Boolean(row.tdsEnabled)}
                                                                 onChange={(e) => handleRowFieldChange(row._id, 'tdsEnabled', e.target.checked)}
-                                                                className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                                                className="w-3.5 h-3.5 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
                                                             />
                                                             <span>TDS</span>
                                                         </label>
-                                                        <span className={`text-[10px] font-medium block ${row.tdsEnabled ? 'text-blue-700 font-semibold' : 'text-slate-400'}`}>
+                                                        <span className={`text-[9px] font-medium block ${row.tdsEnabled ? 'text-blue-700 font-semibold' : 'text-slate-400'}`}>
                                                             {row.tdsEnabled ? 'Deduction On' : 'Disabled'}
                                                         </span>
                                                     </div>
                                                 </td>
 
                                                 {/* LTA Cell */}
-                                                <td className="py-2 px-3 border-b border-r border-slate-200 bg-emerald-50 min-w-[90px]">
-                                                    <div className="space-y-1">
-                                                        <label className="flex items-center gap-1.5 cursor-pointer font-bold text-slate-900 text-xs select-none">
+                                                <td
+                                                    style={{ width: `${columnWidths.ltaStatutory}px`, minWidth: `${columnWidths.ltaStatutory}px`, maxWidth: `${columnWidths.ltaStatutory}px` }}
+                                                    className="py-1.5 px-2 border-b border-r border-slate-200 bg-emerald-50 overflow-hidden text-[10px]"
+                                                >
+                                                    <div className="space-y-0.5">
+                                                        <label className="flex items-center gap-1 cursor-pointer font-bold text-slate-900 select-none">
                                                             <input
                                                                 type="checkbox"
                                                                 checked={Boolean(row.ltaEnabled)}
                                                                 onChange={(e) => handleRowFieldChange(row._id, 'ltaEnabled', e.target.checked)}
-                                                                className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                                                                className="w-3.5 h-3.5 rounded text-emerald-600 focus:ring-emerald-500 cursor-pointer"
                                                             />
                                                             <span>LTA</span>
                                                         </label>
-                                                        <span className={`text-[10px] font-medium block ${row.ltaEnabled ? 'text-emerald-700 font-semibold' : 'text-slate-400'}`}>
+                                                        <span className={`text-[9px] font-medium block ${row.ltaEnabled ? 'text-emerald-700 font-semibold' : 'text-slate-400'}`}>
                                                             {row.ltaEnabled ? 'Eligible' : 'Exempt'}
                                                         </span>
                                                     </div>
                                                 </td>
 
                                                 {/* Total Deductions */}
-                                                <td className="py-2.5 px-3 font-mono font-bold text-rose-700 border-b border-r border-slate-200 text-right min-w-[110px] bg-rose-50/70">
+                                                <td
+                                                    style={{ width: `${columnWidths.deductions}px`, minWidth: `${columnWidths.deductions}px`, maxWidth: `${columnWidths.deductions}px` }}
+                                                    className="py-1.5 px-2 font-mono tabular-nums font-bold text-rose-700 border-b border-r border-slate-200 text-right bg-rose-50/70 truncate text-[11px]"
+                                                >
                                                     -₹{Math.round(c.totalDeductions || 0).toLocaleString('en-IN')}
                                                 </td>
 
                                                 {/* Est. Net Take-Home */}
-                                                <td className="py-2 px-3 border-b border-r border-slate-200 text-right min-w-[130px] bg-emerald-100/70">
-                                                    <span className="inline-block px-2.5 py-1 rounded-lg font-mono font-extrabold text-xs bg-emerald-100 text-emerald-800 border border-emerald-300 shadow-2xs whitespace-nowrap">
+                                                <td
+                                                    style={{ width: `${columnWidths.takeHome}px`, minWidth: `${columnWidths.takeHome}px`, maxWidth: `${columnWidths.takeHome}px` }}
+                                                    className="py-1.5 px-2 border-b border-r border-slate-200 text-right bg-emerald-100/70 overflow-hidden"
+                                                >
+                                                    <span className="inline-block px-2 py-0.5 rounded font-mono tabular-nums font-extrabold text-[11px] bg-emerald-100 text-emerald-800 border border-emerald-300 shadow-2xs whitespace-nowrap">
                                                         ₹{Math.round(c.netTakeHome || 0).toLocaleString('en-IN')}
                                                     </span>
                                                 </td>
 
                                                 {/* Row Actions (Sticky Right) */}
                                                 <td
-                                                    style={{ position: 'sticky', right: 0, zIndex: 20, width: '200px', minWidth: '200px', maxWidth: '200px', backgroundColor: stickyBgColor }}
-                                                    className="py-2.5 px-3 text-center border-b border-l-2 border-slate-300 shadow-[-4px_0_8px_-2px_rgba(0,0,0,0.12)] w-[200px] min-w-[200px] max-w-[200px]"
+                                                    style={{ position: 'sticky', right: 0, zIndex: 20, width: `${columnWidths.actions}px`, minWidth: `${columnWidths.actions}px`, maxWidth: `${columnWidths.actions}px`, backgroundColor: stickyBgColor }}
+                                                    className="py-1.5 px-2 text-center border-b border-l-2 border-slate-300 shadow-[-4px_0_8px_-2px_rgba(0,0,0,0.12)]"
                                                 >
                                                     <div className="flex items-center justify-center gap-1.5 whitespace-nowrap">
                                                         {modified ? (
@@ -4166,17 +4742,17 @@ const ReviseSalaryDetailsTab = () => {
                                                                     type="button"
                                                                     onClick={() => handleSaveSingleRow(row)}
                                                                     disabled={savingRowId === row._id || submittingBulkDetails}
-                                                                    className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-sm active:scale-95"
+                                                                    className="h-7 px-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-[11px] inline-flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-xs active:scale-95"
                                                                     title={`Save revision for ${row.firstName} ${row.lastName || ''}`}
                                                                 >
                                                                     {savingRowId === row._id ? (
                                                                         <>
-                                                                            <RefreshCw size={12} className="animate-spin text-white" />
+                                                                            <RefreshCw size={11} className="animate-spin text-white" />
                                                                             <span>Saving...</span>
                                                                         </>
                                                                     ) : (
                                                                         <>
-                                                                            <Save size={12} />
+                                                                            <Save size={11} />
                                                                             <span>Save</span>
                                                                         </>
                                                                     )}
@@ -4185,34 +4761,28 @@ const ReviseSalaryDetailsTab = () => {
                                                                     type="button"
                                                                     onClick={() => handleResetSingleRow(row._id)}
                                                                     disabled={savingRowId === row._id || submittingBulkDetails}
-                                                                    className="px-2.5 py-1.5 rounded-lg border border-amber-300 text-amber-800 bg-amber-50 hover:bg-amber-100 font-bold text-xs flex items-center gap-1 transition-all cursor-pointer shadow-2xs active:scale-95"
+                                                                    className="h-7 px-2 rounded-lg border border-slate-300 hover:border-slate-400 text-slate-600 hover:text-slate-900 bg-white hover:bg-slate-50 font-bold text-[11px] inline-flex items-center justify-center gap-1 transition-all cursor-pointer shadow-2xs active:scale-95"
                                                                     title="Revert employee changes to original"
                                                                 >
-                                                                    <RotateCcw size={12} />
+                                                                    <RotateCcw size={11} className="text-slate-500" />
                                                                     <span>Reset</span>
                                                                 </button>
                                                             </>
                                                         ) : (
-                                                            <div className="flex items-center justify-center gap-2 whitespace-nowrap">
-                                                                <span className="inline-flex items-center gap-1 text-[11px] text-emerald-700 font-bold bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200 shadow-2xs">
-                                                                    <Check size={12} className="text-emerald-600" />
-                                                                    <span>Synced</span>
-                                                                </span>
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => handleSaveSingleRow(row)}
-                                                                    disabled={savingRowId === row._id || submittingBulkDetails}
-                                                                    className="px-2.5 py-1 rounded-lg border border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-100 font-bold text-xs flex items-center gap-1 transition-all cursor-pointer shadow-2xs active:scale-95"
-                                                                    title="Force re-save revision for this employee"
-                                                                >
-                                                                    {savingRowId === row._id ? (
-                                                                        <RefreshCw size={12} className="animate-spin text-slate-500" />
-                                                                    ) : (
-                                                                        <Save size={12} className="text-slate-500" />
-                                                                    )}
-                                                                    <span>Save</span>
-                                                                </button>
-                                                            </div>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleSaveSingleRow(row)}
+                                                                disabled={savingRowId === row._id || submittingBulkDetails}
+                                                                className="h-7 px-2.5 rounded-lg border border-slate-200 text-slate-500 hover:text-slate-800 hover:bg-slate-100 hover:border-slate-300 font-semibold text-[11px] inline-flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-2xs active:scale-95"
+                                                                title="Force re-save revision for this employee"
+                                                            >
+                                                                {savingRowId === row._id ? (
+                                                                    <RefreshCw size={11} className="animate-spin text-slate-500" />
+                                                                ) : (
+                                                                    <Save size={11} className="text-slate-400" />
+                                                                )}
+                                                                <span>Save</span>
+                                                            </button>
                                                         )}
                                                     </div>
                                                 </td>
@@ -4547,14 +5117,12 @@ const ReviseSalaryDetailsTab = () => {
                                 return (
                                     <div
                                         key={tpl._id}
-                                        className={`p-4 rounded-xl flex items-center justify-between flex-wrap gap-3 transition-all ${
-                                            isSelected ? 'bg-blue-50/40 border border-blue-200/60' : 'hover:bg-slate-50'
-                                        }`}
+                                        className={`p-4 rounded-xl flex items-center justify-between flex-wrap gap-3 transition-all ${isSelected ? 'bg-blue-50/40 border border-blue-200/60' : 'hover:bg-slate-50'
+                                            }`}
                                     >
                                         <div className="flex items-center gap-3">
-                                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
-                                                isBuiltIn ? 'bg-indigo-50 text-indigo-600' : 'bg-blue-50 text-blue-600'
-                                            }`}>
+                                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${isBuiltIn ? 'bg-indigo-50 text-indigo-600' : 'bg-blue-50 text-blue-600'
+                                                }`}>
                                                 <FileText size={20} />
                                             </div>
                                             <div>
@@ -4583,11 +5151,10 @@ const ReviseSalaryDetailsTab = () => {
                                             <button
                                                 type="button"
                                                 onClick={() => setSelectedTemplateId(tpl._id)}
-                                                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                                                    isSelected
+                                                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${isSelected
                                                         ? 'bg-blue-600 text-white'
                                                         : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-                                                }`}
+                                                    }`}
                                             >
                                                 {isSelected ? 'Active' : 'Select'}
                                             </button>
@@ -5055,13 +5622,12 @@ const ReviseSalaryDetailsTab = () => {
                                                 )) || 'Compensation updated'}
                                             </td>
                                             <td className="py-2.5 px-3">
-                                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                                                    rev.status === 'applied'
+                                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${rev.status === 'applied'
                                                         ? 'bg-emerald-50 text-emerald-700'
                                                         : rev.status === 'scheduled'
-                                                        ? 'bg-blue-50 text-blue-700'
-                                                        : 'bg-slate-100 text-slate-600'
-                                                }`}>
+                                                            ? 'bg-blue-50 text-blue-700'
+                                                            : 'bg-slate-100 text-slate-600'
+                                                    }`}>
                                                     {rev.status || 'Applied'}
                                                 </span>
                                             </td>
@@ -5229,6 +5795,19 @@ const ReviseSalaryDetailsTab = () => {
                             <div className="flex items-center gap-2.5">
                                 <button
                                     type="button"
+                                    onClick={() => {
+                                        handleApplyCustomFormat();
+                                        handleOpenPreviewLetterModal();
+                                    }}
+                                    className="px-3.5 py-2 rounded-xl text-xs font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 transition-all cursor-pointer flex items-center gap-1.5 shadow-2xs"
+                                    title="Apply format changes and preview document immediately"
+                                >
+                                    <Eye size={13} className="text-blue-600" />
+                                    <span>Apply & Preview</span>
+                                </button>
+
+                                <button
+                                    type="button"
                                     onClick={() => setShowEditFormatModal(false)}
                                     className="px-4 py-2 rounded-xl text-xs font-bold text-slate-700 bg-white border border-slate-300 hover:bg-slate-100 transition-all cursor-pointer"
                                 >
@@ -5242,6 +5821,109 @@ const ReviseSalaryDetailsTab = () => {
                                 >
                                     <Check size={14} />
                                     <span>Apply Format for this Employee</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ============================================================== */}
+            {/* POPUP MODAL: IN-APP REVISED OFFER LETTER DOCUMENT PREVIEW     */}
+            {/* ============================================================== */}
+            {showPreviewLetterModal && (
+                <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center z-50 p-2 sm:p-4">
+                    <div className="bg-white rounded-2xl w-full max-w-5xl h-[92vh] flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+                        {/* Modal Header */}
+                        <div className="p-3.5 sm:p-4 border-b border-slate-200 flex items-center justify-between bg-slate-50 shrink-0">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center font-bold">
+                                    <Eye size={20} />
+                                </div>
+                                <div>
+                                    <div className="flex items-center gap-2">
+                                        <h3 className="text-sm sm:text-base font-black text-slate-900">
+                                            Offer Letter Preview: {selectedEmployeeProfile?.personal?.firstName || selectedEmployeeProfile?.user?.firstName || 'Employee'} {selectedEmployeeProfile?.personal?.lastName || selectedEmployeeProfile?.user?.lastName || ''}
+                                        </h3>
+                                        <span className="text-[10px] font-bold text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-full">
+                                            Live In-Browser Preview
+                                        </span>
+                                    </div>
+                                    <p className="text-xs text-slate-500 mt-0.5">
+                                        Template: <strong className="text-slate-700">{availableTemplates.find(t => t._id === selectedTemplateId)?.name || 'Default Template'}</strong> • Annual CTC: <strong className="text-slate-700">₹{Number(salaryDraft.annualCTC || 0).toLocaleString('en-IN')}</strong> • Monthly Gross: <strong className="text-slate-700">₹{Number(salaryDraft.monthlyGross || 0).toLocaleString('en-IN')}</strong>
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                                <button
+                                    type="button"
+                                    onClick={handleDownloadCurrentPreviewFile}
+                                    className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs"
+                                    title="Download Word (.docx) file"
+                                >
+                                    <Download size={13} className="text-blue-600" />
+                                    <span>Download DOCX</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setShowPreviewLetterModal(false);
+                                        handleOpenEditFormatModal();
+                                    }}
+                                    className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs"
+                                    title="Customize text or clauses"
+                                >
+                                    <Edit3 size={13} className="text-indigo-600" />
+                                    <span>Edit Format</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowPreviewLetterModal(false)}
+                                    className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-200 transition-colors cursor-pointer"
+                                >
+                                    <X size={18} />
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Modal Body: Document Previewer */}
+                        <div className="flex-1 overflow-hidden bg-slate-100 relative min-h-[400px]">
+                            {previewLetterFile ? (
+                                <DocPreviewer
+                                    file={previewLetterFile}
+                                    className="w-full h-full"
+                                    title="Revision Letter Document Preview"
+                                />
+                            ) : (
+                                <div className="flex flex-col items-center justify-center h-full p-8 text-slate-400">
+                                    <RefreshCw className="animate-spin text-blue-600 mb-2" size={28} />
+                                    <p className="text-xs font-semibold">Generating document preview...</p>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Modal Footer */}
+                        <div className="p-3 sm:p-4 border-t border-slate-200 bg-white flex items-center justify-between flex-wrap gap-3 shrink-0 text-xs">
+                            <div className="text-slate-500 flex items-center gap-2">
+                                <CheckCircle size={15} className="text-emerald-500 shrink-0" />
+                                <span>Verify that employee name, designation, effective date, and salary structure are completely correct before dispatching.</span>
+                            </div>
+                            <div className="flex items-center gap-2.5">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowPreviewLetterModal(false)}
+                                    className="px-4 py-2 text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl font-bold cursor-pointer transition-all"
+                                >
+                                    Close Preview
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handleDownloadCurrentPreviewFile}
+                                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold flex items-center gap-1.5 shadow-sm cursor-pointer transition-all"
+                                >
+                                    <Download size={14} />
+                                    <span>Download Word DOCX</span>
                                 </button>
                             </div>
                         </div>

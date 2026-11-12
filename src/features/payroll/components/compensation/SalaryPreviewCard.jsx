@@ -1,6 +1,7 @@
 import React from 'react';
 import { Download } from 'lucide-react';
 import { saveAs } from 'file-saver';
+import { parseBool } from '@/features/payroll/utils';
 
 const SalaryPreviewCard = ({ formData, config }) => {
     const salary = formData?.salary || {};
@@ -280,6 +281,40 @@ const SalaryPreviewCard = ({ formData, config }) => {
         default: {
             const useComponents = salary.useSalaryComponents !== false && salary.useSalaryComponents !== 'false';
 
+            const customAllowancesList = Array.isArray(salary.customAllowances) ? salary.customAllowances : [];
+
+            const isBonusOrNonMonthly = (item) => {
+                if (!item) return false;
+                const name = String(item.name || '').trim().toLowerCase();
+                const freq = String(item.frequency || '').toLowerCase();
+                return /bonus|variable|joining/i.test(name) || ['semi_annually', 'semi-annually', 'quarterly', 'annually', 'one_time'].includes(freq);
+            };
+
+            const getAnnualVal = (item) => {
+                const amt = parseFloat(String(item.amount || 0).replace(/[^0-9.]/g, '')) || 0;
+                const freq = String(item.frequency || 'semi_annually').toLowerCase();
+                if (freq === 'semi_annually' || freq === 'semi-annually') return amt * 2;
+                if (freq === 'quarterly') return amt * 4;
+                if (freq === 'monthly') return amt * 12;
+                return amt;
+            };
+
+            const monthlyCustomAllowances = customAllowancesList.filter(item => !isBonusOrNonMonthly(item));
+            const bonusCustomAllowances = customAllowancesList.filter(item => isBonusOrNonMonthly(item));
+
+            let totalAnnualBonusInCTC = 0;
+            bonusCustomAllowances.forEach(item => {
+                if (item.addedInAnnualCTC !== false && item.inCTC !== false && item.includeInCTC !== false) {
+                    totalAnnualBonusInCTC += getAnnualVal(item);
+                }
+            });
+
+            const directBonus = parseFloat(String(salary.bonus || salary.joiningBonus || salary.variablePay || 0).replace(/[^0-9.]/g, '')) || 0;
+            totalAnnualBonusInCTC += directBonus;
+
+            const baseAnnualCTC = parseFloat(String(salary.annualCTC || '0').replace(/[^0-9.]/g, '')) || 0;
+            const displayedAnnualCTC = baseAnnualCTC + totalAnnualBonusInCTC;
+
             if (!useComponents) {
                 const monthlyGross = parseFloat(salary.monthlyGross || salary.monthlyCTC || '0');
                 const annualCTC = parseFloat(salary.annualCTC || (monthlyGross * 12) || '0');
@@ -310,8 +345,13 @@ const SalaryPreviewCard = ({ formData, config }) => {
                             </div>
                             {(salary.customAllowances || []).map((item, idx) => (
                                 <div key={idx} className="flex justify-between items-center py-1 border-b border-slate-50">
-                                    <span className="text-slate-600 flex items-center gap-1.5">
-                                        {item.name || 'Custom Allowance'}
+                                    <span className="text-slate-600 flex items-center gap-1.5 flex-wrap">
+                                        <span>{item.name || 'Custom Allowance'}</span>
+                                        {item.addedInAnnualCTC !== false && (
+                                            <span className="text-[9px] font-extrabold text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded uppercase border border-emerald-200">
+                                                In CTC
+                                            </span>
+                                        )}
                                         {item.frequency && item.frequency !== 'monthly' && (
                                             <span className="text-[9px] font-extrabold text-blue-600 bg-blue-50 px-1.5 py-0.2 rounded uppercase border border-blue-200">
                                                 {item.frequency.replace('_', '-')}
@@ -365,8 +405,17 @@ const SalaryPreviewCard = ({ formData, config }) => {
                         <div className="grid grid-cols-2 gap-2 bg-slate-50 p-2.5 rounded-xl border border-slate-200/60 mb-2">
                             {display.showAnnualCTC !== false && (
                                 <div>
-                                    <span className="text-[10px] text-slate-500 font-bold block uppercase">Annual CTC</span>
-                                    <span className="text-sm font-extrabold text-slate-800">₹{parseFloat(salary.annualCTC || '0').toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+                                    <span className="text-[10px] text-slate-500 font-bold block uppercase">
+                                        {totalAnnualBonusInCTC > 0 ? 'Total Annual CTC' : 'Annual CTC'}
+                                    </span>
+                                    <span className="text-sm font-extrabold text-slate-800">
+                                        ₹{displayedAnnualCTC.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                                    </span>
+                                    {totalAnnualBonusInCTC > 0 && (
+                                        <span className="text-[9.5px] text-emerald-700 font-bold block mt-0.5">
+                                            (Incl. ₹{totalAnnualBonusInCTC.toLocaleString('en-IN')} Bonus)
+                                        </span>
+                                    )}
                                 </div>
                             )}
                             {display.showMonthlyCTC !== false && (
@@ -418,6 +467,9 @@ const SalaryPreviewCard = ({ formData, config }) => {
                                 {(config?.salaryComponents || [])
                                     .filter(c => (c.type === 'earning' || !c.type) && !['basic', 'hra', 'flexi', 'special'].includes(c.id))
                                     .map(c => {
+                                        const isLta = c.id === 'lta' || (c.id && c.id.toLowerCase() === 'lta') || (c.name && c.name.toLowerCase() === 'lta') || (c.name && c.name.toLowerCase().includes('leave travel'));
+                                        if (isLta && !parseBool(salary.ltaEnabled, true)) return null;
+                                        if (salary[c.id + 'Enabled'] !== undefined && !parseBool(salary[c.id + 'Enabled'], true)) return null;
                                         const val = parseFloat(salary[c.id] || 0);
                                         if (val <= 0) return null;
                                         return (
@@ -434,13 +486,13 @@ const SalaryPreviewCard = ({ formData, config }) => {
                                             </div>
                                         );
                                     })}
-                                {(salary.customAllowances || []).map((item, idx) => (
+                                {monthlyCustomAllowances.map((item, idx) => (
                                     <div key={idx} className="flex justify-between items-center py-1 border-b border-slate-50">
-                                        <span className="text-slate-600 flex items-center gap-1.5">
-                                            {item.name || 'Custom Allowance'}
-                                            {item.frequency && item.frequency !== 'monthly' && (
-                                                <span className="text-[9px] font-extrabold text-blue-600 bg-blue-50 px-1.5 py-0.2 rounded uppercase border border-blue-200">
-                                                    {item.frequency.replace('_', '-')}
+                                        <span className="text-slate-600 flex items-center gap-1.5 flex-wrap">
+                                            <span>{item.name || 'Custom Allowance'}</span>
+                                            {item.addedInAnnualCTC !== false && (
+                                                <span className="text-[9px] font-extrabold text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded uppercase border border-emerald-200">
+                                                    In CTC
                                                 </span>
                                             )}
                                         </span>
@@ -480,6 +532,9 @@ const SalaryPreviewCard = ({ formData, config }) => {
                                 {(config?.salaryComponents || [])
                                     .filter(c => c.type === 'deduction' && (c.deductFromFlexi || c.includeInCTC))
                                     .map(c => {
+                                        const isLta = c.id === 'lta' || (c.id && c.id.toLowerCase() === 'lta') || (c.name && c.name.toLowerCase() === 'lta') || (c.name && c.name.toLowerCase().includes('leave travel'));
+                                        if (isLta && !parseBool(salary.ltaEnabled, true)) return null;
+                                        if (salary[c.id + 'Enabled'] !== undefined && !parseBool(salary[c.id + 'Enabled'], true)) return null;
                                         const isIns = c.id === 'medical_insurance' || c.id === 'insurance' || (c.name && c.name.toLowerCase().includes('insurance'));
                                         let val = parseFloat(salary[c.id] !== undefined && salary[c.id] !== null ? salary[c.id] : 0);
                                         if (isIns && (val <= 0 || isNaN(val) || (salary.insuranceAmount !== undefined && val !== parseFloat(salary.insuranceAmount)))) {
@@ -544,6 +599,9 @@ const SalaryPreviewCard = ({ formData, config }) => {
                                 {(config?.salaryComponents || [])
                                     .filter(c => c.type === 'deduction' && !c.deductFromFlexi && !c.includeInCTC)
                                     .map(c => {
+                                        const isLta = c.id === 'lta' || (c.id && c.id.toLowerCase() === 'lta') || (c.name && c.name.toLowerCase() === 'lta') || (c.name && c.name.toLowerCase().includes('leave travel'));
+                                        if (isLta && !parseBool(salary.ltaEnabled, true)) return null;
+                                        if (salary[c.id + 'Enabled'] !== undefined && !parseBool(salary[c.id + 'Enabled'], true)) return null;
                                         const val = parseFloat(salary[c.id] || 0);
                                         if (val <= 0) return null;
                                         return (
@@ -559,6 +617,43 @@ const SalaryPreviewCard = ({ formData, config }) => {
                                         );
                                     })}
                             </>
+                        )}
+
+                        {bonusCustomAllowances.length > 0 && (
+                            <div className="pt-2 border-t border-slate-100">
+                                <div className="font-bold text-slate-400 uppercase tracking-wider text-[10px] mb-1.5 flex items-center justify-between">
+                                    <span>Annual CTC Components & Bonus</span>
+                                    <span className="text-[9px] font-extrabold text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">
+                                        Added in Annual CTC
+                                    </span>
+                                </div>
+                                {bonusCustomAllowances.map((item, idx) => {
+                                    const amt = parseFloat(String(item.amount || 0).replace(/[^0-9.]/g, '')) || 0;
+                                    const freq = String(item.frequency || 'semi_annually').toLowerCase();
+                                    const annualAmt = getAnnualVal(item);
+                                    let freqLabel = 'Annual';
+                                    if (freq === 'semi_annually' || freq === 'semi-annually') freqLabel = `Semi-Annually (₹${amt.toLocaleString('en-IN')} × 2)`;
+                                    else if (freq === 'quarterly') freqLabel = `Quarterly (₹${amt.toLocaleString('en-IN')} × 4)`;
+                                    else if (freq === 'monthly') freqLabel = `Monthly (₹${amt.toLocaleString('en-IN')} × 12)`;
+                                    else if (freq === 'one_time') freqLabel = 'One-Time';
+                                    return (
+                                        <div key={idx} className="flex justify-between items-center py-1 border-b border-slate-50 text-xs">
+                                            <span className="text-slate-600 flex items-center gap-1.5 flex-wrap">
+                                                <span className="font-semibold text-slate-800">{item.name || 'Bonus'}</span>
+                                                <span className="text-[9px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.2 rounded uppercase border border-blue-200">
+                                                    {freqLabel}
+                                                </span>
+                                                {item.addedInAnnualCTC === false && (
+                                                    <span className="text-[9px] font-extrabold text-slate-500 bg-slate-100 px-1 py-0.2 rounded border border-slate-200">
+                                                        Outside CTC
+                                                    </span>
+                                                )}
+                                            </span>
+                                            <span className="font-bold text-emerald-700">₹{annualAmt.toLocaleString('en-IN')}</span>
+                                        </div>
+                                    );
+                                })}
+                            </div>
                         )}
 
                         <div className="pt-2 space-y-2">

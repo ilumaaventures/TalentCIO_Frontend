@@ -5,7 +5,7 @@ const CustomDeductionsEditor = ({ formData, calculateSalaryBreakdown }) => {
     const customDeductions = formData?.salary?.customDeductions || [];
 
     const handleAdd = () => {
-        const list = [...customDeductions, { name: '', amount: 0, frequency: 'monthly' }];
+        const list = [...customDeductions, { name: '', amount: '', frequency: 'monthly' }];
         calculateSalaryBreakdown({ customDeductions: list });
     };
 
@@ -21,9 +21,10 @@ const CustomDeductionsEditor = ({ formData, calculateSalaryBreakdown }) => {
         calculateSalaryBreakdown({ customDeductions: list });
     };
 
-    const handleAmountChange = (idx, val) => {
+    const handleAmountChange = (idx, rawVal) => {
+        const cleaned = String(rawVal ?? '').replace(/[^0-9.]/g, '');
         const list = [...customDeductions];
-        list[idx] = { ...list[idx], amount: val === '' ? '' : Number(val) };
+        list[idx] = { ...list[idx], amount: cleaned };
         calculateSalaryBreakdown({ customDeductions: list });
     };
 
@@ -42,7 +43,7 @@ const CustomDeductionsEditor = ({ formData, calculateSalaryBreakdown }) => {
                 <button
                     type="button"
                     onClick={handleAdd}
-                    className="px-2.5 py-1 text-xs font-bold bg-red-50 text-red-600 border border-red-200 rounded-lg hover:bg-red-100 flex items-center gap-1 cursor-pointer"
+                    className="px-2.5 py-1 text-xs font-bold bg-red-50 text-red-600 border border-red-200 rounded-lg hover:bg-red-100 flex items-center gap-1 cursor-pointer transition-colors"
                 >
                     <Plus size={12} /> Add Custom Deduction
                 </button>
@@ -59,42 +60,60 @@ const CustomDeductionsEditor = ({ formData, calculateSalaryBreakdown }) => {
             ) : (
                 <div className="space-y-2">
                     {customDeductions.map((item, idx) => (
-                        <div key={idx} className="flex flex-wrap sm:flex-nowrap gap-2 items-center bg-slate-50/60 p-2 rounded-lg border border-slate-200">
-                            <input
-                                type="text"
-                                placeholder="e.g. Car Lease Deduction"
-                                value={item.name || ''}
-                                onChange={(e) => handleNameChange(idx, e.target.value)}
-                                className="zoho-input flex-1 text-xs"
-                            />
-                            <select
-                                value={item.frequency || 'monthly'}
-                                onChange={(e) => handleFrequencyChange(idx, e.target.value)}
-                                className="zoho-input text-xs w-32 font-medium bg-white text-slate-700 border-slate-200"
-                            >
-                                <option value="monthly">Monthly</option>
-                                <option value="quarterly">Quarterly</option>
-                                <option value="semi_annually">Semi-Annually</option>
-                                <option value="annually">Annually</option>
-                                <option value="one_time">One-Time</option>
-                            </select>
-                            <div className="w-36 flex items-center gap-1">
-                                <span className="text-xs text-slate-400 font-semibold">₹</span>
+                        <div
+                            key={idx}
+                            className="flex items-center gap-2 bg-slate-50/70 hover:bg-slate-50 p-2 rounded-xl border border-slate-200 transition-colors w-full"
+                        >
+                            {/* Deduction Name */}
+                            <div className="flex-1 min-w-[120px]">
                                 <input
-                                    type="number"
-                                    placeholder="Amount"
-                                    value={item.amount === 0 && item.amount !== '' ? 0 : (item.amount || '')}
-                                    onChange={(e) => handleAmountChange(idx, e.target.value)}
-                                    className="zoho-input text-xs"
+                                    type="text"
+                                    placeholder="e.g. Car Lease Deduction"
+                                    value={item.name || ''}
+                                    onChange={(e) => handleNameChange(idx, e.target.value)}
+                                    className="w-full px-3 py-1.5 text-xs font-medium bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500 shadow-2xs placeholder:text-slate-400"
                                 />
                             </div>
+
+                            {/* Frequency Select */}
+                            <div className="w-32 sm:w-36 shrink-0">
+                                <select
+                                    value={item.frequency || 'monthly'}
+                                    onChange={(e) => handleFrequencyChange(idx, e.target.value)}
+                                    className="w-full px-2.5 py-1.5 text-xs font-semibold bg-white border border-slate-300 rounded-lg text-slate-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500 shadow-2xs cursor-pointer"
+                                >
+                                    <option value="monthly">Monthly</option>
+                                    <option value="quarterly">Quarterly</option>
+                                    <option value="semi_annually">Semi-Annually</option>
+                                    <option value="annually">Annually</option>
+                                    <option value="one_time">One-Time</option>
+                                </select>
+                            </div>
+
+                            {/* Amount Input with Left Rupee Prefix & generous text offset */}
+                            <div className="relative w-28 sm:w-32 shrink-0">
+                                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400 select-none pointer-events-none">
+                                    ₹
+                                </span>
+                                <input
+                                    type="text"
+                                    inputMode="numeric"
+                                    pattern="[0-9]*"
+                                    placeholder="0"
+                                    value={item.amount !== undefined && item.amount !== null ? item.amount : ''}
+                                    onChange={(e) => handleAmountChange(idx, e.target.value)}
+                                    className="w-full pl-7 pr-2.5 py-1.5 text-xs font-mono font-bold text-slate-800 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500 shadow-2xs"
+                                />
+                            </div>
+
+                            {/* Delete Button */}
                             <button
                                 type="button"
                                 onClick={() => handleDelete(idx)}
-                                className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg border border-transparent hover:border-rose-100 cursor-pointer"
-                                title="Remove item"
+                                className="p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg border border-transparent hover:border-rose-200 cursor-pointer shrink-0 transition-colors"
+                                title="Remove deduction"
                             >
-                                <Trash2 size={14} />
+                                <Trash2 size={15} />
                             </button>
                         </div>
                     ))}

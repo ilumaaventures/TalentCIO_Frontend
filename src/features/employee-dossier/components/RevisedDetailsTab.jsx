@@ -598,6 +598,7 @@ export const RevisedDetailsTab = ({
                 lwfEnabled: parseBool(mergedSalary.lwfEnabled, true),
                 gratuityEnabled: parseBool(mergedSalary.gratuityEnabled, true),
                 tdsEnabled: parseBool(mergedSalary.tdsEnabled, true),
+                ltaEnabled: parseBool(mergedSalary.ltaEnabled, true),
                 includePfInCTC: parseBool(mergedSalary.includePfInCTC, false),
                 includeGratuityInCTC: parseBool(mergedSalary.includeGratuityInCTC, true),
                 basicPercent: mergedSalary.basicPercent !== undefined && mergedSalary.basicPercent !== null ? Number(mergedSalary.basicPercent) : 50,
@@ -614,8 +615,28 @@ export const RevisedDetailsTab = ({
             if (activeConfig?.salaryComponents) {
                 activeConfig.salaryComponents.forEach(c => {
                     if (c.linkedTo === 'fixed') {
-                        const val = mergedSalary[c.id] !== undefined ? mergedSalary[c.id] : (c.linkValue || 0);
-                        source[c.id] = parseFloat(String(val).replace(/[^0-9.]/g, '')) || 0;
+                        const isIns = c.id === 'medical_insurance' || c.id === 'insurance' || (c.name && c.name.toLowerCase().includes('insurance'));
+                        if (isIns) {
+                            const rawIns = updatedSalaryFields?.insuranceAmount !== undefined ? updatedSalaryFields.insuranceAmount
+                                : (updatedSalaryFields?.insurance !== undefined ? updatedSalaryFields.insurance
+                                : (updatedSalaryFields?.medical_insurance !== undefined ? updatedSalaryFields.medical_insurance
+                                : (mergedSalary.insuranceAmount !== undefined ? mergedSalary.insuranceAmount
+                                : (mergedSalary.insurance !== undefined ? mergedSalary.insurance
+                                : (mergedSalary.medical_insurance !== undefined ? mergedSalary.medical_insurance : '0')))));
+                            const parsedVal = parseFloat(String(rawIns).replace(/[^0-9.]/g, '')) || 0;
+                            source[c.id] = parsedVal;
+                            source.insuranceAmount = parsedVal;
+                            source.insurance = parsedVal;
+                            source.medical_insurance = parsedVal;
+                            const strIns = rawIns !== undefined && rawIns !== null ? String(rawIns) : '';
+                            mergedSalary[c.id] = strIns;
+                            mergedSalary.insuranceAmount = strIns;
+                            mergedSalary.insurance = strIns;
+                            mergedSalary.medical_insurance = strIns;
+                        } else {
+                            const val = mergedSalary[c.id] !== undefined ? mergedSalary[c.id] : (c.linkValue || 0);
+                            source[c.id] = parseFloat(String(val).replace(/[^0-9.]/g, '')) || 0;
+                        }
                     }
                 });
             }
@@ -642,6 +663,10 @@ export const RevisedDetailsTab = ({
                 }
                 if (master.deductionsMap) {
                     Object.entries(master.deductionsMap).forEach(([id, val]) => {
+                        const isIns = id === 'medical_insurance' || id === 'insurance' || (id.toLowerCase().includes('insurance')) || Boolean(activeConfig?.salaryComponents?.some(c => c.id === id && (c.id === 'insurance' || c.id === 'medical_insurance' || (c.name && c.name.toLowerCase().includes('insurance')))));
+                        if (isIns && (updatedSalaryFields?.insuranceAmount !== undefined || updatedSalaryFields?.insurance !== undefined || updatedSalaryFields?.medical_insurance !== undefined)) {
+                            return;
+                        }
                         mergedSalary[id] = String(val);
                     });
                 }
@@ -1708,9 +1733,14 @@ export const RevisedDetailsTab = ({
                                                                     </div>
                                                                 )}
                                                                 {revCustomAllowances.map((ca, i) => (
-                                                                    <div key={i} className="flex justify-between py-0.5 text-[11px]">
-                                                                        <span className="text-slate-600 truncate">{ca.name || 'Allowance'}</span>
-                                                                        <span className="font-semibold text-slate-900">₹{parseFloat(ca.amount || 0).toLocaleString('en-IN')}</span>
+                                                                    <div key={i} className="flex justify-between items-center py-0.5 text-[11px]">
+                                                                        <div className="flex items-center gap-1.5 truncate pr-2 min-w-0">
+                                                                            <span className="text-slate-600 truncate">{ca.name || 'Allowance'}</span>
+                                                                            {ca.addedInAnnualCTC !== false && (
+                                                                                <span className="text-[8.5px] font-bold text-emerald-700 bg-emerald-50 px-1 py-0.2 rounded border border-emerald-200 shrink-0">In CTC</span>
+                                                                            )}
+                                                                        </div>
+                                                                        <span className="font-semibold text-slate-900 shrink-0">₹{parseFloat(ca.amount || 0).toLocaleString('en-IN')}</span>
                                                                     </div>
                                                                 ))}
                                                                 <div className="flex justify-between pt-1 font-bold text-slate-900 border-t border-slate-200 text-[11px]">
@@ -2168,9 +2198,14 @@ export const RevisedDetailsTab = ({
                                                                         </div>
                                                                     )}
                                                                     {revCustomAllowances.map((ca, i) => (
-                                                                        <div key={i} className="flex justify-between py-0.5 border-b border-slate-50 text-[11px]">
-                                                                            <span className="text-slate-600 truncate">{ca.name || 'Allowance'}</span>
-                                                                            <span className="font-semibold text-slate-900">₹{parseFloat(ca.amount || 0).toLocaleString('en-IN')}</span>
+                                                                        <div key={i} className="flex justify-between items-center py-0.5 border-b border-slate-50 text-[11px]">
+                                                                            <div className="flex items-center gap-1.5 truncate pr-2 min-w-0">
+                                                                                <span className="text-slate-600 truncate">{ca.name || 'Allowance'}</span>
+                                                                                {ca.addedInAnnualCTC !== false && (
+                                                                                    <span className="text-[8.5px] font-bold text-emerald-700 bg-emerald-50 px-1 py-0.2 rounded border border-emerald-200 shrink-0">In CTC</span>
+                                                                                )}
+                                                                            </div>
+                                                                            <span className="font-semibold text-slate-900 shrink-0">₹{parseFloat(ca.amount || 0).toLocaleString('en-IN')}</span>
                                                                         </div>
                                                                     ))}
                                                                     <div className="flex justify-between pt-1 font-bold text-slate-900 border-t border-slate-200 text-[11px]">
