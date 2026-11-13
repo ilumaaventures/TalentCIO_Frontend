@@ -363,7 +363,7 @@ const HiringRequestDetails = () => {
             return toast.error(`You can close at most ${positionSummary.open} positions.`);
         }
 
-        if (request?.isPublic) {
+        if (request?.isPublic || request?.isResourceGatewayPublic) {
             setShowUnpublishPrompt(true);
         } else {
             executeClose({ unpublishFromJobBoard: false });
@@ -458,10 +458,10 @@ const HiringRequestDetails = () => {
                 isPublic: updatedReq.isPublic !== undefined ? updatedReq.isPublic : newValue,
                 isJobVisible: updatedReq.isJobVisible !== undefined ? updatedReq.isJobVisible : newValue,
                 previousRequestId: typeof prev?.previousRequestId === 'object'
-                    ? { ...prev.previousRequestId, isPublic: newValue ? prev.previousRequestId.isPublic : false, isResourceGatewayPublic: newValue ? prev.previousRequestId.isResourceGatewayPublic : false }
+                    ? { ...prev.previousRequestId, isPublic: newValue ? prev.previousRequestId.isPublic : false }
                     : prev?.previousRequestId,
                 reopenedToId: typeof prev?.reopenedToId === 'object'
-                    ? { ...prev.reopenedToId, isPublic: newValue ? prev.reopenedToId.isPublic : false, isResourceGatewayPublic: newValue ? prev.reopenedToId.isResourceGatewayPublic : false }
+                    ? { ...prev.reopenedToId, isPublic: newValue ? prev.reopenedToId.isPublic : false }
                     : prev?.reopenedToId
             }));
             toast.success(res.data.message);
@@ -481,14 +481,9 @@ const HiringRequestDetails = () => {
             return;
         }
 
-        if (!isJobBoardLive) {
-            toast.error('Publish the job to the main job board first.');
-            return;
-        }
-
         const newValue = !isResourceGatewayLive;
         const confirmMsg = newValue
-            ? 'Publish this job on resourcegateway.in/careers as well?'
+            ? 'Publish this job on resourcegateway.in/careers?'
             : 'Remove this job from resourcegateway.in/careers?';
 
         if (!window.confirm(confirmMsg)) return;
@@ -1120,10 +1115,10 @@ const HiringRequestDetails = () => {
                                 </div>
                             </div>
 
-                            {canUpdateRequisition && (request.status === 'Approved' || request.status === 'Closed' || isJobBoardLive || Boolean(request.previousRequestId)) && (
+                            {canUpdateRequisition && (request.status === 'Approved' || request.status === 'Closed' || isJobBoardLive || isResourceGatewayLive || Boolean(request.previousRequestId)) && (
                                 <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 hover:shadow-md transition-shadow duration-300">
                                     <h3 className="text-sm font-bold text-slate-800 mb-3 flex items-center gap-2 pb-3 border-b border-slate-50">
-                                        <div className={`p-1.5 rounded-md ${isJobBoardLive ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-600'}`}>
+                                        <div className={`p-1.5 rounded-md ${(isJobBoardLive || isResourceGatewayLive) ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-600'}`}>
                                             <Globe size={14} />
                                         </div>
                                         Job Board Visibility
@@ -1131,7 +1126,7 @@ const HiringRequestDetails = () => {
                                     <div className="space-y-3">
                                         <div className={`rounded-xl border px-3 py-3 ${isJobBoardLive ? 'border-emerald-200 bg-emerald-50' : 'border-slate-200 bg-slate-50'}`}>
                                             <p className={`text-xs font-bold uppercase tracking-wider ${isJobBoardLive ? 'text-emerald-700' : 'text-slate-600'}`}>
-                                                {isJobBoardLive ? 'Public on Job Board ✓' : 'Private (not listed)'}
+                                                {isJobBoardLive ? 'Public on TalentCIO Job Board ✓' : 'Private on TalentCIO (not listed)'}
                                             </p>
                                             <p className="mt-1 text-xs text-slate-500">
                                                 Public jobs appear on talentcio.in/jobs once the requisition is approved.
@@ -1140,6 +1135,7 @@ const HiringRequestDetails = () => {
 
                                         {isJobBoardLive ? (
                                             <button
+                                                type="button"
                                                 onClick={handleTogglePublic}
                                                 disabled={togglingVisibility}
                                                 className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-medium text-sm transition-all border border-slate-200 bg-white text-slate-700 hover:border-red-200 hover:text-red-600 hover:bg-red-50 shadow-xs disabled:opacity-50 disabled:cursor-not-allowed"
@@ -1149,6 +1145,7 @@ const HiringRequestDetails = () => {
                                             </button>
                                         ) : (request.status === 'Approved' || (request.status === 'Closed' && !request.reopenedToId)) ? (
                                             <button
+                                                type="button"
                                                 onClick={handleTogglePublic}
                                                 disabled={togglingVisibility}
                                                 className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-medium text-sm transition-all bg-blue-600 text-white hover:bg-blue-700 shadow-sm hover:shadow disabled:opacity-50 disabled:cursor-not-allowed"
@@ -1158,29 +1155,37 @@ const HiringRequestDetails = () => {
                                             </button>
                                         ) : null}
 
-                                        {resourceGatewayEnabledForCompany && (isJobBoardLive || request.status === 'Approved') && (
-                                            <div className="space-y-2">
-                                                <button
-                                                    onClick={handleToggleResourceGateway}
-                                                    disabled={togglingResourceGateway || !isJobBoardLive}
-                                                    className={`w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all border shadow-sm ${
-                                                        isResourceGatewayLive
-                                                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
-                                                            : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
-                                                    } disabled:opacity-50 disabled:cursor-not-allowed`}
-                                                >
-                                                    {togglingResourceGateway
-                                                        ? <Loader size={14} className="animate-spin" />
-                                                        : isResourceGatewayLive
-                                                            ? <><Globe size={14} /> Posted on Resource Gateway</>
-                                                            : <><Globe size={14} /> Post on Resource Gateway</>
-                                                    }
-                                                </button>
-
-                                                {!isJobBoardLive && (
-                                                    <p className="text-[11px] leading-4 text-slate-500">
-                                                        Publish to the main job board first, then this role can also go live on Resource Gateway.
+                                        {resourceGatewayEnabledForCompany && (isResourceGatewayLive || request.status === 'Approved' || (request.status === 'Closed' && !request.reopenedToId)) && (
+                                            <div className="space-y-3 pt-3 border-t border-slate-100">
+                                                <div className={`rounded-xl border px-3 py-2.5 ${isResourceGatewayLive ? 'border-cyan-200 bg-cyan-50/50' : 'border-slate-200 bg-slate-50'}`}>
+                                                    <p className={`text-xs font-bold uppercase tracking-wider ${isResourceGatewayLive ? 'text-cyan-700' : 'text-slate-600'}`}>
+                                                        {isResourceGatewayLive ? 'Public on Resource Gateway ✓' : 'Not on Resource Gateway'}
                                                     </p>
+                                                    <p className="mt-1 text-xs text-slate-500">
+                                                        Jobs appear on resourcegateway.in/careers.
+                                                    </p>
+                                                </div>
+
+                                                {isResourceGatewayLive ? (
+                                                    <button
+                                                        type="button"
+                                                        onClick={handleToggleResourceGateway}
+                                                        disabled={togglingResourceGateway}
+                                                        className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-medium text-sm transition-all border border-slate-200 bg-white text-slate-700 hover:border-red-200 hover:text-red-600 hover:bg-red-50 shadow-xs disabled:opacity-50 disabled:cursor-not-allowed"
+                                                    >
+                                                        {togglingResourceGateway ? <Loader className="animate-spin" size={16} /> : <Globe size={16} />}
+                                                        Unpublish from Resource Gateway
+                                                    </button>
+                                                ) : (
+                                                    <button
+                                                        type="button"
+                                                        onClick={handleToggleResourceGateway}
+                                                        disabled={togglingResourceGateway}
+                                                        className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-medium text-sm transition-all bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm hover:shadow disabled:opacity-50 disabled:cursor-not-allowed"
+                                                    >
+                                                        {togglingResourceGateway ? <Loader className="animate-spin" size={16} /> : <Globe size={16} />}
+                                                        Publish to Resource Gateway
+                                                    </button>
                                                 )}
                                             </div>
                                         )}
@@ -1541,13 +1546,13 @@ const HiringRequestDetails = () => {
                                 <Globe size={20} />
                             </div>
                             <div>
-                                <h3 className="text-base font-bold text-slate-900">Unpublish from Job Board?</h3>
-                                <p className="text-xs text-slate-500">Requisition is currently live on the public job board.</p>
+                                <h3 className="text-base font-bold text-slate-900">Unpublish from Public Portals?</h3>
+                                <p className="text-xs text-slate-500">Requisition is currently live on public job portals.</p>
                             </div>
                         </div>
 
                         <p className="mt-4 text-sm text-slate-600 leading-relaxed">
-                            This requisition is published on the job board. Would you like to unpublish it from the job board?
+                            This requisition is currently published. Would you like to unpublish it from public portals (TalentCIO / Resource Gateway)?
                         </p>
 
                         <div className="mt-6 flex flex-col-reverse sm:flex-row items-center justify-end gap-2.5">

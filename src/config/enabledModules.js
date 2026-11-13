@@ -37,6 +37,10 @@ export const normalizeEnabledModules = (moduleIds = []) => {
     normalizedIds.add('talentCard');
   }
 
+  if (normalizedIds.has('Payroll') || normalizedIds.has('PAYROLL')) {
+    normalizedIds.add('payroll');
+  }
+
   return Array.from(normalizedIds);
 };
 
@@ -61,6 +65,10 @@ export const hasModuleEnabled = (moduleIds = [], targetModuleId = '') => {
 
   if (targetModuleId === 'talentCard' || targetModuleId === 'talentcard') {
     return normalizedIds.includes('talentCard') || normalizedIds.includes('talentcard');
+  }
+
+  if (targetModuleId === 'payroll' || targetModuleId === 'Payroll' || targetModuleId === 'PAYROLL') {
+    return normalizedIds.includes('payroll');
   }
 
   return normalizedIds.includes(targetModuleId);

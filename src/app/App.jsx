@@ -236,6 +236,7 @@ function App() {
                     )} />
                     <Route path="/payroll" element={(
                       <ProtectedRoute
+                        moduleName="payroll"
                         requiredPermissions={SALARY_CALCULATOR_PERMISSIONS}
                         requiredRoles={ADMIN_ROLES}
                         allowAllPermissions
@@ -246,6 +247,7 @@ function App() {
                     )} />
                     <Route path="/salary-calculator" element={(
                       <ProtectedRoute
+                        moduleName="payroll"
                         requiredPermissions={SALARY_CALCULATOR_PERMISSIONS}
                         requiredRoles={ADMIN_ROLES}
                         allowAllPermissions
@@ -484,7 +486,7 @@ function App() {
                     {/* ESS — Employee Self Service / My Space */}
                     <Route element={<ProtectedRoute moduleName="mySpace" redirectTo="/" />}>
                       <Route path="/ess" element={<EssDashboard />} />
-                      <Route element={<ProtectedRoute requiredPermissions={['payroll.payslip.view']} redirectTo="/ess" />}>
+                      <Route element={<ProtectedRoute moduleName="payroll" requiredPermissions={['payroll.payslip.view']} redirectTo="/ess" />}>
                         <Route path="/ess/payslips" element={<MyPayslips />} />
                         <Route path="/payslips" element={<MyPayslips />} />
                       </Route>

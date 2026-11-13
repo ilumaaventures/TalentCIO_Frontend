@@ -33,7 +33,8 @@ import {
     Layers,
     CheckCheck,
     ChevronsUpDown,
-    ChevronsDownUp
+    ChevronsDownUp,
+    BadgeDollarSign
 } from 'lucide-react';
 import Skeleton from '@/components/ui/Skeleton';
 import toast from 'react-hot-toast';
@@ -122,6 +123,7 @@ const MODULE_ICONS = {
     'MEETINGS': Calendar,
     'PERFORMANCE MANAGEMENT': Award,
     'PROJECTS': FolderKanban,
+    'PAYROLL': BadgeDollarSign,
     'ROLE MANAGEMENT': ShieldCheck,
     'SALES CRM': TrendingUp,
     'TALENT ACQUISITION': UserPlus,
@@ -143,6 +145,7 @@ const MODULE_DISPLAY_NAMES = {
     'MEETINGS': 'Meetings',
     'PERFORMANCE MANAGEMENT': 'Performance Management',
     'PROJECTS': 'Projects',
+    'PAYROLL': 'Payroll',
     'ROLE MANAGEMENT': 'Role Management',
     'SALES CRM': 'Sales CRM',
     'TALENT ACQUISITION': 'Talent Acquisition',
