@@ -534,7 +534,7 @@ const ReviseSalaryDetailsTab = () => {
                     };
                 }
             }
-        } catch {}
+        } catch { }
         return DEFAULT_COLUMN_WIDTHS;
     });
     const [activeResizingCol, setActiveResizingCol] = useState(null);
@@ -578,7 +578,7 @@ const ReviseSalaryDetailsTab = () => {
             setColumnWidths(latest => {
                 try {
                     localStorage.setItem(STORAGE_KEY_COL_WIDTHS, JSON.stringify(latest));
-                } catch {}
+                } catch { }
                 return latest;
             });
         };
@@ -593,7 +593,7 @@ const ReviseSalaryDetailsTab = () => {
             const next = { ...prev, [colKey]: defW };
             try {
                 localStorage.setItem(STORAGE_KEY_COL_WIDTHS, JSON.stringify(next));
-            } catch {}
+            } catch { }
             return next;
         });
     }, []);
@@ -602,7 +602,7 @@ const ReviseSalaryDetailsTab = () => {
         setColumnWidths(DEFAULT_COLUMN_WIDTHS);
         try {
             localStorage.removeItem(STORAGE_KEY_COL_WIDTHS);
-        } catch {}
+        } catch { }
         toast.success('Column widths reset to defaults');
     }, []);
 
@@ -617,15 +617,13 @@ const ReviseSalaryDetailsTab = () => {
                 e.stopPropagation();
                 handleResetColumnWidth(colKey);
             }}
-            className={`absolute ${isLeft ? 'left-0' : 'right-0'} top-0 bottom-0 w-2.5 cursor-col-resize select-none z-30 flex items-center justify-center group/resize transition-colors ${
-                activeResizingCol === colKey ? 'bg-blue-600/30' : 'hover:bg-blue-400/25'
-            }`}
+            className={`absolute ${isLeft ? 'left-0' : 'right-0'} top-0 bottom-0 w-2.5 cursor-col-resize select-none z-30 flex items-center justify-center group/resize transition-colors ${activeResizingCol === colKey ? 'bg-blue-600/30' : 'hover:bg-blue-400/25'
+                }`}
             title="Drag edge to resize column width (Double-click to reset)"
         >
             <div
-                className={`w-[2px] h-4 rounded-full transition-colors ${
-                    activeResizingCol === colKey ? 'bg-blue-600' : 'bg-slate-300 group-hover/resize:bg-blue-500'
-                }`}
+                className={`w-[2px] h-4 rounded-full transition-colors ${activeResizingCol === colKey ? 'bg-blue-600' : 'bg-slate-300 group-hover/resize:bg-blue-500'
+                    }`}
             />
         </div>
     ), [handleStartResize, handleResetColumnWidth, activeResizingCol]);
@@ -776,10 +774,10 @@ const ReviseSalaryDetailsTab = () => {
                         if (isIns) {
                             const rawIns = updatedSalaryFields?.insuranceAmount !== undefined ? updatedSalaryFields.insuranceAmount
                                 : (updatedSalaryFields?.insurance !== undefined ? updatedSalaryFields.insurance
-                                : (updatedSalaryFields?.medical_insurance !== undefined ? updatedSalaryFields.medical_insurance
-                                : (mergedSalary.insuranceAmount !== undefined ? mergedSalary.insuranceAmount
-                                : (mergedSalary.insurance !== undefined ? mergedSalary.insurance
-                                : (mergedSalary.medical_insurance !== undefined ? mergedSalary.medical_insurance : '0')))));
+                                    : (updatedSalaryFields?.medical_insurance !== undefined ? updatedSalaryFields.medical_insurance
+                                        : (mergedSalary.insuranceAmount !== undefined ? mergedSalary.insuranceAmount
+                                            : (mergedSalary.insurance !== undefined ? mergedSalary.insurance
+                                                : (mergedSalary.medical_insurance !== undefined ? mergedSalary.medical_insurance : '0')))));
                             const parsedVal = parseFloat(String(rawIns).replace(/[^0-9.]/g, '')) || 0;
                             source[c.id] = parsedVal;
                             source.insuranceAmount = parsedVal;
@@ -2449,11 +2447,10 @@ const ReviseSalaryDetailsTab = () => {
                     <button
                         type="button"
                         onClick={() => setSubTab('single')}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                            subTab === 'single'
-                                ? 'bg-blue-600 text-white shadow-sm'
-                                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-                        }`}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${subTab === 'single'
+                            ? 'bg-blue-600 text-white shadow-sm'
+                            : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                            }`}
                     >
                         <User size={15} />
                         <span>Individual Revision</span>
@@ -2462,17 +2459,15 @@ const ReviseSalaryDetailsTab = () => {
                     <button
                         type="button"
                         onClick={() => setSubTab('bulk_details')}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                            subTab === 'bulk_details'
-                                ? 'bg-blue-600 text-white shadow-sm'
-                                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-                        }`}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${subTab === 'bulk_details'
+                            ? 'bg-blue-600 text-white shadow-sm'
+                            : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                            }`}
                     >
                         <Table size={15} />
                         <span>Bulk Salary Details</span>
-                        <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-extrabold ${
-                            subTab === 'bulk_details' ? 'bg-blue-500 text-white' : 'bg-emerald-100 text-emerald-800'
-                        }`}>
+                        <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-extrabold ${subTab === 'bulk_details' ? 'bg-blue-500 text-white' : 'bg-emerald-100 text-emerald-800'
+                            }`}>
                             Excel Grid
                         </span>
                     </button>
@@ -2480,11 +2475,10 @@ const ReviseSalaryDetailsTab = () => {
                     <button
                         type="button"
                         onClick={() => setSubTab('bulk')}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                            subTab === 'bulk'
-                                ? 'bg-blue-600 text-white shadow-sm'
-                                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-                        }`}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${subTab === 'bulk'
+                            ? 'bg-blue-600 text-white shadow-sm'
+                            : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                            }`}
                     >
                         <Users size={15} />
                         <span>Bulk Restructure & Letters</span>
@@ -2493,11 +2487,10 @@ const ReviseSalaryDetailsTab = () => {
                     <button
                         type="button"
                         onClick={() => setSubTab('templates')}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                            subTab === 'templates'
-                                ? 'bg-blue-600 text-white shadow-sm'
-                                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-                        }`}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${subTab === 'templates'
+                            ? 'bg-blue-600 text-white shadow-sm'
+                            : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                            }`}
                     >
                         <FileSignature size={15} />
                         <span>Template Settings</span>
@@ -2509,11 +2502,10 @@ const ReviseSalaryDetailsTab = () => {
                     <button
                         type="button"
                         onClick={() => setSubTab('logs')}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                            subTab === 'logs'
-                                ? 'bg-blue-600 text-white shadow-sm'
-                                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-                        }`}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${subTab === 'logs'
+                            ? 'bg-blue-600 text-white shadow-sm'
+                            : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                            }`}
                     >
                         <History size={15} />
                         <span>Revision Logs & Timeline</span>
@@ -2598,11 +2590,10 @@ const ReviseSalaryDetailsTab = () => {
                                         <div
                                             key={emp._id}
                                             onClick={() => handleSelectEmployee(emp._id)}
-                                            className={`p-3 rounded-xl cursor-pointer transition-all ${
-                                                isSelected
-                                                    ? 'bg-blue-50 border border-blue-200 text-blue-900 shadow-2xs'
-                                                    : 'hover:bg-slate-50 border border-transparent text-slate-700'
-                                            }`}
+                                            className={`p-3 rounded-xl cursor-pointer transition-all ${isSelected
+                                                ? 'bg-blue-50 border border-blue-200 text-blue-900 shadow-2xs'
+                                                : 'hover:bg-slate-50 border border-transparent text-slate-700'
+                                                }`}
                                         >
                                             <div className="flex items-center justify-between">
                                                 <span className="text-xs font-bold truncate">
@@ -2703,11 +2694,10 @@ const ReviseSalaryDetailsTab = () => {
                                     <button
                                         type="button"
                                         onClick={() => setSingleStep('salary')}
-                                        className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                                            singleStep === 'salary'
-                                                ? 'bg-white text-blue-600 shadow-xs'
-                                                : 'text-slate-600 hover:text-slate-900'
-                                        }`}
+                                        className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs font-bold transition-all cursor-pointer ${singleStep === 'salary'
+                                            ? 'bg-white text-blue-600 shadow-xs'
+                                            : 'text-slate-600 hover:text-slate-900'
+                                            }`}
                                     >
                                         <DollarSign size={15} />
                                         <span>1. Salary & Compensation Structure</span>
@@ -2723,11 +2713,10 @@ const ReviseSalaryDetailsTab = () => {
                                             }
                                         }}
                                         disabled={savingSalaryAndProceeding}
-                                        className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                                            singleStep === 'parameters'
-                                                ? 'bg-white text-blue-600 shadow-xs'
-                                                : 'text-slate-600 hover:text-slate-900'
-                                        }`}
+                                        className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs font-bold transition-all cursor-pointer ${singleStep === 'parameters'
+                                            ? 'bg-white text-blue-600 shadow-xs'
+                                            : 'text-slate-600 hover:text-slate-900'
+                                            }`}
                                     >
                                         <Calendar size={15} />
                                         <span>2. Revision Parameters & Letter Dispatch</span>
@@ -3159,13 +3148,12 @@ const ReviseSalaryDetailsTab = () => {
                                                                 )) || 'Compensation updated'}
                                                             </td>
                                                             <td className="py-2.5 px-3">
-                                                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                                                                    rev.status === 'applied'
-                                                                        ? 'bg-emerald-50 text-emerald-700'
-                                                                        : rev.status === 'scheduled'
+                                                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${rev.status === 'applied'
+                                                                    ? 'bg-emerald-50 text-emerald-700'
+                                                                    : rev.status === 'scheduled'
                                                                         ? 'bg-blue-50 text-blue-700'
                                                                         : 'bg-slate-100 text-slate-600'
-                                                                }`}>
+                                                                    }`}>
                                                                     {rev.status || 'Applied'}
                                                                 </span>
                                                             </td>
@@ -3310,11 +3298,10 @@ const ReviseSalaryDetailsTab = () => {
                                 <button
                                     type="button"
                                     onClick={() => setBulkActionTarget('all')}
-                                    className={`px-3 py-1 rounded-lg font-bold text-xs transition-all cursor-pointer ${
-                                        bulkActionTarget === 'all'
-                                            ? 'bg-blue-600 text-white shadow-2xs'
-                                            : 'text-slate-600 hover:bg-slate-100'
-                                    }`}
+                                    className={`px-3 py-1 rounded-lg font-bold text-xs transition-all cursor-pointer ${bulkActionTarget === 'all'
+                                        ? 'bg-blue-600 text-white shadow-2xs'
+                                        : 'text-slate-600 hover:bg-slate-100'
+                                        }`}
                                 >
                                     All Filtered ({filteredBulkRows.length})
                                 </button>
@@ -3322,11 +3309,10 @@ const ReviseSalaryDetailsTab = () => {
                                     type="button"
                                     onClick={() => setBulkActionTarget('selected')}
                                     disabled={selectedBulkDetailIds.length === 0}
-                                    className={`px-3 py-1 rounded-lg font-bold text-xs transition-all cursor-pointer ${
-                                        bulkActionTarget === 'selected'
-                                            ? 'bg-blue-600 text-white shadow-2xs'
-                                            : 'text-slate-600 hover:bg-slate-100 disabled:opacity-40'
-                                    }`}
+                                    className={`px-3 py-1 rounded-lg font-bold text-xs transition-all cursor-pointer ${bulkActionTarget === 'selected'
+                                        ? 'bg-blue-600 text-white shadow-2xs'
+                                        : 'text-slate-600 hover:bg-slate-100 disabled:opacity-40'
+                                        }`}
                                 >
                                     Selected Only ({selectedBulkDetailIds.length})
                                 </button>
@@ -3362,11 +3348,10 @@ const ReviseSalaryDetailsTab = () => {
                                     <button
                                         type="button"
                                         onClick={() => applyStatutoryToAll('pfEnabled', true)}
-                                        className={`px-2 py-1.5 rounded-md text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
-                                            pfStatutoryState.allTrue
-                                                ? 'bg-blue-600 text-white shadow-xs'
-                                                : 'text-slate-600 hover:text-slate-900 hover:bg-white'
-                                        }`}
+                                        className={`px-2 py-1.5 rounded-md text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${pfStatutoryState.allTrue
+                                            ? 'bg-blue-600 text-white shadow-xs'
+                                            : 'text-slate-600 hover:text-slate-900 hover:bg-white'
+                                            }`}
                                     >
                                         <Check size={12} className={pfStatutoryState.allTrue ? 'text-white' : 'text-slate-400'} />
                                         <span>✓ Enable PF All</span>
@@ -3374,11 +3359,10 @@ const ReviseSalaryDetailsTab = () => {
                                     <button
                                         type="button"
                                         onClick={() => applyStatutoryToAll('pfEnabled', false)}
-                                        className={`px-2 py-1.5 rounded-md text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
-                                            pfStatutoryState.allFalse
-                                                ? 'bg-slate-800 text-white shadow-xs'
-                                                : 'text-slate-600 hover:text-slate-900 hover:bg-white'
-                                        }`}
+                                        className={`px-2 py-1.5 rounded-md text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${pfStatutoryState.allFalse
+                                            ? 'bg-slate-800 text-white shadow-xs'
+                                            : 'text-slate-600 hover:text-slate-900 hover:bg-white'
+                                            }`}
                                     >
                                         <X size={12} className={pfStatutoryState.allFalse ? 'text-white' : 'text-slate-400'} />
                                         <span>✕ Disable PF All</span>
@@ -3388,11 +3372,10 @@ const ReviseSalaryDetailsTab = () => {
                                     <button
                                         type="button"
                                         onClick={() => applyStatutoryToAll('includePfInCTC', true)}
-                                        className={`px-1.5 py-1 rounded-md text-[10px] font-bold flex items-center justify-center gap-0.5 transition-all cursor-pointer ${
-                                            pfInCtcStatutoryState.allTrue
-                                                ? 'bg-indigo-600 text-white shadow-xs'
-                                                : 'text-slate-600 hover:text-slate-900 hover:bg-white'
-                                        }`}
+                                        className={`px-1.5 py-1 rounded-md text-[10px] font-bold flex items-center justify-center gap-0.5 transition-all cursor-pointer ${pfInCtcStatutoryState.allTrue
+                                            ? 'bg-indigo-600 text-white shadow-xs'
+                                            : 'text-slate-600 hover:text-slate-900 hover:bg-white'
+                                            }`}
                                         title="Employer PF reduces gross take-home"
                                     >
                                         <span>+ In CTC: All</span>
@@ -3400,11 +3383,10 @@ const ReviseSalaryDetailsTab = () => {
                                     <button
                                         type="button"
                                         onClick={() => applyStatutoryToAll('includePfInCTC', false)}
-                                        className={`px-1.5 py-1 rounded-md text-[10px] font-bold flex items-center justify-center gap-0.5 transition-all cursor-pointer ${
-                                            pfInCtcStatutoryState.allFalse
-                                                ? 'bg-slate-700 text-white shadow-xs'
-                                                : 'text-slate-600 hover:text-slate-900 hover:bg-white'
-                                        }`}
+                                        className={`px-1.5 py-1 rounded-md text-[10px] font-bold flex items-center justify-center gap-0.5 transition-all cursor-pointer ${pfInCtcStatutoryState.allFalse
+                                            ? 'bg-slate-700 text-white shadow-xs'
+                                            : 'text-slate-600 hover:text-slate-900 hover:bg-white'
+                                            }`}
                                         title="Employer PF outside CTC take-home calculation"
                                     >
                                         <span>- Ex CTC: All</span>
@@ -3439,11 +3421,10 @@ const ReviseSalaryDetailsTab = () => {
                                     <button
                                         type="button"
                                         onClick={() => applyStatutoryToAll('esiEnabled', true)}
-                                        className={`px-2 py-1.5 rounded-md text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
-                                            esiStatutoryState.allTrue
-                                                ? 'bg-blue-600 text-white shadow-xs'
-                                                : 'text-slate-600 hover:text-slate-900 hover:bg-white'
-                                        }`}
+                                        className={`px-2 py-1.5 rounded-md text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${esiStatutoryState.allTrue
+                                            ? 'bg-blue-600 text-white shadow-xs'
+                                            : 'text-slate-600 hover:text-slate-900 hover:bg-white'
+                                            }`}
                                     >
                                         <Check size={12} className={esiStatutoryState.allTrue ? 'text-white' : 'text-slate-400'} />
                                         <span>✓ Enable ESI All</span>
@@ -3451,11 +3432,10 @@ const ReviseSalaryDetailsTab = () => {
                                     <button
                                         type="button"
                                         onClick={() => applyStatutoryToAll('esiEnabled', false)}
-                                        className={`px-2 py-1.5 rounded-md text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
-                                            esiStatutoryState.allFalse
-                                                ? 'bg-slate-800 text-white shadow-xs'
-                                                : 'text-slate-600 hover:text-slate-900 hover:bg-white'
-                                        }`}
+                                        className={`px-2 py-1.5 rounded-md text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${esiStatutoryState.allFalse
+                                            ? 'bg-slate-800 text-white shadow-xs'
+                                            : 'text-slate-600 hover:text-slate-900 hover:bg-white'
+                                            }`}
                                     >
                                         <X size={12} className={esiStatutoryState.allFalse ? 'text-white' : 'text-slate-400'} />
                                         <span>✕ Disable ESI All</span>
@@ -3488,11 +3468,10 @@ const ReviseSalaryDetailsTab = () => {
                                         <button
                                             type="button"
                                             onClick={() => applyStatutoryToAll('gratuityEnabled', true)}
-                                            className={`px-2 py-1.5 rounded-md text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
-                                                gratuityStatutoryState.allTrue
-                                                    ? 'bg-indigo-600 text-white shadow-xs'
-                                                    : 'text-slate-600 hover:text-slate-900 hover:bg-white'
-                                            }`}
+                                            className={`px-2 py-1.5 rounded-md text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${gratuityStatutoryState.allTrue
+                                                ? 'bg-indigo-600 text-white shadow-xs'
+                                                : 'text-slate-600 hover:text-slate-900 hover:bg-white'
+                                                }`}
                                         >
                                             <Check size={12} className={gratuityStatutoryState.allTrue ? 'text-white' : 'text-slate-400'} />
                                             <span>✓ Gratuity All</span>
@@ -3500,11 +3479,10 @@ const ReviseSalaryDetailsTab = () => {
                                         <button
                                             type="button"
                                             onClick={() => applyStatutoryToAll('gratuityEnabled', false)}
-                                            className={`px-2 py-1.5 rounded-md text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
-                                                gratuityStatutoryState.allFalse
-                                                    ? 'bg-slate-800 text-white shadow-xs'
-                                                    : 'text-slate-600 hover:text-slate-900 hover:bg-white'
-                                            }`}
+                                            className={`px-2 py-1.5 rounded-md text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${gratuityStatutoryState.allFalse
+                                                ? 'bg-slate-800 text-white shadow-xs'
+                                                : 'text-slate-600 hover:text-slate-900 hover:bg-white'
+                                                }`}
                                         >
                                             <X size={12} className={gratuityStatutoryState.allFalse ? 'text-white' : 'text-slate-400'} />
                                             <span>✕ Disable Gratuity</span>
@@ -3514,22 +3492,20 @@ const ReviseSalaryDetailsTab = () => {
                                         <button
                                             type="button"
                                             onClick={() => applyStatutoryToAll('includeGratuityInCTC', true)}
-                                            className={`px-1.5 py-1 rounded-md text-[10px] font-bold flex items-center justify-center gap-0.5 transition-all cursor-pointer ${
-                                                gratuityInCtcStatutoryState.allTrue
-                                                    ? 'bg-indigo-600 text-white shadow-xs'
-                                                    : 'text-slate-600 hover:text-slate-900 hover:bg-white'
-                                            }`}
+                                            className={`px-1.5 py-1 rounded-md text-[10px] font-bold flex items-center justify-center gap-0.5 transition-all cursor-pointer ${gratuityInCtcStatutoryState.allTrue
+                                                ? 'bg-indigo-600 text-white shadow-xs'
+                                                : 'text-slate-600 hover:text-slate-900 hover:bg-white'
+                                                }`}
                                         >
                                             <span>+ In CTC</span>
                                         </button>
                                         <button
                                             type="button"
                                             onClick={() => applyStatutoryToAll('includeGratuityInCTC', false)}
-                                            className={`px-1.5 py-1 rounded-md text-[10px] font-bold flex items-center justify-center gap-0.5 transition-all cursor-pointer ${
-                                                gratuityInCtcStatutoryState.allFalse
-                                                    ? 'bg-slate-700 text-white shadow-xs'
-                                                    : 'text-slate-600 hover:text-slate-900 hover:bg-white'
-                                            }`}
+                                            className={`px-1.5 py-1 rounded-md text-[10px] font-bold flex items-center justify-center gap-0.5 transition-all cursor-pointer ${gratuityInCtcStatutoryState.allFalse
+                                                ? 'bg-slate-700 text-white shadow-xs'
+                                                : 'text-slate-600 hover:text-slate-900 hover:bg-white'
+                                                }`}
                                         >
                                             <span>- Ex CTC</span>
                                         </button>
@@ -3564,11 +3540,10 @@ const ReviseSalaryDetailsTab = () => {
                                     <button
                                         type="button"
                                         onClick={() => applyStatutoryToAll('ptEnabled', true)}
-                                        className={`px-2 py-1.5 rounded-md text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
-                                            ptStatutoryState.allTrue
-                                                ? 'bg-blue-600 text-white shadow-xs'
-                                                : 'text-slate-600 hover:text-slate-900 hover:bg-white'
-                                        }`}
+                                        className={`px-2 py-1.5 rounded-md text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${ptStatutoryState.allTrue
+                                            ? 'bg-blue-600 text-white shadow-xs'
+                                            : 'text-slate-600 hover:text-slate-900 hover:bg-white'
+                                            }`}
                                     >
                                         <Check size={12} className={ptStatutoryState.allTrue ? 'text-white' : 'text-slate-400'} />
                                         <span>✓ Enable PT All</span>
@@ -3576,11 +3551,10 @@ const ReviseSalaryDetailsTab = () => {
                                     <button
                                         type="button"
                                         onClick={() => applyStatutoryToAll('ptEnabled', false)}
-                                        className={`px-2 py-1.5 rounded-md text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
-                                            ptStatutoryState.allFalse
-                                                ? 'bg-slate-800 text-white shadow-xs'
-                                                : 'text-slate-600 hover:text-slate-900 hover:bg-white'
-                                        }`}
+                                        className={`px-2 py-1.5 rounded-md text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${ptStatutoryState.allFalse
+                                            ? 'bg-slate-800 text-white shadow-xs'
+                                            : 'text-slate-600 hover:text-slate-900 hover:bg-white'
+                                            }`}
                                     >
                                         <X size={12} className={ptStatutoryState.allFalse ? 'text-white' : 'text-slate-400'} />
                                         <span>✕ Disable PT All</span>
@@ -3613,11 +3587,10 @@ const ReviseSalaryDetailsTab = () => {
                                         <button
                                             type="button"
                                             onClick={() => applyStatutoryToAll('lwfEnabled', true)}
-                                            className={`px-2 py-1.5 rounded-md text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
-                                                lwfStatutoryState.allTrue
-                                                    ? 'bg-blue-600 text-white shadow-xs'
-                                                    : 'text-slate-600 hover:text-slate-900 hover:bg-white'
-                                            }`}
+                                            className={`px-2 py-1.5 rounded-md text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${lwfStatutoryState.allTrue
+                                                ? 'bg-blue-600 text-white shadow-xs'
+                                                : 'text-slate-600 hover:text-slate-900 hover:bg-white'
+                                                }`}
                                         >
                                             <Check size={12} className={lwfStatutoryState.allTrue ? 'text-white' : 'text-slate-400'} />
                                             <span>✓ Enable LWF All</span>
@@ -3625,11 +3598,10 @@ const ReviseSalaryDetailsTab = () => {
                                         <button
                                             type="button"
                                             onClick={() => applyStatutoryToAll('lwfEnabled', false)}
-                                            className={`px-2 py-1.5 rounded-md text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
-                                                lwfStatutoryState.allFalse
-                                                    ? 'bg-slate-800 text-white shadow-xs'
-                                                    : 'text-slate-600 hover:text-slate-900 hover:bg-white'
-                                            }`}
+                                            className={`px-2 py-1.5 rounded-md text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${lwfStatutoryState.allFalse
+                                                ? 'bg-slate-800 text-white shadow-xs'
+                                                : 'text-slate-600 hover:text-slate-900 hover:bg-white'
+                                                }`}
                                         >
                                             <X size={12} className={lwfStatutoryState.allFalse ? 'text-white' : 'text-slate-400'} />
                                             <span>✕ Disable LWF All</span>
@@ -3665,11 +3637,10 @@ const ReviseSalaryDetailsTab = () => {
                                     <button
                                         type="button"
                                         onClick={() => applyStatutoryToAll('ltaEnabled', true)}
-                                        className={`px-2 py-1.5 rounded-md text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
-                                            ltaStatutoryState.allTrue
-                                                ? 'bg-emerald-600 text-white shadow-xs'
-                                                : 'text-slate-600 hover:text-slate-900 hover:bg-white'
-                                        }`}
+                                        className={`px-2 py-1.5 rounded-md text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${ltaStatutoryState.allTrue
+                                            ? 'bg-emerald-600 text-white shadow-xs'
+                                            : 'text-slate-600 hover:text-slate-900 hover:bg-white'
+                                            }`}
                                     >
                                         <Check size={12} className={ltaStatutoryState.allTrue ? 'text-white' : 'text-slate-400'} />
                                         <span>✓ Enable LTA All</span>
@@ -3677,11 +3648,10 @@ const ReviseSalaryDetailsTab = () => {
                                     <button
                                         type="button"
                                         onClick={() => applyStatutoryToAll('ltaEnabled', false)}
-                                        className={`px-2 py-1.5 rounded-md text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
-                                            ltaStatutoryState.allFalse
-                                                ? 'bg-slate-800 text-white shadow-xs'
-                                                : 'text-slate-600 hover:text-slate-900 hover:bg-white'
-                                        }`}
+                                        className={`px-2 py-1.5 rounded-md text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${ltaStatutoryState.allFalse
+                                            ? 'bg-slate-800 text-white shadow-xs'
+                                            : 'text-slate-600 hover:text-slate-900 hover:bg-white'
+                                            }`}
                                     >
                                         <X size={12} className={ltaStatutoryState.allFalse ? 'text-white' : 'text-slate-400'} />
                                         <span>✕ Disable LTA All</span>
@@ -3714,11 +3684,10 @@ const ReviseSalaryDetailsTab = () => {
                                         <button
                                             type="button"
                                             onClick={() => applyStatutoryToAll('tdsEnabled', true)}
-                                            className={`px-2 py-1.5 rounded-md text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
-                                                tdsStatutoryState.allTrue
-                                                    ? 'bg-blue-600 text-white shadow-xs'
-                                                    : 'text-slate-600 hover:text-slate-900 hover:bg-white'
-                                            }`}
+                                            className={`px-2 py-1.5 rounded-md text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${tdsStatutoryState.allTrue
+                                                ? 'bg-blue-600 text-white shadow-xs'
+                                                : 'text-slate-600 hover:text-slate-900 hover:bg-white'
+                                                }`}
                                         >
                                             <Check size={12} className={tdsStatutoryState.allTrue ? 'text-white' : 'text-slate-400'} />
                                             <span>✓ Enable TDS All</span>
@@ -3726,11 +3695,10 @@ const ReviseSalaryDetailsTab = () => {
                                         <button
                                             type="button"
                                             onClick={() => applyStatutoryToAll('tdsEnabled', false)}
-                                            className={`px-2 py-1.5 rounded-md text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
-                                                tdsStatutoryState.allFalse
-                                                    ? 'bg-slate-800 text-white shadow-xs'
-                                                    : 'text-slate-600 hover:text-slate-900 hover:bg-white'
-                                            }`}
+                                            className={`px-2 py-1.5 rounded-md text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${tdsStatutoryState.allFalse
+                                                ? 'bg-slate-800 text-white shadow-xs'
+                                                : 'text-slate-600 hover:text-slate-900 hover:bg-white'
+                                                }`}
                                         >
                                             <X size={12} className={tdsStatutoryState.allFalse ? 'text-white' : 'text-slate-400'} />
                                             <span>✕ Disable TDS All</span>
@@ -3909,8 +3877,8 @@ const ReviseSalaryDetailsTab = () => {
                                             {selectedBulkDetailIds.length > 0
                                                 ? ` (${selectedBulkDetailIds.length} Selected)`
                                                 : bulkGridMetrics.modifiedCount > 0
-                                                ? ` (${bulkGridMetrics.modifiedCount} Modified)`
-                                                : ''}
+                                                    ? ` (${bulkGridMetrics.modifiedCount} Modified)`
+                                                    : ''}
                                         </span>
                                     </>
                                 )}
@@ -4118,13 +4086,12 @@ const ReviseSalaryDetailsTab = () => {
                                             <button
                                                 type="button"
                                                 onClick={() => handleColumnHeaderToggle('pfEnabled')}
-                                                className={`text-[8.5px] font-bold px-1.5 py-0.5 rounded-full transition-all cursor-pointer shadow-2xs shrink-0 ${
-                                                    pfStatutoryState.allTrue
-                                                        ? 'bg-blue-600 text-white'
-                                                        : pfStatutoryState.allFalse
+                                                className={`text-[8.5px] font-bold px-1.5 py-0.5 rounded-full transition-all cursor-pointer shadow-2xs shrink-0 ${pfStatutoryState.allTrue
+                                                    ? 'bg-blue-600 text-white'
+                                                    : pfStatutoryState.allFalse
                                                         ? 'bg-slate-200 text-slate-700'
                                                         : 'bg-amber-200 text-amber-900 border border-amber-300'
-                                                }`}
+                                                    }`}
                                                 title="Toggle PF for all rows"
                                             >
                                                 {pfStatutoryState.allTrue ? '✓ All' : pfStatutoryState.allFalse ? '✕ Off' : `Mix (${pfStatutoryState.trueCount})`}
@@ -4142,13 +4109,12 @@ const ReviseSalaryDetailsTab = () => {
                                             <button
                                                 type="button"
                                                 onClick={() => handleColumnHeaderToggle('esiEnabled')}
-                                                className={`text-[8.5px] font-bold px-1.5 py-0.5 rounded-full transition-all cursor-pointer shadow-2xs shrink-0 ${
-                                                    esiStatutoryState.allTrue
-                                                        ? 'bg-blue-600 text-white'
-                                                        : esiStatutoryState.allFalse
+                                                className={`text-[8.5px] font-bold px-1.5 py-0.5 rounded-full transition-all cursor-pointer shadow-2xs shrink-0 ${esiStatutoryState.allTrue
+                                                    ? 'bg-blue-600 text-white'
+                                                    : esiStatutoryState.allFalse
                                                         ? 'bg-slate-200 text-slate-700'
                                                         : 'bg-amber-200 text-amber-900 border border-amber-300'
-                                                }`}
+                                                    }`}
                                                 title="Toggle ESI for all rows"
                                             >
                                                 {esiStatutoryState.allTrue ? '✓ All' : esiStatutoryState.allFalse ? '✕ Off' : `Mix (${esiStatutoryState.trueCount})`}
@@ -4166,13 +4132,12 @@ const ReviseSalaryDetailsTab = () => {
                                             <button
                                                 type="button"
                                                 onClick={() => handleColumnHeaderToggle('ptEnabled')}
-                                                className={`text-[8.5px] font-bold px-1.5 py-0.5 rounded-full transition-all cursor-pointer shadow-2xs shrink-0 ${
-                                                    ptStatutoryState.allTrue
-                                                        ? 'bg-blue-600 text-white'
-                                                        : ptStatutoryState.allFalse
+                                                className={`text-[8.5px] font-bold px-1.5 py-0.5 rounded-full transition-all cursor-pointer shadow-2xs shrink-0 ${ptStatutoryState.allTrue
+                                                    ? 'bg-blue-600 text-white'
+                                                    : ptStatutoryState.allFalse
                                                         ? 'bg-slate-200 text-slate-700'
                                                         : 'bg-amber-200 text-amber-900 border border-amber-300'
-                                                }`}
+                                                    }`}
                                                 title="Toggle PT for all rows"
                                             >
                                                 {ptStatutoryState.allTrue ? '✓ All' : ptStatutoryState.allFalse ? '✕ Off' : `Mix (${ptStatutoryState.trueCount})`}
@@ -4190,13 +4155,12 @@ const ReviseSalaryDetailsTab = () => {
                                             <button
                                                 type="button"
                                                 onClick={() => handleColumnHeaderToggle('gratuityEnabled')}
-                                                className={`text-[8.5px] font-bold px-1.5 py-0.5 rounded-full transition-all cursor-pointer shadow-2xs shrink-0 ${
-                                                    gratuityStatutoryState.allTrue
-                                                        ? 'bg-indigo-600 text-white'
-                                                        : gratuityStatutoryState.allFalse
+                                                className={`text-[8.5px] font-bold px-1.5 py-0.5 rounded-full transition-all cursor-pointer shadow-2xs shrink-0 ${gratuityStatutoryState.allTrue
+                                                    ? 'bg-indigo-600 text-white'
+                                                    : gratuityStatutoryState.allFalse
                                                         ? 'bg-slate-200 text-slate-700'
                                                         : 'bg-amber-200 text-amber-900 border border-amber-300'
-                                                }`}
+                                                    }`}
                                                 title="Toggle Gratuity for all rows"
                                             >
                                                 {gratuityStatutoryState.allTrue ? '✓ All' : gratuityStatutoryState.allFalse ? '✕ Off' : `Mix (${gratuityStatutoryState.trueCount})`}
@@ -4214,13 +4178,12 @@ const ReviseSalaryDetailsTab = () => {
                                             <button
                                                 type="button"
                                                 onClick={() => handleColumnHeaderToggle('lwfEnabled')}
-                                                className={`text-[8.5px] font-bold px-1.5 py-0.5 rounded-full transition-all cursor-pointer shadow-2xs shrink-0 ${
-                                                    lwfStatutoryState.allTrue
-                                                        ? 'bg-blue-600 text-white'
-                                                        : lwfStatutoryState.allFalse
+                                                className={`text-[8.5px] font-bold px-1.5 py-0.5 rounded-full transition-all cursor-pointer shadow-2xs shrink-0 ${lwfStatutoryState.allTrue
+                                                    ? 'bg-blue-600 text-white'
+                                                    : lwfStatutoryState.allFalse
                                                         ? 'bg-slate-200 text-slate-700'
                                                         : 'bg-amber-200 text-amber-900 border border-amber-300'
-                                                }`}
+                                                    }`}
                                                 title="Toggle LWF for all rows"
                                             >
                                                 {lwfStatutoryState.allTrue ? '✓ All' : lwfStatutoryState.allFalse ? '✕ Off' : `Mix (${lwfStatutoryState.trueCount})`}
@@ -4238,13 +4201,12 @@ const ReviseSalaryDetailsTab = () => {
                                             <button
                                                 type="button"
                                                 onClick={() => handleColumnHeaderToggle('tdsEnabled')}
-                                                className={`text-[8.5px] font-bold px-1.5 py-0.5 rounded-full transition-all cursor-pointer shadow-2xs shrink-0 ${
-                                                    tdsStatutoryState.allTrue
-                                                        ? 'bg-blue-600 text-white'
-                                                        : tdsStatutoryState.allFalse
+                                                className={`text-[8.5px] font-bold px-1.5 py-0.5 rounded-full transition-all cursor-pointer shadow-2xs shrink-0 ${tdsStatutoryState.allTrue
+                                                    ? 'bg-blue-600 text-white'
+                                                    : tdsStatutoryState.allFalse
                                                         ? 'bg-slate-200 text-slate-700'
                                                         : 'bg-amber-200 text-amber-900 border border-amber-300'
-                                                }`}
+                                                    }`}
                                                 title="Toggle TDS for all rows"
                                             >
                                                 {tdsStatutoryState.allTrue ? '✓ All' : tdsStatutoryState.allFalse ? '✕ Off' : `Mix (${tdsStatutoryState.trueCount})`}
@@ -4262,13 +4224,12 @@ const ReviseSalaryDetailsTab = () => {
                                             <button
                                                 type="button"
                                                 onClick={() => handleColumnHeaderToggle('ltaEnabled')}
-                                                className={`text-[8.5px] font-bold px-1.5 py-0.5 rounded-full transition-all cursor-pointer shadow-2xs shrink-0 ${
-                                                    ltaStatutoryState.allTrue
-                                                        ? 'bg-emerald-600 text-white'
-                                                        : ltaStatutoryState.allFalse
+                                                className={`text-[8.5px] font-bold px-1.5 py-0.5 rounded-full transition-all cursor-pointer shadow-2xs shrink-0 ${ltaStatutoryState.allTrue
+                                                    ? 'bg-emerald-600 text-white'
+                                                    : ltaStatutoryState.allFalse
                                                         ? 'bg-slate-200 text-slate-700'
                                                         : 'bg-amber-200 text-amber-900 border border-amber-300'
-                                                }`}
+                                                    }`}
                                                 title="Toggle LTA for all rows"
                                             >
                                                 {ltaStatutoryState.allTrue ? '✓ All' : ltaStatutoryState.allFalse ? '✕ Off' : `Mix (${ltaStatutoryState.trueCount})`}
@@ -4326,18 +4287,18 @@ const ReviseSalaryDetailsTab = () => {
                                         const rowBg = modified
                                             ? 'bg-amber-50 hover:bg-amber-100'
                                             : isSelected
-                                            ? 'bg-blue-50 hover:bg-blue-100'
-                                            : isRowEven
-                                            ? 'bg-white hover:bg-slate-50'
-                                            : 'bg-slate-50 hover:bg-slate-100';
+                                                ? 'bg-blue-50 hover:bg-blue-100'
+                                                : isRowEven
+                                                    ? 'bg-white hover:bg-slate-50'
+                                                    : 'bg-slate-50 hover:bg-slate-100';
 
                                         const stickyBgColor = modified
                                             ? '#fef3c7'
                                             : isSelected
-                                            ? '#eff6ff'
-                                            : isRowEven
-                                            ? '#ffffff'
-                                            : '#f8fafc';
+                                                ? '#eff6ff'
+                                                : isRowEven
+                                                    ? '#ffffff'
+                                                    : '#f8fafc';
 
                                         return (
                                             <tr
@@ -4452,11 +4413,10 @@ const ReviseSalaryDetailsTab = () => {
                                                             value={!row.ltaEnabled ? 0 : (row.lta !== undefined && row.lta !== '' ? row.lta : (c.lta || 0))}
                                                             disabled={!row.ltaEnabled}
                                                             onChange={(e) => handleRowFieldChange(row._id, 'lta', e.target.value)}
-                                                            className={`w-full h-6.5 pl-5 pr-1.5 py-0.5 text-[11px] font-mono tabular-nums font-bold border rounded focus:outline-none shadow-2xs ${
-                                                                !row.ltaEnabled
-                                                                    ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed'
-                                                                    : 'border-slate-300 focus:border-emerald-500 bg-white'
-                                                            }`}
+                                                            className={`w-full h-6.5 pl-5 pr-1.5 py-0.5 text-[11px] font-mono tabular-nums font-bold border rounded focus:outline-none shadow-2xs ${!row.ltaEnabled
+                                                                ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed'
+                                                                : 'border-slate-300 focus:border-emerald-500 bg-white'
+                                                                }`}
                                                             placeholder="0"
                                                         />
                                                     </div>
@@ -5157,14 +5117,12 @@ const ReviseSalaryDetailsTab = () => {
                                 return (
                                     <div
                                         key={tpl._id}
-                                        className={`p-4 rounded-xl flex items-center justify-between flex-wrap gap-3 transition-all ${
-                                            isSelected ? 'bg-blue-50/40 border border-blue-200/60' : 'hover:bg-slate-50'
-                                        }`}
+                                        className={`p-4 rounded-xl flex items-center justify-between flex-wrap gap-3 transition-all ${isSelected ? 'bg-blue-50/40 border border-blue-200/60' : 'hover:bg-slate-50'
+                                            }`}
                                     >
                                         <div className="flex items-center gap-3">
-                                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
-                                                isBuiltIn ? 'bg-indigo-50 text-indigo-600' : 'bg-blue-50 text-blue-600'
-                                            }`}>
+                                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${isBuiltIn ? 'bg-indigo-50 text-indigo-600' : 'bg-blue-50 text-blue-600'
+                                                }`}>
                                                 <FileText size={20} />
                                             </div>
                                             <div>
@@ -5193,11 +5151,10 @@ const ReviseSalaryDetailsTab = () => {
                                             <button
                                                 type="button"
                                                 onClick={() => setSelectedTemplateId(tpl._id)}
-                                                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                                                    isSelected
-                                                        ? 'bg-blue-600 text-white'
-                                                        : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-                                                }`}
+                                                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${isSelected
+                                                    ? 'bg-blue-600 text-white'
+                                                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                                                    }`}
                                             >
                                                 {isSelected ? 'Active' : 'Select'}
                                             </button>
@@ -5665,13 +5622,12 @@ const ReviseSalaryDetailsTab = () => {
                                                 )) || 'Compensation updated'}
                                             </td>
                                             <td className="py-2.5 px-3">
-                                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                                                    rev.status === 'applied'
-                                                        ? 'bg-emerald-50 text-emerald-700'
-                                                        : rev.status === 'scheduled'
+                                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${rev.status === 'applied'
+                                                    ? 'bg-emerald-50 text-emerald-700'
+                                                    : rev.status === 'scheduled'
                                                         ? 'bg-blue-50 text-blue-700'
                                                         : 'bg-slate-100 text-slate-600'
-                                                }`}>
+                                                    }`}>
                                                     {rev.status || 'Applied'}
                                                 </span>
                                             </td>

@@ -304,11 +304,13 @@ const Sidebar = ({ isOpen, onClose }) => {
     || user?.permissions?.includes('settings.notification.view')
     || user?.permissions?.includes('settings.notification.manage')
     || user?.permissions?.includes('*');
-  const showPayroll = isAdmin
+  const showPayroll = (hasModule('payroll') || user?.company?.enabledModules?.includes('payroll')) && (
+    isAdmin
     || user?.permissions?.includes('payroll.calculator.view')
     || user?.permissions?.includes('payroll.config.manage')
     || user?.permissions?.includes('payroll.salary.view')
-    || user?.permissions?.includes('*');
+    || user?.permissions?.includes('*')
+  );
   const homeRoute = showDashboard ? '/' : (showEss ? '/ess' : (showAttendance ? '/attendance' : '/'));
   const sectionLabelClass = isCustomAppRoute
     ? 'px-3 mb-3 text-[10px] font-semibold uppercase tracking-[0.28em] text-white'

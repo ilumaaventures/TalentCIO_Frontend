@@ -291,7 +291,7 @@ const CreateHiringRequest = () => {
                         isPublic: Boolean(data.isPublic),
                         isJobVisible: Boolean(data.isJobVisible ?? data.isPublic),
                         isResourceGatewayPublic: Boolean(data.isResourceGatewayPublic),
-                        wasEverPublished: Boolean(data.wasEverPublished || data.isPublic)
+                        wasEverPublished: Boolean(data.wasEverPublished || data.isPublic || data.isResourceGatewayPublic)
                     });
                     setSelectedPhaseTemplateId(
                         data.useDynamicPhases && data.phaseTemplateId
@@ -468,7 +468,7 @@ const CreateHiringRequest = () => {
                 isPublic: Boolean(formData.isPublic),
                 isJobVisible: Boolean(formData.isJobVisible ?? formData.isPublic),
                 isResourceGatewayPublic: Boolean(formData.isResourceGatewayPublic),
-                wasEverPublished: Boolean(formData.wasEverPublished || formData.isPublic)
+                wasEverPublished: Boolean(formData.wasEverPublished || formData.isPublic || formData.isResourceGatewayPublic)
             };
 
             if (id) {

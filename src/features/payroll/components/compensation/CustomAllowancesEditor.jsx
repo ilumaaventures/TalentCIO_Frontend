@@ -114,11 +114,10 @@ const CustomAllowancesEditor = ({ formData, calculateSalaryBreakdown }) => {
 
                             {/* In Annual CTC Checkbox Tag */}
                             <label
-                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border cursor-pointer select-none text-xs font-semibold shrink-0 shadow-2xs transition-all ${
-                                    item.addedInAnnualCTC !== false
-                                        ? 'bg-emerald-50/90 border-emerald-300 text-emerald-800'
-                                        : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'
-                                }`}
+                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border cursor-pointer select-none text-xs font-semibold shrink-0 shadow-2xs transition-all ${item.addedInAnnualCTC !== false
+                                    ? 'bg-emerald-50/90 border-emerald-300 text-emerald-800'
+                                    : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'
+                                    }`}
                                 title={item.addedInAnnualCTC !== false ? 'Funded from Annual CTC' : 'Additional earnings outside CTC'}
                             >
                                 <input

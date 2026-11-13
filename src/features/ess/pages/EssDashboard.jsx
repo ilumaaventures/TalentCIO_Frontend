@@ -977,7 +977,7 @@ const EssDashboard = () => {
     const showTimesheet     = hasModule('timesheet') || user?.company?.enabledModules?.includes('timesheet');
     const showLeave         = hasModule('leaves');
     const showReimburse     = hasModule('reimbursements');
-    const showPayslip       = isAdmin || user?.permissions?.includes('payroll.payslip.view');
+    const showPayslip       = (hasModule('payroll') || user?.company?.enabledModules?.includes('payroll')) && (isAdmin || user?.permissions?.includes('payroll.payslip.view'));
     const showAnnouncements = hasModule('announcements') || user?.company?.enabledModules?.includes('announcements');
     const showHelpdesk      = hasModule('helpdesk');
     const showHolidays      = hasModule('holidays');
