@@ -17,12 +17,58 @@ import {
     GripVertical
 } from 'lucide-react';
 
+// Dedicated component for inline position numbers to avoid focus-loss while typing multi-digit numbers
+const PositionInput = ({ position, totalCount, onCommit }) => {
+    const [val, setVal] = useState(String(position));
+
+    React.useEffect(() => {
+        setVal(String(position));
+    }, [position]);
+
+    const handleBlur = () => {
+        const num = parseInt(val, 10);
+        if (!isNaN(num) && num >= 1 && num <= totalCount && num !== position) {
+            onCommit(num);
+        } else {
+            setVal(String(position));
+        }
+    };
+
+    const handleKeyDown = (e) => {
+        if (e.key === 'Enter') {
+            e.currentTarget.blur();
+        } else if (e.key === 'Escape') {
+            setVal(String(position));
+            e.currentTarget.blur();
+        }
+    };
+
+    return (
+        <input
+            type="number"
+            min={1}
+            max={totalCount}
+            value={val}
+            draggable={false}
+            onDragStart={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+            onChange={(e) => setVal(e.target.value)}
+            onBlur={handleBlur}
+            onKeyDown={handleKeyDown}
+            className="w-10 h-7 text-center font-mono tabular-nums text-xs font-black border border-slate-300 rounded-lg bg-white focus:outline-none focus:border-blue-500 shadow-2xs"
+            title={`Change column position (1 to ${totalCount}). Press Enter or click outside to apply.`}
+        />
+    );
+};
+
 export const BulkGridColumnManagerModal = ({
     isOpen,
     onClose,
     columnOrder = [],
+    defaultColumnOrder = [],
     columnVisibility = {},
     columnDefinitions = {},
+    onApplyLayout,
     onUpdateOrder,
     onUpdateVisibility,
     onResetDefaults
@@ -81,16 +127,19 @@ export const BulkGridColumnManagerModal = ({
 
     // Handlers
     const handleToggleOne = (key) => {
-        setLocalVisibility(prev => ({
-            ...prev,
-            [key]: !prev[key]
-        }));
+        setLocalVisibility(prev => {
+            const current = prev[key] !== false;
+            return {
+                ...prev,
+                [key]: !current
+            };
+        });
     };
 
     const handleSelectAll = (select) => {
         const next = {};
         localOrder.forEach(k => {
-            next[k] = select;
+            next[k] = Boolean(select);
         });
         setLocalVisibility(next);
     };
@@ -108,8 +157,8 @@ export const BulkGridColumnManagerModal = ({
         setLocalOrder(updated);
     };
 
-    const handleDirectPositionChange = (key, newPosStr) => {
-        const newPos = parseInt(newPosStr, 10);
+    const handleDirectPositionChange = (key, newPosInput) => {
+        const newPos = typeof newPosInput === 'number' ? newPosInput : parseInt(newPosInput, 10);
         if (isNaN(newPos)) return;
 
         const currentIndex = localOrder.indexOf(key);
@@ -152,16 +201,18 @@ export const BulkGridColumnManagerModal = ({
         }
     };
 
-    const handleDragLeave = (key) => {
-        if (dragOverKey === key) {
-            setDragOverKey(null);
+    const handleDragLeave = (e, key) => {
+        if (!e.currentTarget.contains(e.relatedTarget)) {
+            if (dragOverKey === key) {
+                setDragOverKey(null);
+            }
         }
     };
 
     const handleDrop = (e, targetKey) => {
         e.preventDefault();
         const sourceKey = draggedKey || e.dataTransfer.getData('text/plain');
-        if (sourceKey && sourceKey !== targetKey) {
+        if (sourceKey && targetKey && sourceKey !== targetKey) {
             handleReorderDrag(sourceKey, targetKey);
         }
         setDraggedKey(null);
@@ -203,13 +254,28 @@ export const BulkGridColumnManagerModal = ({
     };
 
     const handleSave = () => {
-        onUpdateOrder(localOrder);
-        onUpdateVisibility(localVisibility);
+        if (typeof onApplyLayout === 'function') {
+            onApplyLayout(localOrder, localVisibility);
+        } else {
+            onUpdateOrder?.(localOrder);
+            onUpdateVisibility?.(localVisibility);
+        }
         onClose();
     };
 
     const handleReset = () => {
-        onResetDefaults();
+        const defOrder = defaultColumnOrder && defaultColumnOrder.length > 0
+            ? [...defaultColumnOrder]
+            : Object.keys(columnDefinitions);
+        const defVis = {};
+        defOrder.forEach(k => { defVis[k] = true; });
+
+        setLocalOrder(defOrder);
+        setLocalVisibility(defVis);
+
+        if (typeof onResetDefaults === 'function') {
+            onResetDefaults();
+        }
         onClose();
     };
 
@@ -373,7 +439,7 @@ export const BulkGridColumnManagerModal = ({
                                     }`}
                                 >
                                     {/* Left: Drag Grip Handle + Position number input + Up/Down arrows */}
-                                    <div className="flex items-center gap-1.5 shrink-0">
+                                    <div className="flex items-center gap-1.5 shrink-0" onMouseDown={(e) => e.stopPropagation()}>
                                         {/* Drag Grip Handle */}
                                         <div
                                             className="p-1 text-slate-300 group-hover/row:text-slate-600 hover:!text-blue-600 cursor-grab active:cursor-grabbing rounded hover:bg-slate-100 transition-colors shrink-0"
@@ -384,20 +450,19 @@ export const BulkGridColumnManagerModal = ({
 
                                         <div className="relative flex items-center">
                                             <span className="text-[10px] text-slate-400 font-bold mr-1">#</span>
-                                            <input
-                                                type="number"
-                                                min={1}
-                                                max={totalCount}
-                                                value={position}
-                                                onChange={(e) => handleDirectPositionChange(key, e.target.value)}
-                                                className="w-10 h-7 text-center font-mono tabular-nums text-xs font-black border border-slate-300 rounded-lg bg-white focus:outline-none focus:border-blue-500 shadow-2xs"
-                                                title={`Change column order number (1 to ${totalCount})`}
+                                            <PositionInput
+                                                position={position}
+                                                totalCount={totalCount}
+                                                onCommit={(newPos) => handleDirectPositionChange(key, newPos)}
                                             />
                                         </div>
 
                                         <div className="flex flex-col gap-0.5">
                                             <button
                                                 type="button"
+                                                draggable={false}
+                                                onMouseDown={(e) => e.stopPropagation()}
+                                                onDragStart={(e) => e.stopPropagation()}
                                                 onClick={() => handleMove(key, 'up')}
                                                 disabled={isFirst}
                                                 className="p-1 rounded bg-slate-100 hover:bg-slate-200 disabled:opacity-30 text-slate-600 transition-colors cursor-pointer"
@@ -407,6 +472,9 @@ export const BulkGridColumnManagerModal = ({
                                             </button>
                                             <button
                                                 type="button"
+                                                draggable={false}
+                                                onMouseDown={(e) => e.stopPropagation()}
+                                                onDragStart={(e) => e.stopPropagation()}
                                                 onClick={() => handleMove(key, 'down')}
                                                 disabled={isLast}
                                                 className="p-1 rounded bg-slate-100 hover:bg-slate-200 disabled:opacity-30 text-slate-600 transition-colors cursor-pointer"
@@ -418,14 +486,18 @@ export const BulkGridColumnManagerModal = ({
                                     </div>
 
                                     {/* Middle: Checkbox + Label + Category */}
-                                    <label
+                                    <div
                                         onClick={() => handleToggleOne(key)}
-                                        className="flex-1 flex items-center gap-2.5 cursor-pointer min-w-0 select-none"
+                                        className="flex-1 flex items-center gap-2.5 cursor-pointer min-w-0 select-none py-1"
                                     >
                                         <input
                                             type="checkbox"
                                             checked={visible}
-                                            onChange={() => {}}
+                                            onChange={(e) => {
+                                                e.stopPropagation();
+                                                handleToggleOne(key);
+                                            }}
+                                            onClick={(e) => e.stopPropagation()}
                                             className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 cursor-pointer shrink-0"
                                         />
                                         <div className="min-w-0 flex-1">
@@ -450,7 +522,7 @@ export const BulkGridColumnManagerModal = ({
                                                 </p>
                                             )}
                                         </div>
-                                    </label>
+                                    </div>
 
                                     {/* Right: Quick View/Hide Toggle Icon */}
                                     <button
