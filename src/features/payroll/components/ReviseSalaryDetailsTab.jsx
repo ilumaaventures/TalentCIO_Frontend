@@ -47,11 +47,18 @@ import {
     SlidersHorizontal,
     ToggleLeft,
     ToggleRight,
-    Info
+    Info,
+    EyeOff,
+    ArrowUp,
+    ArrowDown,
+    ListOrdered,
+    GripVertical
 } from 'lucide-react';
 import CompensationFormSection from './compensation/CompensationFormSection';
 import DocPreviewer from '@/components/common/DocPreviewer';
 import { buildMasterSalaryStructure, fmtMoney, parseBool } from '@/features/payroll/utils/payroll';
+import BulkGridColumnManagerModal from './BulkGridColumnManagerModal';
+import { exportBulkSalaryToExcel } from '../utils/payrollExcelExporter';
 
 const REASON_TEMPLATES = [
     'Annual Appraisal & Hike',
@@ -428,6 +435,34 @@ const MIN_COLUMN_WIDTHS = {
     actions: 110
 };
 
+const BULK_GRID_COLUMN_DEFS = {
+    annualCTC: { label: 'Annual CTC (₹)', category: 'Base CTC', defaultWidth: 120, shortDesc: 'Annual Cost to Company input' },
+    monthlyCTC: { label: 'Monthly CTC (₹)', category: 'Base CTC', defaultWidth: 95, shortDesc: 'Monthly Cost to Company' },
+    basic: { label: 'Basic Salary (₹)', category: 'Earnings', defaultWidth: 85, shortDesc: 'Base monthly wage' },
+    hra: { label: 'HRA (₹)', category: 'Earnings', defaultWidth: 80, shortDesc: 'House Rent Allowance' },
+    petrol: { label: 'Petrol Allowance (₹)', category: 'Allowances', defaultWidth: 110, shortDesc: 'Monthly fuel allowance' },
+    lta: { label: 'LTA Allowance (₹)', category: 'Allowances', defaultWidth: 115, shortDesc: 'Leave Travel Allowance' },
+    conveyance: { label: 'Conveyance (₹)', category: 'Allowances', defaultWidth: 110, shortDesc: 'Transport allowance' },
+    medical: { label: 'Medical Allowance (₹)', category: 'Allowances', defaultWidth: 110, shortDesc: 'Medical allowance head' },
+    meal: { label: 'Meal Allowance (₹)', category: 'Allowances', defaultWidth: 110, shortDesc: 'Food / meal vouchers' },
+    broadband: { label: 'Broadband (₹)', category: 'Allowances', defaultWidth: 110, shortDesc: 'Internet allowance' },
+    flexiRemainder: { label: 'Flexi Remainder (₹)', category: 'Earnings', defaultWidth: 105, shortDesc: 'Special allowance / balancing figure' },
+    monthlyGross: { label: 'Monthly Gross (₹)', category: 'Summary', defaultWidth: 105, shortDesc: 'Total monthly cash earnings' },
+    insurance: { label: 'Medical Insurance (₹)', category: 'Deductions', defaultWidth: 125, shortDesc: 'Insurance deduction from flexi' },
+    pf: { label: 'Provident Fund (PF)', category: 'Statutory', defaultWidth: 165, shortDesc: 'EPF statutory contributions' },
+    esi: { label: 'Employee State Insurance (ESI)', category: 'Statutory', defaultWidth: 95, shortDesc: 'ESIC health insurance' },
+    pt: { label: 'Professional Tax (PT)', category: 'Statutory', defaultWidth: 85, shortDesc: 'State professional tax' },
+    gratuity: { label: 'Gratuity Provision', category: 'Statutory', defaultWidth: 115, shortDesc: 'Statutory gratuity provision' },
+    lwf: { label: 'Labour Welfare Fund (LWF)', category: 'Statutory', defaultWidth: 95, shortDesc: 'State welfare fund contribution' },
+    tds: { label: 'TDS Deduction', category: 'Statutory', defaultWidth: 85, shortDesc: 'Tax deduction at source' },
+    ltaStatutory: { label: 'LTA Statutory Eligibility', category: 'Statutory', defaultWidth: 85, shortDesc: 'LTA tax benefit eligibility' },
+    deductions: { label: 'Total Deductions (₹)', category: 'Summary', defaultWidth: 100, shortDesc: 'Total monthly deductions from gross' },
+    takeHome: { label: 'Est. Net Take-Home (₹)', category: 'Net Pay', defaultWidth: 115, shortDesc: 'Estimated monthly cash in hand' },
+};
+
+const DEFAULT_BULK_COLUMN_ORDER = Object.keys(BULK_GRID_COLUMN_DEFS);
+const STORAGE_KEY_COL_PREFS = 'payroll_bulk_table_column_prefs_v4';
+
 const ReviseSalaryDetailsTab = () => {
     const { user: currentUser } = useAuth();
     const [subTab, setSubTab] = useState('single'); // 'single' | 'bulk' | 'templates' | 'logs'
@@ -606,13 +641,147 @@ const ReviseSalaryDetailsTab = () => {
         toast.success('Column widths reset to defaults');
     }, []);
 
+    // Column ordering and visibility state (persisted to localStorage)
+    const [showColumnManagerModal, setShowColumnManagerModal] = useState(false);
+
+    const [columnOrder, setColumnOrder] = useState(() => {
+        try {
+            const saved = localStorage.getItem(STORAGE_KEY_COL_PREFS);
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                if (Array.isArray(parsed?.order) && parsed.order.length > 0) {
+                    const validKeys = parsed.order.filter(k => DEFAULT_BULK_COLUMN_ORDER.includes(k));
+                    const missingKeys = DEFAULT_BULK_COLUMN_ORDER.filter(k => !validKeys.includes(k));
+                    return [...validKeys, ...missingKeys];
+                }
+            }
+        } catch { }
+        return DEFAULT_BULK_COLUMN_ORDER;
+    });
+
+    const [columnVisibility, setColumnVisibility] = useState(() => {
+        try {
+            const saved = localStorage.getItem(STORAGE_KEY_COL_PREFS);
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                if (parsed?.visibility && typeof parsed.visibility === 'object') {
+                    return { ...parsed.visibility };
+                }
+            }
+        } catch { }
+        const initial = {};
+        DEFAULT_BULK_COLUMN_ORDER.forEach(k => { initial[k] = true; });
+        return initial;
+    });
+
+    const saveColumnPrefs = useCallback((newOrder, newVisibility) => {
+        try {
+            localStorage.setItem(STORAGE_KEY_COL_PREFS, JSON.stringify({
+                order: newOrder,
+                visibility: newVisibility
+            }));
+        } catch { }
+    }, []);
+
+    const handleUpdateColumnOrder = useCallback((newOrder) => {
+        setColumnOrder(newOrder);
+        saveColumnPrefs(newOrder, columnVisibility);
+        toast.success('Column order updated');
+    }, [columnVisibility, saveColumnPrefs]);
+
+    const handleUpdateColumnVisibility = useCallback((newVisibility) => {
+        setColumnVisibility(newVisibility);
+        saveColumnPrefs(columnOrder, newVisibility);
+        toast.success('Column visibility updated');
+    }, [columnOrder, saveColumnPrefs]);
+
+    const handleHideColumn = useCallback((colKey) => {
+        setColumnVisibility(prev => {
+            const next = { ...prev, [colKey]: false };
+            saveColumnPrefs(columnOrder, next);
+            toast.success(`Hidden "${BULK_GRID_COLUMN_DEFS[colKey]?.label || colKey}". Use "Columns" button to restore.`);
+            return next;
+        });
+    }, [columnOrder, saveColumnPrefs]);
+
+    const handleResetColumnDefaults = useCallback(() => {
+        const defaultVis = {};
+        DEFAULT_BULK_COLUMN_ORDER.forEach(k => { defaultVis[k] = true; });
+        setColumnOrder(DEFAULT_BULK_COLUMN_ORDER);
+        setColumnVisibility(defaultVis);
+        try {
+            localStorage.removeItem(STORAGE_KEY_COL_PREFS);
+        } catch { }
+        toast.success('Column layout reset to defaults');
+    }, [saveColumnPrefs]);
+
+    const orderedVisibleColKeys = useMemo(() => {
+        return columnOrder.filter(k => columnVisibility[k] !== false);
+    }, [columnOrder, columnVisibility]);
+
+    // Table Header Drag & Drop state & handlers
+    const [draggedHeaderKey, setDraggedHeaderKey] = useState(null);
+    const [dragOverHeaderKey, setDragOverHeaderKey] = useState(null);
+
+    const handleHeaderDragStart = useCallback((e, colKey) => {
+        setDraggedHeaderKey(colKey);
+        e.dataTransfer.setData('text/plain', colKey);
+        e.dataTransfer.effectAllowed = 'move';
+    }, []);
+
+    const handleHeaderDragOver = useCallback((e, colKey) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        setDragOverHeaderKey(prev => (prev !== colKey ? colKey : prev));
+    }, []);
+
+    const handleHeaderDragLeave = useCallback((colKey) => {
+        setDragOverHeaderKey(prev => (prev === colKey ? null : prev));
+    }, []);
+
+    const handleHeaderDrop = useCallback((e, targetColKey) => {
+        e.preventDefault();
+        const sourceColKey = draggedHeaderKey || e.dataTransfer.getData('text/plain');
+        if (!sourceColKey || sourceColKey === targetColKey) {
+            setDraggedHeaderKey(null);
+            setDragOverHeaderKey(null);
+            return;
+        }
+
+        const sourceIndex = columnOrder.indexOf(sourceColKey);
+        const targetIndex = columnOrder.indexOf(targetColKey);
+        if (sourceIndex === -1 || targetIndex === -1) return;
+
+        const updatedOrder = [...columnOrder];
+        const [moved] = updatedOrder.splice(sourceIndex, 1);
+        updatedOrder.splice(targetIndex, 0, moved);
+
+        handleUpdateColumnOrder(updatedOrder);
+        setDraggedHeaderKey(null);
+        setDragOverHeaderKey(null);
+    }, [columnOrder, handleUpdateColumnOrder, draggedHeaderKey]);
+
+    const handleHeaderDragEnd = useCallback(() => {
+        setDraggedHeaderKey(null);
+        setDragOverHeaderKey(null);
+    }, []);
+
     const totalTableWidth = useMemo(() => {
-        return Object.values(columnWidths).reduce((sum, w) => sum + (Number(w) || 0), 0);
-    }, [columnWidths]);
+        let sum = (Number(columnWidths.checkbox) || 44) + (Number(columnWidths.employee) || 220);
+        orderedVisibleColKeys.forEach(k => {
+            sum += (Number(columnWidths[k]) || DEFAULT_COLUMN_WIDTHS[k] || 110);
+        });
+        sum += (Number(columnWidths.actions) || 140);
+        return sum;
+    }, [columnWidths, orderedVisibleColKeys]);
 
     const renderResizeHandle = useCallback((colKey, isLeft = false) => (
         <div
-            onMouseDown={(e) => handleStartResize(e, colKey)}
+            draggable={false}
+            onMouseDown={(e) => {
+                e.stopPropagation();
+                handleStartResize(e, colKey);
+            }}
             onDoubleClick={(e) => {
                 e.stopPropagation();
                 handleResetColumnWidth(colKey);
@@ -2118,90 +2287,55 @@ const ReviseSalaryDetailsTab = () => {
             return;
         }
 
-        const headers = [
-            'Employee Code',
-            'First Name',
-            'Last Name',
-            'Department',
-            'Designation',
-            'Annual CTC (INR)',
-            'Monthly CTC (INR)',
-            'Basic (INR)',
-            'HRA (INR)',
-            'Petrol (INR)',
-            'LTA (INR)',
-            'Conveyance (INR)',
-            'Medical Allowance (INR)',
-            'Meal Allowance (INR)',
-            'Broadband (INR)',
-            'Custom Allowances (INR)',
-            'Flexi Remainder (INR)',
-            'Monthly Gross (INR)',
-            'Medical Insurance Deduction Flexi (INR)',
-            'PF Enabled',
-            'Include PF in CTC',
-            'Employee PF (INR)',
-            'Employer PF (INR)',
-            'ESI Enabled',
-            'Employee ESI (INR)',
-            'PT Applicable',
-            'Professional Tax (INR)',
-            'Gratuity Enabled',
-            'Include Gratuity in CTC',
-            'Gratuity (INR)',
-            'LWF Applicable',
-            'Employee LWF (INR)',
-            'Employer LWF (INR)',
-            'TDS Enabled',
-            'LTA Eligible',
-            'Total Deductions (INR)',
-            'Est Net Take-Home (INR)'
-        ];
+        const cleanStr = (val) => `"${String(val ?? '').replace(/"/g, '""')}"`;
+
+        // Base identifying headers
+        const headers = ['Employee Code', 'First Name', 'Last Name', 'Department', 'Designation'];
+        orderedVisibleColKeys.forEach(k => {
+            const def = BULK_GRID_COLUMN_DEFS[k];
+            headers.push(def?.label || k);
+        });
 
         const csvRows = [headers.join(',')];
 
         filteredBulkRows.forEach(row => {
             const c = row.calculated || {};
-            const cleanStr = (val) => `"${String(val || '').replace(/"/g, '""')}"`;
             const r = [
                 cleanStr(row.employeeCode),
                 cleanStr(row.firstName),
                 cleanStr(row.lastName),
                 cleanStr(row.department),
-                cleanStr(row.designation),
-                row.annualCTC || 0,
-                row.monthlyCTC || 0,
-                c.basicMaster || 0,
-                c.hraMaster || 0,
-                row.petrol || 0,
-                c.lta || 0,
-                row.conveyance || 0,
-                row.medicalAllowance || 0,
-                row.mealAllowance || 0,
-                row.broadband || 0,
-                row.customAllowances || 0,
-                c.specialAllowance || 0,
-                c.grossMaster || 0,
-                row.insuranceAmount !== undefined ? row.insuranceAmount : 0,
-                row.pfEnabled ? 'Yes' : 'No',
-                row.includePfInCTC ? 'Yes' : 'No',
-                c.pfEmployee || 0,
-                c.pfEmployer || 0,
-                row.esiEnabled ? 'Yes' : 'No',
-                c.esiEmployee || 0,
-                row.ptEnabled ? 'Yes' : 'No',
-                c.professionalTax || 0,
-                row.gratuityEnabled ? 'Yes' : 'No',
-                row.includeGratuityInCTC ? 'Yes' : 'No',
-                c.gratuity || 0,
-                row.lwfEnabled ? 'Yes' : 'No',
-                c.lwfEmployee || 0,
-                c.lwfEmployer || 0,
-                row.tdsEnabled ? 'Yes' : 'No',
-                row.ltaEnabled ? 'Yes' : 'No',
-                c.totalDeductions || 0,
-                c.netTakeHome || 0
+                cleanStr(row.designation)
             ];
+
+            orderedVisibleColKeys.forEach(k => {
+                switch (k) {
+                    case 'annualCTC': r.push(row.annualCTC || 0); break;
+                    case 'monthlyCTC': r.push(row.monthlyCTC || 0); break;
+                    case 'basic': r.push(c.basicMaster || 0); break;
+                    case 'hra': r.push(c.hraMaster || 0); break;
+                    case 'petrol': r.push(row.petrol || 0); break;
+                    case 'lta': r.push(c.lta || 0); break;
+                    case 'conveyance': r.push(row.conveyance || 0); break;
+                    case 'medical': r.push(row.medicalAllowance !== undefined ? row.medicalAllowance : (row.medical || 0)); break;
+                    case 'meal': r.push(row.mealAllowance !== undefined ? row.mealAllowance : (row.meal || 0)); break;
+                    case 'broadband': r.push(row.broadband || 0); break;
+                    case 'flexiRemainder': r.push(c.specialAllowance || 0); break;
+                    case 'monthlyGross': r.push(c.grossMaster || 0); break;
+                    case 'insurance': r.push(row.insuranceAmount !== undefined ? row.insuranceAmount : 0); break;
+                    case 'pf': r.push(cleanStr(row.pfEnabled ? (row.includePfInCTC ? 'Yes (In CTC)' : 'Yes') : 'No')); break;
+                    case 'esi': r.push(cleanStr(row.esiEnabled ? `Yes (₹${c.esiEmployee || 0})` : 'No')); break;
+                    case 'pt': r.push(cleanStr(row.ptEnabled ? `Yes (₹${c.professionalTax || 0})` : 'No')); break;
+                    case 'gratuity': r.push(cleanStr(row.gratuityEnabled ? (row.includeGratuityInCTC ? 'Yes (In CTC)' : 'Yes') : 'No')); break;
+                    case 'lwf': r.push(cleanStr(row.lwfEnabled ? 'Yes' : 'No')); break;
+                    case 'tds': r.push(cleanStr(row.tdsEnabled ? 'Yes' : 'No')); break;
+                    case 'ltaStatutory': r.push(cleanStr(row.ltaEnabled ? 'Yes' : 'No')); break;
+                    case 'deductions': r.push(c.totalDeductions || 0); break;
+                    case 'takeHome': r.push(c.netTakeHome || 0); break;
+                    default: r.push(cleanStr(row[k] || '')); break;
+                }
+            });
+
             csvRows.push(r.join(','));
         });
 
@@ -2214,8 +2348,18 @@ const ReviseSalaryDetailsTab = () => {
         link.click();
         document.body.removeChild(link);
         URL.revokeObjectURL(url);
-        toast.success('Spreadsheet exported to CSV successfully');
-    }, [filteredBulkRows]);
+        toast.success('Spreadsheet exported to CSV in custom column order successfully');
+    }, [filteredBulkRows, orderedVisibleColKeys]);
+
+    const handleExportExcel = useCallback(() => {
+        exportBulkSalaryToExcel({
+            rows: filteredBulkRows,
+            payrollConfig: payrollConfigRef.current || payrollConfig,
+            orderedVisibleColKeys,
+            columnDefinitions: BULK_GRID_COLUMN_DEFS,
+            fileNamePrefix: 'Bulk_Salary_Details_Custom'
+        });
+    }, [filteredBulkRows, payrollConfig, orderedVisibleColKeys]);
 
     const buildCustomBreakup = useCallback((row) => {
         const c = row.calculated || {};
@@ -2436,6 +2580,843 @@ const ReviseSalaryDetailsTab = () => {
         fetchBulkProfiles,
         fetchEmployees
     ]);
+
+    const renderBulkHeaderCell = useCallback((colKey) => {
+        const w = columnWidths[colKey] || DEFAULT_COLUMN_WIDTHS[colKey] || 110;
+        const colStyle = {
+            position: 'sticky',
+            top: 0,
+            zIndex: 10,
+            width: `${w}px`,
+            minWidth: `${w}px`,
+            maxWidth: `${w}px`
+        };
+
+        const isHeaderDragging = draggedHeaderKey === colKey;
+        const isHeaderDragOver = dragOverHeaderKey === colKey && !isHeaderDragging;
+
+        const dragThProps = {
+            draggable: true,
+            onDragStart: (e) => handleHeaderDragStart(e, colKey),
+            onDragOver: (e) => handleHeaderDragOver(e, colKey),
+            onDragLeave: () => handleHeaderDragLeave(colKey),
+            onDrop: (e) => handleHeaderDrop(e, colKey),
+            onDragEnd: handleHeaderDragEnd,
+            title: 'Click and drag column header to reorder'
+        };
+
+        const dragClasses = `cursor-grab active:cursor-grabbing select-none transition-all ${
+            isHeaderDragging ? 'opacity-30 border-dashed border-2 border-blue-500 bg-blue-100' :
+            isHeaderDragOver ? 'border-l-4 border-l-blue-600 bg-blue-100/90 shadow-md ring-2 ring-blue-400' : ''
+        }`;
+
+        const renderHideBtn = () => (
+            <button
+                type="button"
+                onClick={(e) => {
+                    e.stopPropagation();
+                    handleHideColumn(colKey);
+                }}
+                className="opacity-0 group-hover/th:opacity-100 p-0.5 rounded text-slate-400 hover:text-rose-600 hover:bg-white/80 transition-opacity cursor-pointer shrink-0"
+                title="Hide this column"
+            >
+                <EyeOff size={11} />
+            </button>
+        );
+
+        const headerTitleWithHide = (title, bgClass = 'bg-slate-100', extraBadge = null) => (
+            <th
+                key={colKey}
+                style={colStyle}
+                {...dragThProps}
+                className={`relative py-2 px-2 border-b border-r border-slate-200 ${bgClass} ${dragClasses} group/th`}
+            >
+                <div className="flex items-center justify-between gap-1 pr-1 truncate">
+                    <span className="truncate flex items-center gap-1">
+                        <GripVertical size={11} className="opacity-0 group-hover/th:opacity-60 text-slate-400 shrink-0 cursor-grab" />
+                        <span className="truncate">{title}</span>
+                    </span>
+                    <div className="flex items-center gap-1 shrink-0">
+                        {extraBadge}
+                        {renderHideBtn()}
+                    </div>
+                </div>
+                {renderResizeHandle(colKey)}
+            </th>
+        );
+
+        switch (colKey) {
+            case 'annualCTC':
+                return (
+                    <th
+                        key={colKey}
+                        style={colStyle}
+                        {...dragThProps}
+                        className={`relative py-2 px-2 border-b border-r border-slate-200 bg-slate-50 ${dragClasses} group/th truncate`}
+                    >
+                        <div className="flex items-center justify-between gap-1">
+                            <span className="truncate flex items-center gap-1">
+                                <GripVertical size={11} className="opacity-0 group-hover/th:opacity-60 text-slate-400 shrink-0 cursor-grab" />
+                                <span className="truncate">Annual CTC (₹)</span>
+                            </span>
+                            {renderHideBtn()}
+                        </div>
+                        {renderResizeHandle('annualCTC')}
+                    </th>
+                );
+            case 'monthlyCTC':
+                return (
+                    <th
+                        key={colKey}
+                        style={colStyle}
+                        {...dragThProps}
+                        className={`relative py-2 px-2 border-b border-r border-slate-200 text-right bg-slate-100 ${dragClasses} group/th truncate`}
+                    >
+                        <div className="flex items-center justify-between gap-1">
+                            {renderHideBtn()}
+                            <span className="truncate ml-auto flex items-center gap-1">
+                                <GripVertical size={11} className="opacity-0 group-hover/th:opacity-60 text-slate-400 shrink-0 cursor-grab" />
+                                <span className="truncate">Monthly CTC</span>
+                            </span>
+                        </div>
+                        {renderResizeHandle('monthlyCTC')}
+                    </th>
+                );
+            case 'basic':
+                return (
+                    <th
+                        key={colKey}
+                        style={colStyle}
+                        {...dragThProps}
+                        className={`relative py-2 px-2 border-b border-r border-slate-200 text-right bg-slate-100 ${dragClasses} group/th truncate`}
+                    >
+                        <div className="flex items-center justify-between gap-1">
+                            {renderHideBtn()}
+                            <span className="truncate ml-auto flex items-center gap-1">
+                                <GripVertical size={11} className="opacity-0 group-hover/th:opacity-60 text-slate-400 shrink-0 cursor-grab" />
+                                <span className="truncate">Basic</span>
+                            </span>
+                        </div>
+                        {renderResizeHandle('basic')}
+                    </th>
+                );
+            case 'hra':
+                return (
+                    <th
+                        key={colKey}
+                        style={colStyle}
+                        {...dragThProps}
+                        className={`relative py-2 px-2 border-b border-r border-slate-200 text-right bg-slate-100 ${dragClasses} group/th truncate`}
+                    >
+                        <div className="flex items-center justify-between gap-1">
+                            {renderHideBtn()}
+                            <span className="truncate ml-auto flex items-center gap-1">
+                                <GripVertical size={11} className="opacity-0 group-hover/th:opacity-60 text-slate-400 shrink-0 cursor-grab" />
+                                <span className="truncate">HRA</span>
+                            </span>
+                        </div>
+                        {renderResizeHandle('hra')}
+                    </th>
+                );
+            case 'petrol':
+                return headerTitleWithHide('Petrol', 'bg-sky-50', <span className="text-[8.5px] font-bold text-sky-700 bg-sky-100 px-1 py-0.2 rounded shrink-0">In CTC</span>);
+            case 'lta':
+                return headerTitleWithHide('LTA', 'bg-emerald-50', <span className="text-[8.5px] font-bold text-emerald-700 bg-emerald-100 px-1 py-0.2 rounded shrink-0">In CTC</span>);
+            case 'conveyance':
+                return headerTitleWithHide('Conveyance', 'bg-slate-100', <span className="text-[8.5px] font-semibold text-slate-600 bg-slate-200 px-1 py-0.2 rounded shrink-0">In CTC</span>);
+            case 'medical':
+                return headerTitleWithHide('Medical Allow.', 'bg-slate-100', <span className="text-[8.5px] font-semibold text-slate-600 bg-slate-200 px-1 py-0.2 rounded shrink-0">In CTC</span>);
+            case 'meal':
+                return headerTitleWithHide('Meal Allow.', 'bg-slate-100', <span className="text-[8.5px] font-semibold text-slate-600 bg-slate-200 px-1 py-0.2 rounded shrink-0">In CTC</span>);
+            case 'broadband':
+                return headerTitleWithHide('Broadband', 'bg-slate-100', <span className="text-[8.5px] font-semibold text-slate-600 bg-slate-200 px-1 py-0.2 rounded shrink-0">In CTC</span>);
+            case 'flexiRemainder':
+                return (
+                    <th
+                        key={colKey}
+                        style={colStyle}
+                        {...dragThProps}
+                        className={`relative py-2 px-2 border-b border-r border-slate-200 text-right bg-blue-100/80 text-blue-900 font-extrabold ${dragClasses} group/th truncate`}
+                    >
+                        <div className="flex items-center justify-between gap-1">
+                            {renderHideBtn()}
+                            <span className="truncate ml-auto flex items-center gap-1">
+                                <GripVertical size={11} className="opacity-0 group-hover/th:opacity-60 text-blue-500 shrink-0 cursor-grab" />
+                                <span className="truncate">Flexi Remainder</span>
+                            </span>
+                        </div>
+                        {renderResizeHandle('flexiRemainder')}
+                    </th>
+                );
+            case 'monthlyGross':
+                return (
+                    <th
+                        key={colKey}
+                        style={colStyle}
+                        {...dragThProps}
+                        className={`relative py-2 px-2 border-b border-r border-slate-200 bg-slate-200 text-right font-black text-slate-900 ${dragClasses} group/th truncate`}
+                    >
+                        <div className="flex items-center justify-between gap-1">
+                            {renderHideBtn()}
+                            <span className="truncate ml-auto flex items-center gap-1">
+                                <GripVertical size={11} className="opacity-0 group-hover/th:opacity-60 text-slate-500 shrink-0 cursor-grab" />
+                                <span className="truncate">Monthly Gross</span>
+                            </span>
+                        </div>
+                        {renderResizeHandle('monthlyGross')}
+                    </th>
+                );
+            case 'insurance':
+                return headerTitleWithHide('Medical Insurance', 'bg-rose-100/80 text-rose-900', <span className="text-[8.5px] font-extrabold text-rose-700 bg-rose-200 px-1 py-0.2 rounded shrink-0">Deduct</span>);
+            case 'pf':
+                return (
+                    <th
+                        key={colKey}
+                        style={colStyle}
+                        {...dragThProps}
+                        className={`relative py-2 px-2 border-b border-r border-slate-200 bg-blue-100/80 ${dragClasses} group/th`}
+                    >
+                        <div className="flex items-center justify-between gap-1 pr-1">
+                            <span className="truncate flex items-center gap-1">
+                                <GripVertical size={11} className="opacity-0 group-hover/th:opacity-60 text-blue-500 shrink-0 cursor-grab" />
+                                <span className="truncate">PF</span>
+                            </span>
+                            <div className="flex items-center gap-1 shrink-0">
+                                <button
+                                    type="button"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleColumnHeaderToggle('pfEnabled');
+                                    }}
+                                    className={`text-[8.5px] font-bold px-1.5 py-0.5 rounded-full transition-all cursor-pointer shadow-2xs shrink-0 ${pfStatutoryState.allTrue
+                                        ? 'bg-blue-600 text-white'
+                                        : pfStatutoryState.allFalse
+                                            ? 'bg-slate-200 text-slate-700'
+                                            : 'bg-amber-200 text-amber-900 border border-amber-300'
+                                        }`}
+                                    title="Toggle PF for all rows"
+                                >
+                                    {pfStatutoryState.allTrue ? '✓ All' : pfStatutoryState.allFalse ? '✕ Off' : `Mix (${pfStatutoryState.trueCount})`}
+                                </button>
+                                {renderHideBtn()}
+                            </div>
+                        </div>
+                        {renderResizeHandle('pf')}
+                    </th>
+                );
+            case 'esi':
+                return (
+                    <th
+                        key={colKey}
+                        style={colStyle}
+                        {...dragThProps}
+                        className={`relative py-2 px-2 border-b border-r border-slate-200 bg-slate-100 ${dragClasses} group/th`}
+                    >
+                        <div className="flex items-center justify-between gap-1 pr-1">
+                            <span className="truncate flex items-center gap-1">
+                                <GripVertical size={11} className="opacity-0 group-hover/th:opacity-60 text-slate-400 shrink-0 cursor-grab" />
+                                <span className="truncate">ESI</span>
+                            </span>
+                            <div className="flex items-center gap-1 shrink-0">
+                                <button
+                                    type="button"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleColumnHeaderToggle('esiEnabled');
+                                    }}
+                                    className={`text-[8.5px] font-bold px-1.5 py-0.5 rounded-full transition-all cursor-pointer shadow-2xs shrink-0 ${esiStatutoryState.allTrue
+                                        ? 'bg-blue-600 text-white'
+                                        : esiStatutoryState.allFalse
+                                            ? 'bg-slate-200 text-slate-700'
+                                            : 'bg-amber-200 text-amber-900 border border-amber-300'
+                                        }`}
+                                    title="Toggle ESI for all rows"
+                                >
+                                    {esiStatutoryState.allTrue ? '✓ All' : esiStatutoryState.allFalse ? '✕ Off' : `Mix (${esiStatutoryState.trueCount})`}
+                                </button>
+                                {renderHideBtn()}
+                            </div>
+                        </div>
+                        {renderResizeHandle('esi')}
+                    </th>
+                );
+            case 'pt':
+                return (
+                    <th
+                        key={colKey}
+                        style={colStyle}
+                        {...dragThProps}
+                        className={`relative py-2 px-2 border-b border-r border-slate-200 bg-slate-100 ${dragClasses} group/th`}
+                    >
+                        <div className="flex items-center justify-between gap-1 pr-1">
+                            <span className="truncate flex items-center gap-1">
+                                <GripVertical size={11} className="opacity-0 group-hover/th:opacity-60 text-slate-400 shrink-0 cursor-grab" />
+                                <span className="truncate">PT</span>
+                            </span>
+                            <div className="flex items-center gap-1 shrink-0">
+                                <button
+                                    type="button"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleColumnHeaderToggle('ptEnabled');
+                                    }}
+                                    className={`text-[8.5px] font-bold px-1.5 py-0.5 rounded-full transition-all cursor-pointer shadow-2xs shrink-0 ${ptStatutoryState.allTrue
+                                        ? 'bg-blue-600 text-white'
+                                        : ptStatutoryState.allFalse
+                                            ? 'bg-slate-200 text-slate-700'
+                                            : 'bg-amber-200 text-amber-900 border border-amber-300'
+                                        }`}
+                                    title="Toggle PT for all rows"
+                                >
+                                    {ptStatutoryState.allTrue ? '✓ All' : ptStatutoryState.allFalse ? '✕ Off' : `Mix (${ptStatutoryState.trueCount})`}
+                                </button>
+                                {renderHideBtn()}
+                            </div>
+                        </div>
+                        {renderResizeHandle('pt')}
+                    </th>
+                );
+            case 'gratuity':
+                return (
+                    <th
+                        key={colKey}
+                        style={colStyle}
+                        {...dragThProps}
+                        className={`relative py-2 px-2 border-b border-r border-slate-200 bg-indigo-100/80 ${dragClasses} group/th`}
+                    >
+                        <div className="flex items-center justify-between gap-1 pr-1">
+                            <span className="truncate flex items-center gap-1">
+                                <GripVertical size={11} className="opacity-0 group-hover/th:opacity-60 text-indigo-500 shrink-0 cursor-grab" />
+                                <span className="truncate">Gratuity</span>
+                            </span>
+                            <div className="flex items-center gap-1 shrink-0">
+                                <button
+                                    type="button"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleColumnHeaderToggle('gratuityEnabled');
+                                    }}
+                                    className={`text-[8.5px] font-bold px-1.5 py-0.5 rounded-full transition-all cursor-pointer shadow-2xs shrink-0 ${gratuityStatutoryState.allTrue
+                                        ? 'bg-indigo-600 text-white'
+                                        : gratuityStatutoryState.allFalse
+                                            ? 'bg-slate-200 text-slate-700'
+                                            : 'bg-amber-200 text-amber-900 border border-amber-300'
+                                        }`}
+                                    title="Toggle Gratuity for all rows"
+                                >
+                                    {gratuityStatutoryState.allTrue ? '✓ All' : gratuityStatutoryState.allFalse ? '✕ Off' : `Mix (${gratuityStatutoryState.trueCount})`}
+                                </button>
+                                {renderHideBtn()}
+                            </div>
+                        </div>
+                        {renderResizeHandle('gratuity')}
+                    </th>
+                );
+            case 'lwf':
+                return (
+                    <th
+                        key={colKey}
+                        style={colStyle}
+                        {...dragThProps}
+                        className={`relative py-2 px-2 border-b border-r border-slate-200 bg-slate-100 ${dragClasses} group/th`}
+                    >
+                        <div className="flex items-center justify-between gap-1 pr-1">
+                            <span className="truncate flex items-center gap-1">
+                                <GripVertical size={11} className="opacity-0 group-hover/th:opacity-60 text-slate-400 shrink-0 cursor-grab" />
+                                <span className="truncate">LWF</span>
+                            </span>
+                            <div className="flex items-center gap-1 shrink-0">
+                                <button
+                                    type="button"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleColumnHeaderToggle('lwfEnabled');
+                                    }}
+                                    className={`text-[8.5px] font-bold px-1.5 py-0.5 rounded-full transition-all cursor-pointer shadow-2xs shrink-0 ${lwfStatutoryState.allTrue
+                                        ? 'bg-blue-600 text-white'
+                                        : lwfStatutoryState.allFalse
+                                            ? 'bg-slate-200 text-slate-700'
+                                            : 'bg-amber-200 text-amber-900 border border-amber-300'
+                                        }`}
+                                    title="Toggle LWF for all rows"
+                                >
+                                    {lwfStatutoryState.allTrue ? '✓ All' : lwfStatutoryState.allFalse ? '✕ Off' : `Mix (${lwfStatutoryState.trueCount})`}
+                                </button>
+                                {renderHideBtn()}
+                            </div>
+                        </div>
+                        {renderResizeHandle('lwf')}
+                    </th>
+                );
+            case 'tds':
+                return (
+                    <th
+                        key={colKey}
+                        style={colStyle}
+                        {...dragThProps}
+                        className={`relative py-2 px-2 border-b border-r border-slate-200 bg-slate-100 ${dragClasses} group/th`}
+                    >
+                        <div className="flex items-center justify-between gap-1 pr-1">
+                            <span className="truncate flex items-center gap-1">
+                                <GripVertical size={11} className="opacity-0 group-hover/th:opacity-60 text-slate-400 shrink-0 cursor-grab" />
+                                <span className="truncate">TDS</span>
+                            </span>
+                            <div className="flex items-center gap-1 shrink-0">
+                                <button
+                                    type="button"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleColumnHeaderToggle('tdsEnabled');
+                                    }}
+                                    className={`text-[8.5px] font-bold px-1.5 py-0.5 rounded-full transition-all cursor-pointer shadow-2xs shrink-0 ${tdsStatutoryState.allTrue
+                                        ? 'bg-blue-600 text-white'
+                                        : tdsStatutoryState.allFalse
+                                            ? 'bg-slate-200 text-slate-700'
+                                            : 'bg-amber-200 text-amber-900 border border-amber-300'
+                                        }`}
+                                    title="Toggle TDS for all rows"
+                                >
+                                    {tdsStatutoryState.allTrue ? '✓ All' : tdsStatutoryState.allFalse ? '✕ Off' : `Mix (${tdsStatutoryState.trueCount})`}
+                                </button>
+                                {renderHideBtn()}
+                            </div>
+                        </div>
+                        {renderResizeHandle('tds')}
+                    </th>
+                );
+            case 'ltaStatutory':
+                return (
+                    <th
+                        key={colKey}
+                        style={colStyle}
+                        {...dragThProps}
+                        className={`relative py-2 px-2 border-b border-r border-slate-200 bg-emerald-100/80 ${dragClasses} group/th`}
+                    >
+                        <div className="flex items-center justify-between gap-1 pr-1">
+                            <span className="truncate flex items-center gap-1">
+                                <GripVertical size={11} className="opacity-0 group-hover/th:opacity-60 text-emerald-600 shrink-0 cursor-grab" />
+                                <span className="truncate">LTA</span>
+                            </span>
+                            <div className="flex items-center gap-1 shrink-0">
+                                <button
+                                    type="button"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleColumnHeaderToggle('ltaEnabled');
+                                    }}
+                                    className={`text-[8.5px] font-bold px-1.5 py-0.5 rounded-full transition-all cursor-pointer shadow-2xs shrink-0 ${ltaStatutoryState.allTrue
+                                        ? 'bg-emerald-600 text-white'
+                                        : ltaStatutoryState.allFalse
+                                            ? 'bg-slate-200 text-slate-700'
+                                            : 'bg-amber-200 text-amber-900 border border-amber-300'
+                                        }`}
+                                    title="Toggle LTA for all rows"
+                                >
+                                    {ltaStatutoryState.allTrue ? '✓ All' : ltaStatutoryState.allFalse ? '✕ Off' : `Mix (${ltaStatutoryState.trueCount})`}
+                                </button>
+                                {renderHideBtn()}
+                            </div>
+                        </div>
+                        {renderResizeHandle('ltaStatutory')}
+                    </th>
+                );
+            case 'deductions':
+                return (
+                    <th
+                        key={colKey}
+                        style={colStyle}
+                        {...dragThProps}
+                        className={`relative py-2 px-2 border-b border-r border-slate-200 text-right text-rose-700 bg-rose-100/70 ${dragClasses} group/th truncate`}
+                    >
+                        <div className="flex items-center justify-between gap-1">
+                            {renderHideBtn()}
+                            <span className="truncate ml-auto flex items-center gap-1">
+                                <GripVertical size={11} className="opacity-0 group-hover/th:opacity-60 text-rose-500 shrink-0 cursor-grab" />
+                                <span className="truncate">Deductions</span>
+                            </span>
+                        </div>
+                        {renderResizeHandle('deductions')}
+                    </th>
+                );
+            case 'takeHome':
+                return (
+                    <th
+                        key={colKey}
+                        style={colStyle}
+                        {...dragThProps}
+                        className={`relative py-2 px-2 border-b border-r border-slate-200 text-right text-emerald-800 bg-emerald-100 font-extrabold ${dragClasses} group/th truncate`}
+                    >
+                        <div className="flex items-center justify-between gap-1">
+                            {renderHideBtn()}
+                            <span className="truncate ml-auto flex items-center gap-1">
+                                <GripVertical size={11} className="opacity-0 group-hover/th:opacity-60 text-emerald-600 shrink-0 cursor-grab" />
+                                <span className="truncate">Est. Take-Home</span>
+                            </span>
+                        </div>
+                        {renderResizeHandle('takeHome')}
+                    </th>
+                );
+            default:
+                return headerTitleWithHide(colKey);
+        }
+    }, [columnWidths, renderResizeHandle, handleHideColumn, handleColumnHeaderToggle, pfStatutoryState, esiStatutoryState, ptStatutoryState, gratuityStatutoryState, lwfStatutoryState, tdsStatutoryState, ltaStatutoryState, draggedHeaderKey, dragOverHeaderKey, handleHeaderDragStart, handleHeaderDragOver, handleHeaderDragLeave, handleHeaderDrop, handleHeaderDragEnd]);
+
+    const renderBulkDataCell = useCallback((colKey, row, c) => {
+        const w = columnWidths[colKey] || DEFAULT_COLUMN_WIDTHS[colKey] || 110;
+        const colStyle = {
+            width: `${w}px`,
+            minWidth: `${w}px`,
+            maxWidth: `${w}px`
+        };
+
+        switch (colKey) {
+            case 'annualCTC':
+                return (
+                    <td key={colKey} style={colStyle} className="py-1 px-1.5 border-b border-r border-slate-200 bg-slate-50">
+                        <div className="relative z-0">
+                            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-[10px] select-none">₹</span>
+                            <input
+                                type="number"
+                                value={row.annualCTC || ''}
+                                onChange={(e) => handleRowFieldChange(row._id, 'annualCTC', e.target.value)}
+                                className="w-full h-6.5 pl-5 pr-1.5 py-0.5 text-[11px] font-mono tabular-nums font-bold border border-slate-300 rounded focus:border-blue-500 focus:bg-white bg-white focus:outline-none shadow-2xs"
+                                placeholder="0"
+                            />
+                        </div>
+                    </td>
+                );
+            case 'monthlyCTC':
+                return (
+                    <td key={colKey} style={colStyle} className="py-1.5 px-2 font-mono tabular-nums font-bold text-slate-800 border-b border-r border-slate-200 text-right bg-white truncate text-[11px]">
+                        ₹{Math.round(c.monthlyCTC || 0).toLocaleString('en-IN')}
+                    </td>
+                );
+            case 'basic':
+                return (
+                    <td key={colKey} style={colStyle} className="py-1.5 px-2 font-mono tabular-nums text-slate-700 border-b border-r border-slate-200 text-right bg-white truncate text-[11px]">
+                        ₹{Math.round(c.basicMaster || 0).toLocaleString('en-IN')}
+                    </td>
+                );
+            case 'hra':
+                return (
+                    <td key={colKey} style={colStyle} className="py-1.5 px-2 font-mono tabular-nums text-slate-700 border-b border-r border-slate-200 text-right bg-white truncate text-[11px]">
+                        ₹{Math.round(c.hraMaster || 0).toLocaleString('en-IN')}
+                    </td>
+                );
+            case 'petrol':
+                return (
+                    <td key={colKey} style={colStyle} className="py-1 px-1.5 border-b border-r border-slate-200 bg-sky-50">
+                        <div className="relative z-0">
+                            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-[10px] select-none">₹</span>
+                            <input
+                                type="number"
+                                value={row.petrol !== undefined ? row.petrol : 0}
+                                onChange={(e) => handleRowFieldChange(row._id, 'petrol', e.target.value)}
+                                className="w-full h-6.5 pl-5 pr-1.5 py-0.5 text-[11px] font-mono tabular-nums font-bold border border-slate-300 rounded focus:border-blue-500 focus:bg-white bg-white focus:outline-none shadow-2xs"
+                                placeholder="0"
+                            />
+                        </div>
+                    </td>
+                );
+            case 'lta':
+                return (
+                    <td key={colKey} style={colStyle} className="py-1 px-1.5 border-b border-r border-slate-200 bg-emerald-50">
+                        <div className="relative z-0">
+                            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-[10px] select-none">₹</span>
+                            <input
+                                type="number"
+                                value={!row.ltaEnabled ? 0 : (row.lta !== undefined && row.lta !== '' ? row.lta : (c.lta || 0))}
+                                disabled={!row.ltaEnabled}
+                                onChange={(e) => handleRowFieldChange(row._id, 'lta', e.target.value)}
+                                className={`w-full h-6.5 pl-5 pr-1.5 py-0.5 text-[11px] font-mono tabular-nums font-bold border rounded focus:outline-none shadow-2xs ${!row.ltaEnabled
+                                    ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed'
+                                    : 'border-slate-300 focus:border-emerald-500 bg-white'
+                                    }`}
+                                placeholder="0"
+                            />
+                        </div>
+                    </td>
+                );
+            case 'conveyance':
+                return (
+                    <td key={colKey} style={colStyle} className="py-1 px-1.5 border-b border-r border-slate-200 bg-white">
+                        <div className="relative z-0">
+                            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-[10px] select-none">₹</span>
+                            <input
+                                type="number"
+                                value={row.conveyance !== undefined ? row.conveyance : 0}
+                                onChange={(e) => handleRowFieldChange(row._id, 'conveyance', e.target.value)}
+                                className="w-full h-6.5 pl-5 pr-1.5 py-0.5 text-[11px] font-mono tabular-nums font-bold border border-slate-300 rounded focus:border-blue-500 focus:bg-white bg-white focus:outline-none shadow-2xs"
+                                placeholder="0"
+                            />
+                        </div>
+                    </td>
+                );
+            case 'medical':
+                return (
+                    <td key={colKey} style={colStyle} className="py-1 px-1.5 border-b border-r border-slate-200 bg-white">
+                        <div className="relative z-0">
+                            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-[10px] select-none">₹</span>
+                            <input
+                                type="number"
+                                value={row.medicalAllowance !== undefined ? row.medicalAllowance : 0}
+                                onChange={(e) => handleRowFieldChange(row._id, 'medicalAllowance', e.target.value)}
+                                className="w-full h-6.5 pl-5 pr-1.5 py-0.5 text-[11px] font-mono tabular-nums font-bold border border-slate-300 rounded focus:border-blue-500 focus:bg-white bg-white focus:outline-none shadow-2xs"
+                                placeholder="0"
+                            />
+                        </div>
+                    </td>
+                );
+            case 'meal':
+                return (
+                    <td key={colKey} style={colStyle} className="py-1 px-1.5 border-b border-r border-slate-200 bg-white">
+                        <div className="relative z-0">
+                            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-[10px] select-none">₹</span>
+                            <input
+                                type="number"
+                                value={row.mealAllowance !== undefined ? row.mealAllowance : 0}
+                                onChange={(e) => handleRowFieldChange(row._id, 'mealAllowance', e.target.value)}
+                                className="w-full h-6.5 pl-5 pr-1.5 py-0.5 text-[11px] font-mono tabular-nums font-bold border border-slate-300 rounded focus:border-blue-500 focus:bg-white bg-white focus:outline-none shadow-2xs"
+                                placeholder="0"
+                            />
+                        </div>
+                    </td>
+                );
+            case 'broadband':
+                return (
+                    <td key={colKey} style={colStyle} className="py-1 px-1.5 border-b border-r border-slate-200 bg-white">
+                        <div className="relative z-0">
+                            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-[10px] select-none">₹</span>
+                            <input
+                                type="number"
+                                value={row.broadband !== undefined ? row.broadband : 0}
+                                onChange={(e) => handleRowFieldChange(row._id, 'broadband', e.target.value)}
+                                className="w-full h-6.5 pl-5 pr-1.5 py-0.5 text-[11px] font-mono tabular-nums font-bold border border-slate-300 rounded focus:border-blue-500 focus:bg-white bg-white focus:outline-none shadow-2xs"
+                                placeholder="0"
+                            />
+                        </div>
+                    </td>
+                );
+            case 'flexiRemainder':
+                return (
+                    <td key={colKey} style={colStyle} className="py-1.5 px-2 font-mono tabular-nums font-bold text-blue-700 border-b border-r border-slate-200 text-right bg-blue-50 truncate text-[11px]">
+                        ₹{Math.round(c.specialAllowance || 0).toLocaleString('en-IN')}
+                    </td>
+                );
+            case 'monthlyGross':
+                return (
+                    <td key={colKey} style={colStyle} className="py-1.5 px-2 font-mono tabular-nums font-black text-slate-900 border-b border-r border-slate-200 text-right bg-slate-100 truncate text-[11px]">
+                        ₹{Math.round(c.grossMaster || 0).toLocaleString('en-IN')}
+                    </td>
+                );
+            case 'insurance':
+                return (
+                    <td key={colKey} style={colStyle} className="py-1 px-1.5 border-b border-r border-slate-200 bg-rose-50">
+                        <div className="relative z-0">
+                            <span className="absolute left-1.5 top-1/2 -translate-y-1/2 text-rose-500 font-bold text-[10px] select-none">-₹</span>
+                            <input
+                                type="number"
+                                value={row.insuranceAmount !== undefined ? row.insuranceAmount : 0}
+                                onChange={(e) => handleRowFieldChange(row._id, 'insuranceAmount', e.target.value)}
+                                className="w-full h-6.5 pl-5 pr-1.5 py-0.5 text-[11px] font-mono tabular-nums font-bold border border-rose-300 rounded focus:border-rose-500 focus:bg-white bg-rose-50/60 text-rose-900 focus:outline-none shadow-2xs"
+                                placeholder="0"
+                            />
+                        </div>
+                    </td>
+                );
+            case 'pf':
+                return (
+                    <td key={colKey} style={colStyle} className="py-1.5 px-2 border-b border-r border-slate-200 bg-blue-50/70 overflow-hidden text-[10px]">
+                        <div className="space-y-0.5">
+                            <label className="flex items-center gap-1 cursor-pointer font-bold text-slate-900 select-none">
+                                <input
+                                    type="checkbox"
+                                    checked={Boolean(row.pfEnabled)}
+                                    onChange={(e) => handleRowFieldChange(row._id, 'pfEnabled', e.target.checked)}
+                                    className="w-3.5 h-3.5 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                />
+                                <span>PF Active</span>
+                            </label>
+                            {row.pfEnabled ? (
+                                <div className="space-y-0 text-[9px] leading-tight">
+                                    <label className="inline-flex items-center gap-1 text-slate-600 cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={Boolean(row.includePfInCTC)}
+                                            onChange={(e) => handleRowFieldChange(row._id, 'includePfInCTC', e.target.checked)}
+                                            className="w-2.5 h-2.5 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                        />
+                                        <span>In CTC</span>
+                                    </label>
+                                    <div className="font-mono tabular-nums text-blue-700 font-semibold whitespace-nowrap">
+                                        EE: ₹{Math.round(c.pfEmployee || 0).toLocaleString('en-IN')} | ER: ₹{Math.round(c.pfEmployer || 0).toLocaleString('en-IN')}
+                                    </div>
+                                </div>
+                            ) : (
+                                <span className="text-[9px] text-slate-400 block font-medium">Exempt (₹0)</span>
+                            )}
+                        </div>
+                    </td>
+                );
+            case 'esi':
+                return (
+                    <td key={colKey} style={colStyle} className="py-1.5 px-2 border-b border-r border-slate-200 bg-white overflow-hidden text-[10px]">
+                        <div className="space-y-0.5">
+                            <label className="flex items-center gap-1 cursor-pointer font-bold text-slate-900 select-none">
+                                <input
+                                    type="checkbox"
+                                    checked={Boolean(row.esiEnabled)}
+                                    onChange={(e) => handleRowFieldChange(row._id, 'esiEnabled', e.target.checked)}
+                                    className="w-3.5 h-3.5 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                />
+                                <span>ESI</span>
+                            </label>
+                            {row.esiEnabled && c.esiEmployee > 0 ? (
+                                <div className="text-[9px] font-mono tabular-nums text-slate-700 font-semibold whitespace-nowrap">
+                                    EE: ₹{Math.round(c.esiEmployee || 0).toLocaleString('en-IN')}
+                                </div>
+                            ) : (
+                                <span className="text-[9px] text-slate-400 block font-medium">Exempt (₹0)</span>
+                            )}
+                        </div>
+                    </td>
+                );
+            case 'pt':
+                return (
+                    <td key={colKey} style={colStyle} className="py-1.5 px-2 border-b border-r border-slate-200 bg-white overflow-hidden text-[10px]">
+                        <div className="space-y-0.5">
+                            <label className="flex items-center gap-1 cursor-pointer font-bold text-slate-900 select-none">
+                                <input
+                                    type="checkbox"
+                                    checked={Boolean(row.ptEnabled)}
+                                    onChange={(e) => handleRowFieldChange(row._id, 'ptEnabled', e.target.checked)}
+                                    className="w-3.5 h-3.5 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                />
+                                <span>PT</span>
+                            </label>
+                            {row.ptEnabled ? (
+                                <div className="text-[9px] font-mono tabular-nums text-slate-700 font-semibold whitespace-nowrap">
+                                    ₹{Math.round(c.professionalTax || 0).toLocaleString('en-IN')}
+                                </div>
+                            ) : (
+                                <span className="text-[9px] text-slate-400 block font-medium">₹0</span>
+                            )}
+                        </div>
+                    </td>
+                );
+            case 'gratuity':
+                return (
+                    <td key={colKey} style={colStyle} className="py-1.5 px-2 border-b border-r border-slate-200 bg-indigo-50/70 overflow-hidden text-[10px]">
+                        <div className="space-y-0.5">
+                            <label className="flex items-center gap-1 cursor-pointer font-bold text-slate-900 select-none">
+                                <input
+                                    type="checkbox"
+                                    checked={Boolean(row.gratuityEnabled)}
+                                    onChange={(e) => handleRowFieldChange(row._id, 'gratuityEnabled', e.target.checked)}
+                                    className="w-3.5 h-3.5 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                                />
+                                <span>Gratuity</span>
+                            </label>
+                            {row.gratuityEnabled ? (
+                                <div className="space-y-0 text-[9px] leading-tight">
+                                    <label className="inline-flex items-center gap-1 text-slate-600 cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={row.includeGratuityInCTC !== false}
+                                            onChange={(e) => handleRowFieldChange(row._id, 'includeGratuityInCTC', e.target.checked)}
+                                            className="w-2.5 h-2.5 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                                        />
+                                        <span>In CTC</span>
+                                    </label>
+                                    <div className="font-mono tabular-nums text-indigo-700 font-semibold whitespace-nowrap">
+                                        ₹{Math.round(c.gratuity || 0).toLocaleString('en-IN')}
+                                    </div>
+                                </div>
+                            ) : (
+                                <span className="text-[9px] text-slate-400 block font-medium">Disabled (₹0)</span>
+                            )}
+                        </div>
+                    </td>
+                );
+            case 'lwf':
+                return (
+                    <td key={colKey} style={colStyle} className="py-1.5 px-2 border-b border-r border-slate-200 bg-white overflow-hidden text-[10px]">
+                        <div className="space-y-0.5">
+                            <label className="flex items-center gap-1 cursor-pointer font-bold text-slate-900 select-none">
+                                <input
+                                    type="checkbox"
+                                    checked={Boolean(row.lwfEnabled)}
+                                    onChange={(e) => handleRowFieldChange(row._id, 'lwfEnabled', e.target.checked)}
+                                    className="w-3.5 h-3.5 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                />
+                                <span>LWF</span>
+                            </label>
+                            {row.lwfEnabled ? (
+                                <div className="text-[9px] font-mono tabular-nums text-slate-700 font-semibold whitespace-nowrap">
+                                    EE: ₹{Math.round(c.lwfEmployee || 0)} | ER: ₹{Math.round(c.lwfEmployer || 0)}
+                                </div>
+                            ) : (
+                                <span className="text-[9px] text-slate-400 block font-medium">₹0</span>
+                            )}
+                        </div>
+                    </td>
+                );
+            case 'tds':
+                return (
+                    <td key={colKey} style={colStyle} className="py-1.5 px-2 border-b border-r border-slate-200 bg-white overflow-hidden text-[10px]">
+                        <div className="space-y-0.5">
+                            <label className="flex items-center gap-1 cursor-pointer font-bold text-slate-900 select-none">
+                                <input
+                                    type="checkbox"
+                                    checked={Boolean(row.tdsEnabled)}
+                                    onChange={(e) => handleRowFieldChange(row._id, 'tdsEnabled', e.target.checked)}
+                                    className="w-3.5 h-3.5 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                />
+                                <span>TDS</span>
+                            </label>
+                            <span className={`text-[9px] font-medium block ${row.tdsEnabled ? 'text-blue-700 font-semibold' : 'text-slate-400'}`}>
+                                {row.tdsEnabled ? 'Deduction On' : 'Disabled'}
+                            </span>
+                        </div>
+                    </td>
+                );
+            case 'ltaStatutory':
+                return (
+                    <td key={colKey} style={colStyle} className="py-1.5 px-2 border-b border-r border-slate-200 bg-emerald-50 overflow-hidden text-[10px]">
+                        <div className="space-y-0.5">
+                            <label className="flex items-center gap-1 cursor-pointer font-bold text-slate-900 select-none">
+                                <input
+                                    type="checkbox"
+                                    checked={Boolean(row.ltaEnabled)}
+                                    onChange={(e) => handleRowFieldChange(row._id, 'ltaEnabled', e.target.checked)}
+                                    className="w-3.5 h-3.5 rounded text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                                />
+                                <span>LTA</span>
+                            </label>
+                            <span className={`text-[9px] font-medium block ${row.ltaEnabled ? 'text-emerald-700 font-semibold' : 'text-slate-400'}`}>
+                                {row.ltaEnabled ? 'Eligible' : 'Exempt'}
+                            </span>
+                        </div>
+                    </td>
+                );
+            case 'deductions':
+                return (
+                    <td key={colKey} style={colStyle} className="py-1.5 px-2 font-mono tabular-nums font-bold text-rose-700 border-b border-r border-slate-200 text-right bg-rose-50/70 truncate text-[11px]">
+                        -₹{Math.round(c.totalDeductions || 0).toLocaleString('en-IN')}
+                    </td>
+                );
+            case 'takeHome':
+                return (
+                    <td key={colKey} style={colStyle} className="py-1.5 px-2 border-b border-r border-slate-200 text-right bg-emerald-100/70 overflow-hidden">
+                        <span className="inline-block px-2 py-0.5 rounded font-mono tabular-nums font-extrabold text-[11px] bg-emerald-100 text-emerald-800 border border-emerald-300 shadow-2xs whitespace-nowrap">
+                            ₹{Math.round(c.netTakeHome || 0).toLocaleString('en-IN')}
+                        </span>
+                    </td>
+                );
+            default:
+                return <td key={colKey} style={colStyle} className="py-1 px-2 border-b border-r border-slate-200 text-slate-500 truncate text-[11px]">--</td>;
+        }
+    }, [columnWidths, handleRowFieldChange]);
 
     const currentSelectedEmpObj = employees.find(e => String(e._id) === String(selectedUserId));
 
@@ -3218,7 +4199,7 @@ const ReviseSalaryDetailsTab = () => {
                                     Review live salary breakdowns, edit compensation, and toggle statutory components per employee or company-wide.
                                 </p>
                             </div>
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 flex-wrap">
                                 <button
                                     type="button"
                                     onClick={fetchBulkProfiles}
@@ -3231,12 +4212,30 @@ const ReviseSalaryDetailsTab = () => {
                                 </button>
                                 <button
                                     type="button"
-                                    onClick={handleExportCsv}
-                                    className="px-3.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs"
-                                    title="Export current table data to Excel-compatible CSV"
+                                    onClick={() => setShowColumnManagerModal(true)}
+                                    className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs"
+                                    title="Choose which columns to show or hide, and change their position order numbers"
                                 >
-                                    <Download size={13} className="text-emerald-600" />
+                                    <SlidersHorizontal size={13} className="text-blue-600" />
+                                    <span>Columns ({orderedVisibleColKeys.length}/{columnOrder.length})</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handleExportCsv}
+                                    className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs"
+                                    title="Export current table data to CSV in custom column order"
+                                >
+                                    <Download size={13} className="text-slate-600" />
                                     <span>Export CSV</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handleExportExcel}
+                                    className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-xs"
+                                    title="Export formatted Excel (.xlsx) spreadsheet with styled headers and formulas in custom order"
+                                >
+                                    <FileSpreadsheet size={13} className="text-white" />
+                                    <span>Export Excel (.xlsx)</span>
                                 </button>
                             </div>
                         </div>
@@ -3797,6 +4796,17 @@ const ReviseSalaryDetailsTab = () => {
                                 </select>
                             </div>
 
+                            {/* Choose & Order Columns */}
+                            <button
+                                type="button"
+                                onClick={() => setShowColumnManagerModal(true)}
+                                className="px-2.5 py-2 rounded-xl border border-blue-200 text-xs font-bold text-blue-700 hover:text-blue-800 bg-blue-50/80 hover:bg-blue-100 flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
+                                title="Choose which columns to show or hide, and change their position order numbers"
+                            >
+                                <SlidersHorizontal size={13} className="text-blue-600" />
+                                <span className="hidden sm:inline">Columns ({orderedVisibleColKeys.length}/{columnOrder.length})</span>
+                            </button>
+
                             {/* Reset Column Widths */}
                             <button
                                 type="button"
@@ -3951,308 +4961,8 @@ const ReviseSalaryDetailsTab = () => {
                                         {renderResizeHandle('employee')}
                                     </th>
 
-                                    {/* Base Compensation Inputs */}
-                                    <th
-                                        style={{ position: 'sticky', top: 0, zIndex: 10, width: `${columnWidths.annualCTC}px`, minWidth: `${columnWidths.annualCTC}px`, maxWidth: `${columnWidths.annualCTC}px` }}
-                                        className="relative py-2 px-2 border-b border-r border-slate-200 bg-slate-50 truncate"
-                                    >
-                                        <span>Annual CTC (₹)</span>
-                                        {renderResizeHandle('annualCTC')}
-                                    </th>
-                                    <th
-                                        style={{ position: 'sticky', top: 0, zIndex: 10, width: `${columnWidths.monthlyCTC}px`, minWidth: `${columnWidths.monthlyCTC}px`, maxWidth: `${columnWidths.monthlyCTC}px` }}
-                                        className="relative py-2 px-2 border-b border-r border-slate-200 text-right bg-slate-100 truncate"
-                                    >
-                                        <span>Monthly CTC</span>
-                                        {renderResizeHandle('monthlyCTC')}
-                                    </th>
-                                    <th
-                                        style={{ position: 'sticky', top: 0, zIndex: 10, width: `${columnWidths.basic}px`, minWidth: `${columnWidths.basic}px`, maxWidth: `${columnWidths.basic}px` }}
-                                        className="relative py-2 px-2 border-b border-r border-slate-200 text-right bg-slate-100 truncate"
-                                    >
-                                        <span>Basic</span>
-                                        {renderResizeHandle('basic')}
-                                    </th>
-                                    <th
-                                        style={{ position: 'sticky', top: 0, zIndex: 10, width: `${columnWidths.hra}px`, minWidth: `${columnWidths.hra}px`, maxWidth: `${columnWidths.hra}px` }}
-                                        className="relative py-2 px-2 border-b border-r border-slate-200 text-right bg-slate-100 truncate"
-                                    >
-                                        <span>HRA</span>
-                                        {renderResizeHandle('hra')}
-                                    </th>
-
-                                    {/* Allowances (In CTC) */}
-                                    <th
-                                        style={{ position: 'sticky', top: 0, zIndex: 10, width: `${columnWidths.petrol}px`, minWidth: `${columnWidths.petrol}px`, maxWidth: `${columnWidths.petrol}px` }}
-                                        className="relative py-2 px-2 border-b border-r border-slate-200 bg-sky-50"
-                                    >
-                                        <div className="flex items-center justify-between gap-1 pr-1 truncate">
-                                            <span className="truncate">Petrol</span>
-                                            <span className="text-[8.5px] font-bold text-sky-700 bg-sky-100 px-1 py-0.2 rounded shrink-0">In CTC</span>
-                                        </div>
-                                        {renderResizeHandle('petrol')}
-                                    </th>
-
-                                    <th
-                                        style={{ position: 'sticky', top: 0, zIndex: 10, width: `${columnWidths.lta}px`, minWidth: `${columnWidths.lta}px`, maxWidth: `${columnWidths.lta}px` }}
-                                        className="relative py-2 px-2 border-b border-r border-slate-200 bg-emerald-50"
-                                    >
-                                        <div className="flex items-center justify-between gap-1 pr-1 truncate">
-                                            <span className="truncate">LTA</span>
-                                            <span className="text-[8.5px] font-bold text-emerald-700 bg-emerald-100 px-1 py-0.2 rounded shrink-0">In CTC</span>
-                                        </div>
-                                        {renderResizeHandle('lta')}
-                                    </th>
-
-                                    <th
-                                        style={{ position: 'sticky', top: 0, zIndex: 10, width: `${columnWidths.conveyance}px`, minWidth: `${columnWidths.conveyance}px`, maxWidth: `${columnWidths.conveyance}px` }}
-                                        className="relative py-2 px-2 border-b border-r border-slate-200 bg-slate-100"
-                                    >
-                                        <div className="flex items-center justify-between gap-1 pr-1 truncate">
-                                            <span className="truncate">Conveyance</span>
-                                            <span className="text-[8.5px] font-semibold text-slate-600 bg-slate-200 px-1 py-0.2 rounded shrink-0">In CTC</span>
-                                        </div>
-                                        {renderResizeHandle('conveyance')}
-                                    </th>
-
-                                    <th
-                                        style={{ position: 'sticky', top: 0, zIndex: 10, width: `${columnWidths.medical}px`, minWidth: `${columnWidths.medical}px`, maxWidth: `${columnWidths.medical}px` }}
-                                        className="relative py-2 px-2 border-b border-r border-slate-200 bg-slate-100"
-                                    >
-                                        <div className="flex items-center justify-between gap-1 pr-1 truncate">
-                                            <span className="truncate">Medical Allow.</span>
-                                            <span className="text-[8.5px] font-semibold text-slate-600 bg-slate-200 px-1 py-0.2 rounded shrink-0">In CTC</span>
-                                        </div>
-                                        {renderResizeHandle('medical')}
-                                    </th>
-
-                                    <th
-                                        style={{ position: 'sticky', top: 0, zIndex: 10, width: `${columnWidths.meal}px`, minWidth: `${columnWidths.meal}px`, maxWidth: `${columnWidths.meal}px` }}
-                                        className="relative py-2 px-2 border-b border-r border-slate-200 bg-slate-100"
-                                    >
-                                        <div className="flex items-center justify-between gap-1 pr-1 truncate">
-                                            <span className="truncate">Meal Allow.</span>
-                                            <span className="text-[8.5px] font-semibold text-slate-600 bg-slate-200 px-1 py-0.2 rounded shrink-0">In CTC</span>
-                                        </div>
-                                        {renderResizeHandle('meal')}
-                                    </th>
-
-                                    <th
-                                        style={{ position: 'sticky', top: 0, zIndex: 10, width: `${columnWidths.broadband}px`, minWidth: `${columnWidths.broadband}px`, maxWidth: `${columnWidths.broadband}px` }}
-                                        className="relative py-2 px-2 border-b border-r border-slate-200 bg-slate-100"
-                                    >
-                                        <div className="flex items-center justify-between gap-1 pr-1 truncate">
-                                            <span className="truncate">Broadband</span>
-                                            <span className="text-[8.5px] font-semibold text-slate-600 bg-slate-200 px-1 py-0.2 rounded shrink-0">In CTC</span>
-                                        </div>
-                                        {renderResizeHandle('broadband')}
-                                    </th>
-
-                                    {/* Remainder & Gross */}
-                                    <th
-                                        style={{ position: 'sticky', top: 0, zIndex: 10, width: `${columnWidths.flexiRemainder}px`, minWidth: `${columnWidths.flexiRemainder}px`, maxWidth: `${columnWidths.flexiRemainder}px` }}
-                                        className="relative py-2 px-2 border-b border-r border-slate-200 text-right bg-blue-100/80 text-blue-900 font-extrabold truncate"
-                                    >
-                                        <span>Flexi Remainder</span>
-                                        {renderResizeHandle('flexiRemainder')}
-                                    </th>
-                                    <th
-                                        style={{ position: 'sticky', top: 0, zIndex: 10, width: `${columnWidths.monthlyGross}px`, minWidth: `${columnWidths.monthlyGross}px`, maxWidth: `${columnWidths.monthlyGross}px` }}
-                                        className="relative py-2 px-2 border-b border-r border-slate-200 bg-slate-200 text-right font-black text-slate-900 truncate"
-                                    >
-                                        <span>Monthly Gross</span>
-                                        {renderResizeHandle('monthlyGross')}
-                                    </th>
-
-                                    {/* Deductions (From Flexi) */}
-                                    <th
-                                        style={{ position: 'sticky', top: 0, zIndex: 10, width: `${columnWidths.insurance}px`, minWidth: `${columnWidths.insurance}px`, maxWidth: `${columnWidths.insurance}px` }}
-                                        className="relative py-2 px-2 border-b border-r border-slate-200 bg-rose-100/80 text-rose-900"
-                                    >
-                                        <div className="flex items-center justify-between gap-1 pr-1 truncate">
-                                            <span className="truncate">Medical Insurance</span>
-                                            <span className="text-[8.5px] font-extrabold text-rose-700 bg-rose-200 px-1 py-0.2 rounded shrink-0">Deduct</span>
-                                        </div>
-                                        {renderResizeHandle('insurance')}
-                                    </th>
-
-                                    {/* Statutory Toggles */}
-                                    <th
-                                        style={{ position: 'sticky', top: 0, zIndex: 10, width: `${columnWidths.pf}px`, minWidth: `${columnWidths.pf}px`, maxWidth: `${columnWidths.pf}px` }}
-                                        className="relative py-2 px-2 border-b border-r border-slate-200 bg-blue-100/80"
-                                    >
-                                        <div className="flex items-center justify-between gap-1 pr-1">
-                                            <span>PF</span>
-                                            <button
-                                                type="button"
-                                                onClick={() => handleColumnHeaderToggle('pfEnabled')}
-                                                className={`text-[8.5px] font-bold px-1.5 py-0.5 rounded-full transition-all cursor-pointer shadow-2xs shrink-0 ${pfStatutoryState.allTrue
-                                                    ? 'bg-blue-600 text-white'
-                                                    : pfStatutoryState.allFalse
-                                                        ? 'bg-slate-200 text-slate-700'
-                                                        : 'bg-amber-200 text-amber-900 border border-amber-300'
-                                                    }`}
-                                                title="Toggle PF for all rows"
-                                            >
-                                                {pfStatutoryState.allTrue ? '✓ All' : pfStatutoryState.allFalse ? '✕ Off' : `Mix (${pfStatutoryState.trueCount})`}
-                                            </button>
-                                        </div>
-                                        {renderResizeHandle('pf')}
-                                    </th>
-
-                                    <th
-                                        style={{ position: 'sticky', top: 0, zIndex: 10, width: `${columnWidths.esi}px`, minWidth: `${columnWidths.esi}px`, maxWidth: `${columnWidths.esi}px` }}
-                                        className="relative py-2 px-2 border-b border-r border-slate-200 bg-slate-100"
-                                    >
-                                        <div className="flex items-center justify-between gap-1 pr-1">
-                                            <span>ESI</span>
-                                            <button
-                                                type="button"
-                                                onClick={() => handleColumnHeaderToggle('esiEnabled')}
-                                                className={`text-[8.5px] font-bold px-1.5 py-0.5 rounded-full transition-all cursor-pointer shadow-2xs shrink-0 ${esiStatutoryState.allTrue
-                                                    ? 'bg-blue-600 text-white'
-                                                    : esiStatutoryState.allFalse
-                                                        ? 'bg-slate-200 text-slate-700'
-                                                        : 'bg-amber-200 text-amber-900 border border-amber-300'
-                                                    }`}
-                                                title="Toggle ESI for all rows"
-                                            >
-                                                {esiStatutoryState.allTrue ? '✓ All' : esiStatutoryState.allFalse ? '✕ Off' : `Mix (${esiStatutoryState.trueCount})`}
-                                            </button>
-                                        </div>
-                                        {renderResizeHandle('esi')}
-                                    </th>
-
-                                    <th
-                                        style={{ position: 'sticky', top: 0, zIndex: 10, width: `${columnWidths.pt}px`, minWidth: `${columnWidths.pt}px`, maxWidth: `${columnWidths.pt}px` }}
-                                        className="relative py-2 px-2 border-b border-r border-slate-200 bg-slate-100"
-                                    >
-                                        <div className="flex items-center justify-between gap-1 pr-1">
-                                            <span>PT</span>
-                                            <button
-                                                type="button"
-                                                onClick={() => handleColumnHeaderToggle('ptEnabled')}
-                                                className={`text-[8.5px] font-bold px-1.5 py-0.5 rounded-full transition-all cursor-pointer shadow-2xs shrink-0 ${ptStatutoryState.allTrue
-                                                    ? 'bg-blue-600 text-white'
-                                                    : ptStatutoryState.allFalse
-                                                        ? 'bg-slate-200 text-slate-700'
-                                                        : 'bg-amber-200 text-amber-900 border border-amber-300'
-                                                    }`}
-                                                title="Toggle PT for all rows"
-                                            >
-                                                {ptStatutoryState.allTrue ? '✓ All' : ptStatutoryState.allFalse ? '✕ Off' : `Mix (${ptStatutoryState.trueCount})`}
-                                            </button>
-                                        </div>
-                                        {renderResizeHandle('pt')}
-                                    </th>
-
-                                    <th
-                                        style={{ position: 'sticky', top: 0, zIndex: 10, width: `${columnWidths.gratuity}px`, minWidth: `${columnWidths.gratuity}px`, maxWidth: `${columnWidths.gratuity}px` }}
-                                        className="relative py-2 px-2 border-b border-r border-slate-200 bg-indigo-100/80"
-                                    >
-                                        <div className="flex items-center justify-between gap-1 pr-1">
-                                            <span>Gratuity</span>
-                                            <button
-                                                type="button"
-                                                onClick={() => handleColumnHeaderToggle('gratuityEnabled')}
-                                                className={`text-[8.5px] font-bold px-1.5 py-0.5 rounded-full transition-all cursor-pointer shadow-2xs shrink-0 ${gratuityStatutoryState.allTrue
-                                                    ? 'bg-indigo-600 text-white'
-                                                    : gratuityStatutoryState.allFalse
-                                                        ? 'bg-slate-200 text-slate-700'
-                                                        : 'bg-amber-200 text-amber-900 border border-amber-300'
-                                                    }`}
-                                                title="Toggle Gratuity for all rows"
-                                            >
-                                                {gratuityStatutoryState.allTrue ? '✓ All' : gratuityStatutoryState.allFalse ? '✕ Off' : `Mix (${gratuityStatutoryState.trueCount})`}
-                                            </button>
-                                        </div>
-                                        {renderResizeHandle('gratuity')}
-                                    </th>
-
-                                    <th
-                                        style={{ position: 'sticky', top: 0, zIndex: 10, width: `${columnWidths.lwf}px`, minWidth: `${columnWidths.lwf}px`, maxWidth: `${columnWidths.lwf}px` }}
-                                        className="relative py-2 px-2 border-b border-r border-slate-200 bg-slate-100"
-                                    >
-                                        <div className="flex items-center justify-between gap-1 pr-1">
-                                            <span>LWF</span>
-                                            <button
-                                                type="button"
-                                                onClick={() => handleColumnHeaderToggle('lwfEnabled')}
-                                                className={`text-[8.5px] font-bold px-1.5 py-0.5 rounded-full transition-all cursor-pointer shadow-2xs shrink-0 ${lwfStatutoryState.allTrue
-                                                    ? 'bg-blue-600 text-white'
-                                                    : lwfStatutoryState.allFalse
-                                                        ? 'bg-slate-200 text-slate-700'
-                                                        : 'bg-amber-200 text-amber-900 border border-amber-300'
-                                                    }`}
-                                                title="Toggle LWF for all rows"
-                                            >
-                                                {lwfStatutoryState.allTrue ? '✓ All' : lwfStatutoryState.allFalse ? '✕ Off' : `Mix (${lwfStatutoryState.trueCount})`}
-                                            </button>
-                                        </div>
-                                        {renderResizeHandle('lwf')}
-                                    </th>
-
-                                    <th
-                                        style={{ position: 'sticky', top: 0, zIndex: 10, width: `${columnWidths.tds}px`, minWidth: `${columnWidths.tds}px`, maxWidth: `${columnWidths.tds}px` }}
-                                        className="relative py-2 px-2 border-b border-r border-slate-200 bg-slate-100"
-                                    >
-                                        <div className="flex items-center justify-between gap-1 pr-1">
-                                            <span>TDS</span>
-                                            <button
-                                                type="button"
-                                                onClick={() => handleColumnHeaderToggle('tdsEnabled')}
-                                                className={`text-[8.5px] font-bold px-1.5 py-0.5 rounded-full transition-all cursor-pointer shadow-2xs shrink-0 ${tdsStatutoryState.allTrue
-                                                    ? 'bg-blue-600 text-white'
-                                                    : tdsStatutoryState.allFalse
-                                                        ? 'bg-slate-200 text-slate-700'
-                                                        : 'bg-amber-200 text-amber-900 border border-amber-300'
-                                                    }`}
-                                                title="Toggle TDS for all rows"
-                                            >
-                                                {tdsStatutoryState.allTrue ? '✓ All' : tdsStatutoryState.allFalse ? '✕ Off' : `Mix (${tdsStatutoryState.trueCount})`}
-                                            </button>
-                                        </div>
-                                        {renderResizeHandle('tds')}
-                                    </th>
-
-                                    <th
-                                        style={{ position: 'sticky', top: 0, zIndex: 10, width: `${columnWidths.ltaStatutory}px`, minWidth: `${columnWidths.ltaStatutory}px`, maxWidth: `${columnWidths.ltaStatutory}px` }}
-                                        className="relative py-2 px-2 border-b border-r border-slate-200 bg-emerald-100/80"
-                                    >
-                                        <div className="flex items-center justify-between gap-1 pr-1">
-                                            <span>LTA</span>
-                                            <button
-                                                type="button"
-                                                onClick={() => handleColumnHeaderToggle('ltaEnabled')}
-                                                className={`text-[8.5px] font-bold px-1.5 py-0.5 rounded-full transition-all cursor-pointer shadow-2xs shrink-0 ${ltaStatutoryState.allTrue
-                                                    ? 'bg-emerald-600 text-white'
-                                                    : ltaStatutoryState.allFalse
-                                                        ? 'bg-slate-200 text-slate-700'
-                                                        : 'bg-amber-200 text-amber-900 border border-amber-300'
-                                                    }`}
-                                                title="Toggle LTA for all rows"
-                                            >
-                                                {ltaStatutoryState.allTrue ? '✓ All' : ltaStatutoryState.allFalse ? '✕ Off' : `Mix (${ltaStatutoryState.trueCount})`}
-                                            </button>
-                                        </div>
-                                        {renderResizeHandle('ltaStatutory')}
-                                    </th>
-
-                                    <th
-                                        style={{ position: 'sticky', top: 0, zIndex: 10, width: `${columnWidths.deductions}px`, minWidth: `${columnWidths.deductions}px`, maxWidth: `${columnWidths.deductions}px` }}
-                                        className="relative py-2 px-2 border-b border-r border-slate-200 text-right text-rose-700 bg-rose-100/70 truncate"
-                                    >
-                                        <span>Deductions</span>
-                                        {renderResizeHandle('deductions')}
-                                    </th>
-
-                                    <th
-                                        style={{ position: 'sticky', top: 0, zIndex: 10, width: `${columnWidths.takeHome}px`, minWidth: `${columnWidths.takeHome}px`, maxWidth: `${columnWidths.takeHome}px` }}
-                                        className="relative py-2 px-2 border-b border-r border-slate-200 text-right text-emerald-800 bg-emerald-100 font-extrabold truncate"
-                                    >
-                                        <span>Est. Take-Home</span>
-                                        {renderResizeHandle('takeHome')}
-                                    </th>
+                                    {/* Dynamic Reorderable & Toggleable Column Headers */}
+                                    {orderedVisibleColKeys.map(colKey => renderBulkHeaderCell(colKey))}
 
                                     <th
                                         style={{ position: 'sticky', top: 0, right: 0, zIndex: 50, width: `${columnWidths.actions}px`, minWidth: `${columnWidths.actions}px`, maxWidth: `${columnWidths.actions}px`, backgroundColor: '#f1f5f9' }}
@@ -4266,15 +4976,41 @@ const ReviseSalaryDetailsTab = () => {
                             <tbody className="divide-y divide-slate-200 text-[11px]">
                                 {loadingBulkProfiles ? (
                                     <tr>
-                                        <td colSpan={25} className="py-10 text-center text-slate-500 text-xs">
+                                        <td colSpan={orderedVisibleColKeys.length + 3} className="py-10 text-center text-slate-500 text-xs">
                                             <RefreshCw className="animate-spin inline-block mr-2 text-blue-600" size={16} />
                                             <span>Loading employee salary spreadsheet...</span>
                                         </td>
                                     </tr>
                                 ) : filteredBulkRows.length === 0 ? (
                                     <tr>
-                                        <td colSpan={25} className="py-10 text-center text-slate-500 text-xs">
+                                        <td colSpan={orderedVisibleColKeys.length + 3} className="py-10 text-center text-slate-500 text-xs">
                                             No employees match the current filters.
+                                        </td>
+                                    </tr>
+                                ) : orderedVisibleColKeys.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={3} className="py-12 text-center text-slate-500 text-xs">
+                                            <div className="max-w-md mx-auto space-y-2">
+                                                <SlidersHorizontal className="mx-auto text-slate-400" size={24} />
+                                                <p className="font-bold text-slate-700 text-sm">All data columns are currently hidden</p>
+                                                <p className="text-[11px] text-slate-500">You have hidden all data columns. Open the Column Manager to choose which columns to show, or reset to defaults.</p>
+                                                <div className="flex items-center justify-center gap-2 pt-2">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setShowColumnManagerModal(true)}
+                                                        className="px-3.5 py-1.5 rounded-xl bg-blue-600 text-white font-bold text-xs shadow-2xs hover:bg-blue-700 cursor-pointer"
+                                                    >
+                                                        Choose Columns
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={handleResetColumnDefaults}
+                                                        className="px-3.5 py-1.5 rounded-xl bg-slate-100 text-slate-700 font-bold text-xs hover:bg-slate-200 border border-slate-200 cursor-pointer"
+                                                    >
+                                                        Reset to Defaults
+                                                    </button>
+                                                </div>
+                                            </div>
                                         </td>
                                     </tr>
                                 ) : (
@@ -4343,392 +5079,15 @@ const ReviseSalaryDetailsTab = () => {
                                                     </div>
                                                 </td>
 
-                                                {/* Annual CTC Input Cell */}
-                                                <td
-                                                    style={{ width: `${columnWidths.annualCTC}px`, minWidth: `${columnWidths.annualCTC}px`, maxWidth: `${columnWidths.annualCTC}px` }}
-                                                    className="py-1 px-1.5 border-b border-r border-slate-200 bg-slate-50"
-                                                >
-                                                    <div className="relative z-0">
-                                                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-[10px] select-none">₹</span>
-                                                        <input
-                                                            type="number"
-                                                            value={row.annualCTC || ''}
-                                                            onChange={(e) => handleRowFieldChange(row._id, 'annualCTC', e.target.value)}
-                                                            className="w-full h-6.5 pl-5 pr-1.5 py-0.5 text-[11px] font-mono tabular-nums font-bold border border-slate-300 rounded focus:border-blue-500 focus:bg-white bg-white focus:outline-none shadow-2xs"
-                                                            placeholder="0"
-                                                        />
-                                                    </div>
-                                                </td>
+                                                {/* Dynamic Reorderable & Toggleable Column Cells */}
+                                                {orderedVisibleColKeys.length === 0 ? (
+                                                    <td className="py-2 px-3 text-center text-xs text-slate-400 italic bg-slate-50 border-b border-r border-slate-200">
+                                                        No visible columns
+                                                    </td>
+                                                ) : (
+                                                    orderedVisibleColKeys.map(colKey => renderBulkDataCell(colKey, row, c))
+                                                )}
 
-                                                {/* Monthly CTC */}
-                                                <td
-                                                    style={{ width: `${columnWidths.monthlyCTC}px`, minWidth: `${columnWidths.monthlyCTC}px`, maxWidth: `${columnWidths.monthlyCTC}px` }}
-                                                    className="py-1.5 px-2 font-mono tabular-nums font-bold text-slate-800 border-b border-r border-slate-200 text-right bg-white truncate text-[11px]"
-                                                >
-                                                    ₹{Math.round(c.monthlyCTC || 0).toLocaleString('en-IN')}
-                                                </td>
-
-                                                {/* Basic */}
-                                                <td
-                                                    style={{ width: `${columnWidths.basic}px`, minWidth: `${columnWidths.basic}px`, maxWidth: `${columnWidths.basic}px` }}
-                                                    className="py-1.5 px-2 font-mono tabular-nums text-slate-700 border-b border-r border-slate-200 text-right bg-white truncate text-[11px]"
-                                                >
-                                                    ₹{Math.round(c.basicMaster || 0).toLocaleString('en-IN')}
-                                                </td>
-
-                                                {/* HRA */}
-                                                <td
-                                                    style={{ width: `${columnWidths.hra}px`, minWidth: `${columnWidths.hra}px`, maxWidth: `${columnWidths.hra}px` }}
-                                                    className="py-1.5 px-2 font-mono tabular-nums text-slate-700 border-b border-r border-slate-200 text-right bg-white truncate text-[11px]"
-                                                >
-                                                    ₹{Math.round(c.hraMaster || 0).toLocaleString('en-IN')}
-                                                </td>
-
-                                                {/* Petrol Cell */}
-                                                <td
-                                                    style={{ width: `${columnWidths.petrol}px`, minWidth: `${columnWidths.petrol}px`, maxWidth: `${columnWidths.petrol}px` }}
-                                                    className="py-1 px-1.5 border-b border-r border-slate-200 bg-sky-50"
-                                                >
-                                                    <div className="relative z-0">
-                                                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-[10px] select-none">₹</span>
-                                                        <input
-                                                            type="number"
-                                                            value={row.petrol !== undefined ? row.petrol : 0}
-                                                            onChange={(e) => handleRowFieldChange(row._id, 'petrol', e.target.value)}
-                                                            className="w-full h-6.5 pl-5 pr-1.5 py-0.5 text-[11px] font-mono tabular-nums font-bold border border-slate-300 rounded focus:border-blue-500 focus:bg-white bg-white focus:outline-none shadow-2xs"
-                                                            placeholder="0"
-                                                        />
-                                                    </div>
-                                                </td>
-
-                                                {/* LTA Cell */}
-                                                <td
-                                                    style={{ width: `${columnWidths.lta}px`, minWidth: `${columnWidths.lta}px`, maxWidth: `${columnWidths.lta}px` }}
-                                                    className="py-1 px-1.5 border-b border-r border-slate-200 bg-emerald-50"
-                                                >
-                                                    <div className="relative z-0">
-                                                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-[10px] select-none">₹</span>
-                                                        <input
-                                                            type="number"
-                                                            value={!row.ltaEnabled ? 0 : (row.lta !== undefined && row.lta !== '' ? row.lta : (c.lta || 0))}
-                                                            disabled={!row.ltaEnabled}
-                                                            onChange={(e) => handleRowFieldChange(row._id, 'lta', e.target.value)}
-                                                            className={`w-full h-6.5 pl-5 pr-1.5 py-0.5 text-[11px] font-mono tabular-nums font-bold border rounded focus:outline-none shadow-2xs ${!row.ltaEnabled
-                                                                ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed'
-                                                                : 'border-slate-300 focus:border-emerald-500 bg-white'
-                                                                }`}
-                                                            placeholder="0"
-                                                        />
-                                                    </div>
-                                                </td>
-
-                                                {/* Conveyance Cell */}
-                                                <td
-                                                    style={{ width: `${columnWidths.conveyance}px`, minWidth: `${columnWidths.conveyance}px`, maxWidth: `${columnWidths.conveyance}px` }}
-                                                    className="py-1 px-1.5 border-b border-r border-slate-200 bg-white"
-                                                >
-                                                    <div className="relative z-0">
-                                                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-[10px] select-none">₹</span>
-                                                        <input
-                                                            type="number"
-                                                            value={row.conveyance !== undefined ? row.conveyance : 0}
-                                                            onChange={(e) => handleRowFieldChange(row._id, 'conveyance', e.target.value)}
-                                                            className="w-full h-6.5 pl-5 pr-1.5 py-0.5 text-[11px] font-mono tabular-nums font-bold border border-slate-300 rounded focus:border-blue-500 focus:bg-white bg-white focus:outline-none shadow-2xs"
-                                                            placeholder="0"
-                                                        />
-                                                    </div>
-                                                </td>
-
-                                                {/* Medical Allowance Cell */}
-                                                <td
-                                                    style={{ width: `${columnWidths.medical}px`, minWidth: `${columnWidths.medical}px`, maxWidth: `${columnWidths.medical}px` }}
-                                                    className="py-1 px-1.5 border-b border-r border-slate-200 bg-white"
-                                                >
-                                                    <div className="relative z-0">
-                                                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-[10px] select-none">₹</span>
-                                                        <input
-                                                            type="number"
-                                                            value={row.medicalAllowance !== undefined ? row.medicalAllowance : 0}
-                                                            onChange={(e) => handleRowFieldChange(row._id, 'medicalAllowance', e.target.value)}
-                                                            className="w-full h-6.5 pl-5 pr-1.5 py-0.5 text-[11px] font-mono tabular-nums font-bold border border-slate-300 rounded focus:border-blue-500 focus:bg-white bg-white focus:outline-none shadow-2xs"
-                                                            placeholder="0"
-                                                        />
-                                                    </div>
-                                                </td>
-
-                                                {/* Meal Allowance Cell */}
-                                                <td
-                                                    style={{ width: `${columnWidths.meal}px`, minWidth: `${columnWidths.meal}px`, maxWidth: `${columnWidths.meal}px` }}
-                                                    className="py-1 px-1.5 border-b border-r border-slate-200 bg-white"
-                                                >
-                                                    <div className="relative z-0">
-                                                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-[10px] select-none">₹</span>
-                                                        <input
-                                                            type="number"
-                                                            value={row.mealAllowance !== undefined ? row.mealAllowance : 0}
-                                                            onChange={(e) => handleRowFieldChange(row._id, 'mealAllowance', e.target.value)}
-                                                            className="w-full h-6.5 pl-5 pr-1.5 py-0.5 text-[11px] font-mono tabular-nums font-bold border border-slate-300 rounded focus:border-blue-500 focus:bg-white bg-white focus:outline-none shadow-2xs"
-                                                            placeholder="0"
-                                                        />
-                                                    </div>
-                                                </td>
-
-                                                {/* Broadband Cell */}
-                                                <td
-                                                    style={{ width: `${columnWidths.broadband}px`, minWidth: `${columnWidths.broadband}px`, maxWidth: `${columnWidths.broadband}px` }}
-                                                    className="py-1 px-1.5 border-b border-r border-slate-200 bg-white"
-                                                >
-                                                    <div className="relative z-0">
-                                                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-[10px] select-none">₹</span>
-                                                        <input
-                                                            type="number"
-                                                            value={row.broadband !== undefined ? row.broadband : 0}
-                                                            onChange={(e) => handleRowFieldChange(row._id, 'broadband', e.target.value)}
-                                                            className="w-full h-6.5 pl-5 pr-1.5 py-0.5 text-[11px] font-mono tabular-nums font-bold border border-slate-300 rounded focus:border-blue-500 focus:bg-white bg-white focus:outline-none shadow-2xs"
-                                                            placeholder="0"
-                                                        />
-                                                    </div>
-                                                </td>
-
-                                                {/* Flexi Remainder */}
-                                                <td
-                                                    style={{ width: `${columnWidths.flexiRemainder}px`, minWidth: `${columnWidths.flexiRemainder}px`, maxWidth: `${columnWidths.flexiRemainder}px` }}
-                                                    className="py-1.5 px-2 font-mono tabular-nums font-bold text-blue-700 border-b border-r border-slate-200 text-right bg-blue-50 truncate text-[11px]"
-                                                >
-                                                    ₹{Math.round(c.specialAllowance || 0).toLocaleString('en-IN')}
-                                                </td>
-
-                                                {/* Monthly Gross */}
-                                                <td
-                                                    style={{ width: `${columnWidths.monthlyGross}px`, minWidth: `${columnWidths.monthlyGross}px`, maxWidth: `${columnWidths.monthlyGross}px` }}
-                                                    className="py-1.5 px-2 font-mono tabular-nums font-black text-slate-900 border-b border-r border-slate-200 text-right bg-slate-100 truncate text-[11px]"
-                                                >
-                                                    ₹{Math.round(c.grossMaster || 0).toLocaleString('en-IN')}
-                                                </td>
-
-                                                {/* Medical Insurance (Deduction - Flexi) */}
-                                                <td
-                                                    style={{ width: `${columnWidths.insurance}px`, minWidth: `${columnWidths.insurance}px`, maxWidth: `${columnWidths.insurance}px` }}
-                                                    className="py-1 px-1.5 border-b border-r border-slate-200 bg-rose-50"
-                                                >
-                                                    <div className="relative z-0">
-                                                        <span className="absolute left-1.5 top-1/2 -translate-y-1/2 text-rose-500 font-bold text-[10px] select-none">-₹</span>
-                                                        <input
-                                                            type="number"
-                                                            value={row.insuranceAmount !== undefined ? row.insuranceAmount : 0}
-                                                            onChange={(e) => handleRowFieldChange(row._id, 'insuranceAmount', e.target.value)}
-                                                            className="w-full h-6.5 pl-5 pr-1.5 py-0.5 text-[11px] font-mono tabular-nums font-bold border border-rose-300 rounded focus:border-rose-500 focus:bg-white bg-rose-50/60 text-rose-900 focus:outline-none shadow-2xs"
-                                                            placeholder="0"
-                                                        />
-                                                    </div>
-                                                </td>
-
-                                                {/* Provident Fund (PF) Cell */}
-                                                <td
-                                                    style={{ width: `${columnWidths.pf}px`, minWidth: `${columnWidths.pf}px`, maxWidth: `${columnWidths.pf}px` }}
-                                                    className="py-1.5 px-2 border-b border-r border-slate-200 bg-blue-50/70 overflow-hidden text-[10px]"
-                                                >
-                                                    <div className="space-y-0.5">
-                                                        <label className="flex items-center gap-1 cursor-pointer font-bold text-slate-900 select-none">
-                                                            <input
-                                                                type="checkbox"
-                                                                checked={Boolean(row.pfEnabled)}
-                                                                onChange={(e) => handleRowFieldChange(row._id, 'pfEnabled', e.target.checked)}
-                                                                className="w-3.5 h-3.5 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
-                                                            />
-                                                            <span>PF Active</span>
-                                                        </label>
-                                                        {row.pfEnabled ? (
-                                                            <div className="space-y-0 text-[9px] leading-tight">
-                                                                <label className="inline-flex items-center gap-1 text-slate-600 cursor-pointer">
-                                                                    <input
-                                                                        type="checkbox"
-                                                                        checked={Boolean(row.includePfInCTC)}
-                                                                        onChange={(e) => handleRowFieldChange(row._id, 'includePfInCTC', e.target.checked)}
-                                                                        className="w-2.5 h-2.5 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
-                                                                    />
-                                                                    <span>In CTC</span>
-                                                                </label>
-                                                                <div className="font-mono tabular-nums text-blue-700 font-semibold whitespace-nowrap">
-                                                                    EE: ₹{Math.round(c.pfEmployee || 0).toLocaleString('en-IN')} | ER: ₹{Math.round(c.pfEmployer || 0).toLocaleString('en-IN')}
-                                                                </div>
-                                                            </div>
-                                                        ) : (
-                                                            <span className="text-[9px] text-slate-400 block font-medium">Exempt (₹0)</span>
-                                                        )}
-                                                    </div>
-                                                </td>
-
-                                                {/* ESI Cell */}
-                                                <td
-                                                    style={{ width: `${columnWidths.esi}px`, minWidth: `${columnWidths.esi}px`, maxWidth: `${columnWidths.esi}px` }}
-                                                    className="py-1.5 px-2 border-b border-r border-slate-200 bg-white overflow-hidden text-[10px]"
-                                                >
-                                                    <div className="space-y-0.5">
-                                                        <label className="flex items-center gap-1 cursor-pointer font-bold text-slate-900 select-none">
-                                                            <input
-                                                                type="checkbox"
-                                                                checked={Boolean(row.esiEnabled)}
-                                                                onChange={(e) => handleRowFieldChange(row._id, 'esiEnabled', e.target.checked)}
-                                                                className="w-3.5 h-3.5 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
-                                                            />
-                                                            <span>ESI</span>
-                                                        </label>
-                                                        {row.esiEnabled && c.esiEmployee > 0 ? (
-                                                            <div className="text-[9px] font-mono tabular-nums text-slate-700 font-semibold whitespace-nowrap">
-                                                                EE: ₹{Math.round(c.esiEmployee || 0).toLocaleString('en-IN')}
-                                                            </div>
-                                                        ) : (
-                                                            <span className="text-[9px] text-slate-400 block font-medium">Exempt (₹0)</span>
-                                                        )}
-                                                    </div>
-                                                </td>
-
-                                                {/* PT Cell */}
-                                                <td
-                                                    style={{ width: `${columnWidths.pt}px`, minWidth: `${columnWidths.pt}px`, maxWidth: `${columnWidths.pt}px` }}
-                                                    className="py-1.5 px-2 border-b border-r border-slate-200 bg-white overflow-hidden text-[10px]"
-                                                >
-                                                    <div className="space-y-0.5">
-                                                        <label className="flex items-center gap-1 cursor-pointer font-bold text-slate-900 select-none">
-                                                            <input
-                                                                type="checkbox"
-                                                                checked={Boolean(row.ptEnabled)}
-                                                                onChange={(e) => handleRowFieldChange(row._id, 'ptEnabled', e.target.checked)}
-                                                                className="w-3.5 h-3.5 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
-                                                            />
-                                                            <span>PT</span>
-                                                        </label>
-                                                        {row.ptEnabled ? (
-                                                            <div className="text-[9px] font-mono tabular-nums text-slate-700 font-semibold whitespace-nowrap">
-                                                                ₹{Math.round(c.professionalTax || 0).toLocaleString('en-IN')}
-                                                            </div>
-                                                        ) : (
-                                                            <span className="text-[9px] text-slate-400 block font-medium">₹0</span>
-                                                        )}
-                                                    </div>
-                                                </td>
-
-                                                {/* Gratuity Cell */}
-                                                <td
-                                                    style={{ width: `${columnWidths.gratuity}px`, minWidth: `${columnWidths.gratuity}px`, maxWidth: `${columnWidths.gratuity}px` }}
-                                                    className="py-1.5 px-2 border-b border-r border-slate-200 bg-indigo-50/70 overflow-hidden text-[10px]"
-                                                >
-                                                    <div className="space-y-0.5">
-                                                        <label className="flex items-center gap-1 cursor-pointer font-bold text-slate-900 select-none">
-                                                            <input
-                                                                type="checkbox"
-                                                                checked={Boolean(row.gratuityEnabled)}
-                                                                onChange={(e) => handleRowFieldChange(row._id, 'gratuityEnabled', e.target.checked)}
-                                                                className="w-3.5 h-3.5 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
-                                                            />
-                                                            <span>Gratuity</span>
-                                                        </label>
-                                                        {row.gratuityEnabled ? (
-                                                            <div className="space-y-0 text-[9px] leading-tight">
-                                                                <label className="inline-flex items-center gap-1 text-slate-600 cursor-pointer">
-                                                                    <input
-                                                                        type="checkbox"
-                                                                        checked={row.includeGratuityInCTC !== false}
-                                                                        onChange={(e) => handleRowFieldChange(row._id, 'includeGratuityInCTC', e.target.checked)}
-                                                                        className="w-2.5 h-2.5 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
-                                                                    />
-                                                                    <span>In CTC</span>
-                                                                </label>
-                                                                <div className="font-mono tabular-nums text-indigo-700 font-semibold whitespace-nowrap">
-                                                                    ₹{Math.round(c.gratuity || 0).toLocaleString('en-IN')}
-                                                                </div>
-                                                            </div>
-                                                        ) : (
-                                                            <span className="text-[9px] text-slate-400 block font-medium">Disabled (₹0)</span>
-                                                        )}
-                                                    </div>
-                                                </td>
-
-                                                {/* LWF Cell */}
-                                                <td
-                                                    style={{ width: `${columnWidths.lwf}px`, minWidth: `${columnWidths.lwf}px`, maxWidth: `${columnWidths.lwf}px` }}
-                                                    className="py-1.5 px-2 border-b border-r border-slate-200 bg-white overflow-hidden text-[10px]"
-                                                >
-                                                    <div className="space-y-0.5">
-                                                        <label className="flex items-center gap-1 cursor-pointer font-bold text-slate-900 select-none">
-                                                            <input
-                                                                type="checkbox"
-                                                                checked={Boolean(row.lwfEnabled)}
-                                                                onChange={(e) => handleRowFieldChange(row._id, 'lwfEnabled', e.target.checked)}
-                                                                className="w-3.5 h-3.5 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
-                                                            />
-                                                            <span>LWF</span>
-                                                        </label>
-                                                        {row.lwfEnabled ? (
-                                                            <div className="text-[9px] font-mono tabular-nums text-slate-700 font-semibold whitespace-nowrap">
-                                                                EE: ₹{Math.round(c.lwfEmployee || 0)} | ER: ₹{Math.round(c.lwfEmployer || 0)}
-                                                            </div>
-                                                        ) : (
-                                                            <span className="text-[9px] text-slate-400 block font-medium">₹0</span>
-                                                        )}
-                                                    </div>
-                                                </td>
-
-                                                {/* TDS Cell */}
-                                                <td
-                                                    style={{ width: `${columnWidths.tds}px`, minWidth: `${columnWidths.tds}px`, maxWidth: `${columnWidths.tds}px` }}
-                                                    className="py-1.5 px-2 border-b border-r border-slate-200 bg-white overflow-hidden text-[10px]"
-                                                >
-                                                    <div className="space-y-0.5">
-                                                        <label className="flex items-center gap-1 cursor-pointer font-bold text-slate-900 select-none">
-                                                            <input
-                                                                type="checkbox"
-                                                                checked={Boolean(row.tdsEnabled)}
-                                                                onChange={(e) => handleRowFieldChange(row._id, 'tdsEnabled', e.target.checked)}
-                                                                className="w-3.5 h-3.5 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
-                                                            />
-                                                            <span>TDS</span>
-                                                        </label>
-                                                        <span className={`text-[9px] font-medium block ${row.tdsEnabled ? 'text-blue-700 font-semibold' : 'text-slate-400'}`}>
-                                                            {row.tdsEnabled ? 'Deduction On' : 'Disabled'}
-                                                        </span>
-                                                    </div>
-                                                </td>
-
-                                                {/* LTA Cell */}
-                                                <td
-                                                    style={{ width: `${columnWidths.ltaStatutory}px`, minWidth: `${columnWidths.ltaStatutory}px`, maxWidth: `${columnWidths.ltaStatutory}px` }}
-                                                    className="py-1.5 px-2 border-b border-r border-slate-200 bg-emerald-50 overflow-hidden text-[10px]"
-                                                >
-                                                    <div className="space-y-0.5">
-                                                        <label className="flex items-center gap-1 cursor-pointer font-bold text-slate-900 select-none">
-                                                            <input
-                                                                type="checkbox"
-                                                                checked={Boolean(row.ltaEnabled)}
-                                                                onChange={(e) => handleRowFieldChange(row._id, 'ltaEnabled', e.target.checked)}
-                                                                className="w-3.5 h-3.5 rounded text-emerald-600 focus:ring-emerald-500 cursor-pointer"
-                                                            />
-                                                            <span>LTA</span>
-                                                        </label>
-                                                        <span className={`text-[9px] font-medium block ${row.ltaEnabled ? 'text-emerald-700 font-semibold' : 'text-slate-400'}`}>
-                                                            {row.ltaEnabled ? 'Eligible' : 'Exempt'}
-                                                        </span>
-                                                    </div>
-                                                </td>
-
-                                                {/* Total Deductions */}
-                                                <td
-                                                    style={{ width: `${columnWidths.deductions}px`, minWidth: `${columnWidths.deductions}px`, maxWidth: `${columnWidths.deductions}px` }}
-                                                    className="py-1.5 px-2 font-mono tabular-nums font-bold text-rose-700 border-b border-r border-slate-200 text-right bg-rose-50/70 truncate text-[11px]"
-                                                >
-                                                    -₹{Math.round(c.totalDeductions || 0).toLocaleString('en-IN')}
-                                                </td>
-
-                                                {/* Est. Net Take-Home */}
-                                                <td
-                                                    style={{ width: `${columnWidths.takeHome}px`, minWidth: `${columnWidths.takeHome}px`, maxWidth: `${columnWidths.takeHome}px` }}
-                                                    className="py-1.5 px-2 border-b border-r border-slate-200 text-right bg-emerald-100/70 overflow-hidden"
-                                                >
-                                                    <span className="inline-block px-2 py-0.5 rounded font-mono tabular-nums font-extrabold text-[11px] bg-emerald-100 text-emerald-800 border border-emerald-300 shadow-2xs whitespace-nowrap">
-                                                        ₹{Math.round(c.netTakeHome || 0).toLocaleString('en-IN')}
-                                                    </span>
-                                                </td>
 
                                                 {/* Row Actions (Sticky Right) */}
                                                 <td
@@ -5930,6 +6289,18 @@ const ReviseSalaryDetailsTab = () => {
                     </div>
                 </div>
             )}
+
+            {/* Bulk Grid Column Manager Modal */}
+            <BulkGridColumnManagerModal
+                isOpen={showColumnManagerModal}
+                onClose={() => setShowColumnManagerModal(false)}
+                columnOrder={columnOrder}
+                columnVisibility={columnVisibility}
+                columnDefinitions={BULK_GRID_COLUMN_DEFS}
+                onUpdateOrder={handleUpdateColumnOrder}
+                onUpdateVisibility={handleUpdateColumnVisibility}
+                onResetDefaults={handleResetColumnDefaults}
+            />
         </div>
     );
 };
