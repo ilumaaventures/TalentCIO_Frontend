@@ -336,22 +336,59 @@ export const createOptimisticComment = ({ text, user }) => ({
   isOptimistic: true,
 });
 
-export const getAcknowledgedAnnouncementIds = (userId) => {
-  if (!userId) return [];
+export const getAcknowledgedAnnouncementMap = (userId) => {
+  if (!userId) return {};
   try {
     const rawValue = localStorage.getItem(`${ACK_STORAGE_KEY_PREFIX}${userId}`);
-    const parsed = rawValue ? JSON.parse(rawValue) : [];
-    return Array.isArray(parsed) ? parsed : [];
+    if (!rawValue) return {};
+    const parsed = JSON.parse(rawValue);
+    if (Array.isArray(parsed)) {
+      const map = {};
+      parsed.forEach((id) => { map[String(id)] = 0; });
+      return map;
+    }
+    return typeof parsed === 'object' && parsed !== null ? parsed : {};
   } catch {
-    return [];
+    return {};
   }
 };
 
+export const storeAcknowledgedAnnouncement = (userId, announcementId, publishedAt = null) => {
+  if (!userId || !announcementId) return;
+  const currentMap = getAcknowledgedAnnouncementMap(userId);
+  const cycleTime = publishedAt ? new Date(publishedAt).getTime() : Date.now();
+  currentMap[String(announcementId)] = Math.max(Date.now(), cycleTime || 0);
+  try {
+    localStorage.setItem(`${ACK_STORAGE_KEY_PREFIX}${userId}`, JSON.stringify(currentMap));
+  } catch (err) {
+    console.error('Failed to update announcement acknowledgment in localStorage:', err);
+  }
+};
+
+export const isAnnouncementAcknowledgedLocally = (userId, announcement) => {
+  if (!userId || !announcement?._id) return false;
+  const map = getAcknowledgedAnnouncementMap(userId);
+  const ackTimestamp = map[String(announcement._id)];
+  if (ackTimestamp === undefined) return false;
+
+  if (announcement.publishedAt) {
+    const publishedTime = new Date(announcement.publishedAt).getTime();
+    if (publishedTime && ackTimestamp < publishedTime) {
+      return false;
+    }
+  }
+  return true;
+};
+
+export const getAcknowledgedAnnouncementIds = (userId) => {
+  return Object.keys(getAcknowledgedAnnouncementMap(userId));
+};
+
 export const storeAcknowledgedAnnouncementIds = (userId, announcementIds = []) => {
-  if (!userId) return;
-  const currentIds = getAcknowledgedAnnouncementIds(userId);
-  const mergedIds = [...new Set([...currentIds, ...announcementIds.filter(Boolean)])];
-  localStorage.setItem(`${ACK_STORAGE_KEY_PREFIX}${userId}`, JSON.stringify(mergedIds));
+  if (!userId || !Array.isArray(announcementIds)) return;
+  announcementIds.forEach((id) => {
+    storeAcknowledgedAnnouncement(userId, id);
+  });
 };
 
 export const storeSkippedAnnouncementIds = (userId, announcementIds = []) => {

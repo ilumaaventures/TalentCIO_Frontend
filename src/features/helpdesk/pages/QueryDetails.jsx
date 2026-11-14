@@ -4,7 +4,7 @@ import api from '@/lib/apiClient';
 import { useAuth } from '@/features/auth/context/AuthContext';
 import {
     ArrowLeft, User as UserIcon, Calendar, Clock, AlertCircle,
-    CheckCircle, MessageSquare, Send, Check, AlertTriangle
+    CheckCircle, MessageSquare, Send, Check, AlertTriangle, Pencil, X
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Skeleton from '@/components/ui/Skeleton';
@@ -22,6 +22,16 @@ const QueryDetails = () => {
     const [loading, setLoading] = useState(true);
     const [commentText, setCommentText] = useState('');
     const [submittingComment, setSubmittingComment] = useState(false);
+
+    // Message Edit States
+    const [editingCommentId, setEditingCommentId] = useState(null);
+    const [editingCommentText, setEditingCommentText] = useState('');
+    const [savingCommentEdit, setSavingCommentEdit] = useState(false);
+
+    // Query Description Edit States
+    const [isEditingDescription, setIsEditingDescription] = useState(false);
+    const [editingDescriptionText, setEditingDescriptionText] = useState('');
+    const [savingDescriptionEdit, setSavingDescriptionEdit] = useState(false);
 
     // Redirect user if they are stuck on the old /helpdesk/new URL
     useEffect(() => {
@@ -62,6 +72,13 @@ const QueryDetails = () => {
         });
 
         socket.on('new_comment', (updatedComments) => {
+            setQuery(prev => {
+                if (!prev) return prev;
+                return { ...prev, comments: updatedComments };
+            });
+        });
+
+        socket.on('comment_updated', (updatedComments) => {
             setQuery(prev => {
                 if (!prev) return prev;
                 return { ...prev, comments: updatedComments };
@@ -129,6 +146,87 @@ const QueryDetails = () => {
             toast.error('Failed to add comment');
         } finally {
             setSubmittingComment(false);
+        }
+    };
+
+    const startEditComment = (comment) => {
+        setEditingCommentId(comment._id);
+        setEditingCommentText(comment.text);
+    };
+
+    const cancelEditComment = () => {
+        setEditingCommentId(null);
+        setEditingCommentText('');
+    };
+
+    const handleSaveCommentEdit = async (commentId) => {
+        if (!editingCommentText.trim()) {
+            toast.error('Message cannot be empty');
+            return;
+        }
+        setSavingCommentEdit(true);
+        try {
+            const res = await api.put(`/helpdesk/${id}/comments/${commentId}`, {
+                text: editingCommentText.trim()
+            });
+            if (res.data?.data) {
+                setQuery(prev => ({ ...prev, comments: res.data.data }));
+            } else {
+                setQuery(prev => ({
+                    ...prev,
+                    comments: (prev.comments || []).map(c =>
+                        c._id === commentId
+                            ? { ...c, text: editingCommentText.trim(), isEdited: true, editedAt: new Date().toISOString() }
+                            : c
+                    )
+                }));
+            }
+            cancelEditComment();
+            toast.success('Message updated');
+        } catch (error) {
+            console.error('Failed to update message', error);
+            toast.error(error.response?.data?.message || 'Failed to update message');
+        } finally {
+            setSavingCommentEdit(false);
+        }
+    };
+
+    const startEditDescription = () => {
+        setIsEditingDescription(true);
+        setEditingDescriptionText(query.description || '');
+    };
+
+    const cancelEditDescription = () => {
+        setIsEditingDescription(false);
+        setEditingDescriptionText('');
+    };
+
+    const handleSaveDescription = async () => {
+        if (!editingDescriptionText.trim()) {
+            toast.error('Description cannot be empty');
+            return;
+        }
+        setSavingDescriptionEdit(true);
+        try {
+            const res = await api.put(`/helpdesk/${id}`, {
+                description: editingDescriptionText.trim()
+            });
+            if (res.data?.data) {
+                setQuery(prev => ({ ...prev, ...res.data.data }));
+            } else {
+                setQuery(prev => ({
+                    ...prev,
+                    description: editingDescriptionText.trim(),
+                    isEdited: true,
+                    editedAt: new Date().toISOString()
+                }));
+            }
+            cancelEditDescription();
+            toast.success('Description updated');
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Failed to update description');
+        } finally {
+            setSavingDescriptionEdit(false);
         }
     };
 
@@ -303,13 +401,66 @@ const QueryDetails = () => {
 
                         {/* Original Query Details */}
                         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-                            <h3 className="text-lg font-bold text-slate-800 mb-4 border-b border-slate-100 pb-3 flex items-center gap-2">
-                                <MessageSquare size={18} className="text-indigo-500" />
-                                Query Description
-                            </h3>
-                            <div className="prose prose-sm max-w-none text-slate-700 whitespace-pre-wrap">
-                                {query.description}
+                            <div className="flex items-center justify-between mb-4 border-b border-slate-100 pb-3">
+                                <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                                    <MessageSquare size={18} className="text-indigo-500" />
+                                    <span>Query Description</span>
+                                    {query.isEdited && (
+                                        <span
+                                            className="text-[10px] font-normal italic text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full cursor-help"
+                                            title={query.editedAt ? `Edited on ${format(new Date(query.editedAt), 'MMM d, yyyy h:mm a')}` : 'Edited'}
+                                        >
+                                            Edited
+                                        </span>
+                                    )}
+                                </h3>
+                                {!isClosed && (isRaiser || isAdmin) && !isEditingDescription && (
+                                    <button
+                                        type="button"
+                                        onClick={startEditDescription}
+                                        className="text-xs text-indigo-600 hover:text-indigo-700 font-semibold flex items-center gap-1 px-2.5 py-1 rounded-lg hover:bg-indigo-50 transition-colors cursor-pointer"
+                                        title="Edit query description"
+                                    >
+                                        <Pencil size={12} />
+                                        <span>Edit</span>
+                                    </button>
+                                )}
                             </div>
+
+                            {isEditingDescription ? (
+                                <div className="space-y-3">
+                                    <textarea
+                                        value={editingDescriptionText}
+                                        onChange={(e) => setEditingDescriptionText(e.target.value)}
+                                        rows={4}
+                                        className="w-full border border-slate-300 rounded-lg p-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none resize-none bg-slate-50 focus:bg-white transition-colors"
+                                        placeholder="Enter query description..."
+                                        autoFocus
+                                    />
+                                    <div className="flex items-center justify-end gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={cancelEditDescription}
+                                            disabled={savingDescriptionEdit}
+                                            className="py-1.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold transition-colors cursor-pointer"
+                                        >
+                                            Cancel
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={handleSaveDescription}
+                                            disabled={savingDescriptionEdit || !editingDescriptionText.trim()}
+                                            className="py-1.5 px-4 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 text-white rounded-lg text-xs font-semibold transition-colors shadow-xs cursor-pointer flex items-center gap-1.5"
+                                        >
+                                            {savingDescriptionEdit ? 'Saving...' : 'Save Changes'}
+                                        </button>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="prose prose-sm max-w-none text-slate-700 whitespace-pre-wrap leading-relaxed">
+                                    {query.description}
+                                </div>
+                            )}
                         </div>
 
                         {/* Comments / Activity Feed */}
@@ -328,12 +479,13 @@ const QueryDetails = () => {
                                 {query.comments && query.comments.length > 0 ? (
                                     query.comments.map((comment, index) => {
                                         const isSystem = comment.text.startsWith('[SYSTEM]');
-                                        const isMe = comment.user?._id === user?._id;
+                                        const isMe = (comment.user?._id || comment.user)?.toString() === (user?._id || user?.id)?.toString();
                                         const userName = comment.user ? `${comment.user.firstName} ${comment.user.lastName}` : 'System';
+                                        const isEditingThisComment = editingCommentId === comment._id;
 
                                         if (isSystem) {
                                             return (
-                                                <div key={index} className="flex justify-center my-4">
+                                                <div key={comment._id || index} className="flex justify-center my-4">
                                                     <div className="bg-slate-100 border border-slate-200 text-slate-600 text-[11px] font-semibold px-4 py-1.5 rounded-full flex items-center shadow-xs text-center max-w-[90%]">
                                                         <AlertCircle size={13} className="mr-1.5 text-indigo-500 shrink-0" />
                                                         <span>{comment.text.replace('[SYSTEM] ', '')}</span>
@@ -346,7 +498,7 @@ const QueryDetails = () => {
                                         }
 
                                         return (
-                                            <div key={index} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
+                                            <div key={comment._id || index} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
                                                 <div className={`flex max-w-[85%] ${isMe ? 'flex-row-reverse' : 'flex-row'}`}>
 
                                                     <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs shadow-xs border
@@ -358,13 +510,88 @@ const QueryDetails = () => {
                                                     <div className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
                                                         <div className="flex items-center gap-2 mb-1 px-1">
                                                             <span className="text-xs font-bold text-slate-700">{isMe ? 'You' : userName}</span>
-                                                            <span className="text-[10px] font-medium text-slate-400">{format(new Date(comment.createdAt), 'MMM d, h:mm a')}</span>
+                                                            <span className="text-[10px] font-medium text-slate-400 flex items-center gap-1">
+                                                                <span>{format(new Date(comment.createdAt), 'MMM d, h:mm a')}</span>
+                                                                {comment.isEdited && (
+                                                                    <span
+                                                                        className="text-[10px] italic font-normal text-slate-400 hover:text-slate-600 transition-colors cursor-help select-none"
+                                                                        title={comment.editedAt ? `Edited on ${format(new Date(comment.editedAt), 'MMM d, yyyy h:mm a')}` : 'Edited'}
+                                                                    >
+                                                                        • Edited
+                                                                    </span>
+                                                                )}
+                                                            </span>
+                                                            {isMe && !isClosed && !isEditingThisComment && (
+                                                                <div className="flex items-center opacity-70 hover:opacity-100 transition-opacity ml-1">
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => startEditComment(comment)}
+                                                                        className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-slate-100 rounded transition-colors cursor-pointer"
+                                                                        title="Edit message"
+                                                                    >
+                                                                        <Pencil size={11} />
+                                                                    </button>
+                                                                </div>
+                                                            )}
                                                         </div>
-                                                        <div className={`px-4 py-2.5 rounded-2xl text-sm whitespace-pre-wrap shadow-xs border
-                                                            ${isMe ? 'bg-indigo-50 border-indigo-100 text-indigo-900 rounded-tr-sm' : 'bg-white border-slate-200 text-slate-700 rounded-tl-sm'}
-                                                        `}>
-                                                            {comment.text}
-                                                        </div>
+
+                                                        {isEditingThisComment ? (
+                                                            <div className="w-full min-w-[280px] sm:min-w-[340px] bg-white border border-indigo-200 rounded-2xl p-3 shadow-md space-y-2">
+                                                                <textarea
+                                                                    value={editingCommentText}
+                                                                    onChange={(e) => setEditingCommentText(e.target.value)}
+                                                                    onKeyDown={(e) => {
+                                                                        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                                                                            e.preventDefault();
+                                                                            handleSaveCommentEdit(comment._id);
+                                                                        } else if (e.key === 'Escape') {
+                                                                            cancelEditComment();
+                                                                        }
+                                                                    }}
+                                                                    className="w-full text-sm text-slate-800 bg-slate-50 border border-slate-200 rounded-lg p-2.5 focus:bg-white focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 outline-none resize-none leading-relaxed"
+                                                                    rows="3"
+                                                                    autoFocus
+                                                                />
+                                                                <div className="flex items-center justify-between text-[11px] text-slate-400">
+                                                                    <span className="text-[10px]">Esc to cancel • Ctrl+Enter to save</span>
+                                                                    <div className="flex items-center gap-1.5">
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={cancelEditComment}
+                                                                            disabled={savingCommentEdit}
+                                                                            className="px-2.5 py-1 text-slate-600 hover:bg-slate-100 rounded-md font-semibold text-xs transition-colors cursor-pointer"
+                                                                        >
+                                                                            Cancel
+                                                                        </button>
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => handleSaveCommentEdit(comment._id)}
+                                                                            disabled={savingCommentEdit || !editingCommentText.trim()}
+                                                                            className="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 text-white rounded-md font-semibold text-xs flex items-center gap-1 transition-colors shadow-xs cursor-pointer"
+                                                                        >
+                                                                            {savingCommentEdit ? 'Saving...' : 'Save'}
+                                                                        </button>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        ) : (
+                                                            <div className={`px-4 py-2.5 rounded-2xl text-sm whitespace-pre-wrap shadow-xs border relative
+                                                                ${isMe ? 'bg-indigo-50 border-indigo-100 text-indigo-900 rounded-tr-sm' : 'bg-white border-slate-200 text-slate-700 rounded-tl-sm'}
+                                                            `}>
+                                                                <div>{comment.text}</div>
+                                                                {comment.isEdited && (
+                                                                    <div className="mt-1 flex justify-end">
+                                                                        <span
+                                                                            className={`text-[9.5px] italic font-medium flex items-center gap-0.5 select-none ${isMe ? 'text-indigo-400' : 'text-slate-400'}`}
+                                                                            title={comment.editedAt ? `Edited on ${format(new Date(comment.editedAt), 'MMM d, yyyy h:mm a')}` : 'Edited'}
+                                                                        >
+                                                                            <Check size={10} className="inline opacity-70" />
+                                                                            Edited
+                                                                        </span>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 </div>
                                             </div>

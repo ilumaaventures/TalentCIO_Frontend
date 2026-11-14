@@ -12,6 +12,8 @@ import DossierGateBanner from '@/features/employee-dossier/components/DossierGat
 import ImpersonationBanner from '@/components/common/ImpersonationBanner';
 import {
     getAcknowledgedAnnouncementIds,
+    storeAcknowledgedAnnouncement,
+    isAnnouncementAcknowledgedLocally,
     getAnnouncementSessionGateKey,
     sortAnnouncementsByPublishedAt,
     storeAcknowledgedAnnouncementIds,
@@ -135,14 +137,20 @@ const Layout = () => {
             const announcements = sortAnnouncementsByPublishedAt(
                 Array.isArray(response.data?.announcements) ? response.data.announcements : []
             );
-            const acknowledgedIds = new Set(getAcknowledgedAnnouncementIds(user._id));
-            const unread = announcements.filter(
-                (announcement) =>
-                    announcement.status === 'published' &&
-                    !announcement.isExpired &&
-                    !announcement.viewerAcknowledged &&
-                    !acknowledgedIds.has(String(announcement._id))
-            );
+            const unread = announcements.filter((announcement) => {
+                if (announcement.status !== 'published' || announcement.isExpired) {
+                    return false;
+                }
+                const serverAcknowledged = Boolean(announcement.isAcknowledged || announcement.viewerAcknowledged);
+                if (serverAcknowledged) {
+                    return false;
+                }
+                const locallyAcknowledged = isAnnouncementAcknowledgedLocally(user._id, announcement);
+                if (locallyAcknowledged) {
+                    return false;
+                }
+                return true;
+            });
 
             setUnreadAnnouncements(unread);
             setAnnouncementIndex(0);
@@ -178,9 +186,15 @@ const Layout = () => {
             }
         };
 
+        const handlePublishedAnnouncement = () => {
+            void loadUnreadAnnouncements();
+        };
+
         socket.on('notification', handleRealtimeAnnouncement);
+        socket.on('announcement:published', handlePublishedAnnouncement);
         return () => {
             socket.off('notification', handleRealtimeAnnouncement);
+            socket.off('announcement:published', handlePublishedAnnouncement);
         };
     }, [user?._id, loadUnreadAnnouncements]);
 
@@ -195,6 +209,7 @@ const Layout = () => {
         }
 
         const nextAckBuffer = [...announcementAckBuffer, String(currentAnnouncement._id)];
+        storeAcknowledgedAnnouncement(user._id, currentAnnouncement._id, currentAnnouncement.publishedAt);
         storeAcknowledgedAnnouncementIds(user._id, [String(currentAnnouncement._id), ...nextAckBuffer]);
 
         const isPolicyAnnouncement = Boolean(

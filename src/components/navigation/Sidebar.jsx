@@ -645,7 +645,7 @@ const Sidebar = ({ isOpen, onClose }) => {
                 </Link>
               )}
               {showHREmail && (
-                <Link to="/hr-email/send" className={getSidebarLinkClass(location.pathname === '/hr-email/send')} onClick={onClose}>
+                <Link to="/hr-email/send" className={getSidebarLinkClass(location.pathname === '/hr-email/send' || location.pathname === '/hr-email/history')} onClick={onClose}>
                   <Mail size={18} />
                   <span>Send HR Email</span>
                 </Link>
