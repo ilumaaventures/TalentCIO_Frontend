@@ -365,6 +365,11 @@ function App() {
                         <HREmailSend />
                       </ProtectedRoute>
                     )} />
+                    <Route path="/hr-email/history" element={(
+                      <ProtectedRoute moduleName="hrEmail" requiredPermissions={HR_EMAIL_PERMISSIONS} redirectTo="/">
+                        <HREmailSend defaultTab="history" />
+                      </ProtectedRoute>
+                    )} />
 
                     {/* Organization Chart Route */}
                     <Route element={<ProtectedRoute moduleName="organization" redirectTo="/" />}>

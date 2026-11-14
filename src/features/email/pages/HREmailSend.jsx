@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
     AlertCircle,
     Check,
@@ -10,6 +10,7 @@ import {
     FileCheck,
     FileText,
     FolderArchive,
+    History,
     Loader,
     Mail,
     Paperclip,
@@ -22,6 +23,7 @@ import {
 import toast from 'react-hot-toast';
 import api from '@/lib/apiClient';
 import { useAuth } from '@/features/auth/context/AuthContext';
+import HREmailHistory from '../components/HREmailHistory';
 
 const PLACEHOLDERS = [
     'firstName',
@@ -62,8 +64,24 @@ const formatBodyPreview = (content = '', data = {}) => {
 };
 const formatFileSize = (size = 0) => `${(Number(size || 0) / (1024 * 1024)).toFixed(2)} MB`;
 
-const HREmailSend = () => {
+const HREmailSend = ({ defaultTab = 'send' }) => {
     const navigate = useNavigate();
+    const [searchParams, setSearchParams] = useSearchParams();
+    const queryTab = searchParams.get('tab');
+    const [activeTab, setActiveTab] = useState(queryTab === 'history' || defaultTab === 'history' ? 'history' : 'send');
+    const [historyTotalCount, setHistoryTotalCount] = useState(null);
+
+    useEffect(() => {
+        if (queryTab === 'history' || queryTab === 'send') {
+            setActiveTab(queryTab);
+        }
+    }, [queryTab]);
+
+    const handleTabChange = (newTab) => {
+        setActiveTab(newTab);
+        setSearchParams({ tab: newTab });
+    };
+
     const { user } = useAuth();
     const fileInputRef = useRef(null);
     const [step, setStep] = useState(1);
@@ -527,13 +545,24 @@ const HREmailSend = () => {
                         >
                             Send Another
                         </button>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setResult(null);
+                                handleTabChange('history');
+                            }}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3.5 py-1.5 text-xs font-semibold text-blue-700 transition hover:bg-blue-100 cursor-pointer"
+                        >
+                            <History size={14} />
+                            View in Email History
+                        </button>
                         {primaryHistoryUserId ? (
                             <button
                                 type="button"
                                 onClick={() => navigate(`/dossier/${primaryHistoryUserId}?tab=email-history`)}
                                 className="rounded-lg border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 cursor-pointer"
                             >
-                                View History
+                                Dossier History
                             </button>
                         ) : null}
                     </div>
@@ -545,18 +574,71 @@ const HREmailSend = () => {
     return (
         <div className="mx-auto max-w-6xl space-y-4 font-sans">
             <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-white via-slate-50 to-blue-50 p-4 sm:p-5 shadow-2xs">
-                <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                         <div className="inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-blue-700">
                             <Mail size={12} />
                             HR Communication
                         </div>
-                        <h1 className="mt-2 text-lg font-bold tracking-tight text-slate-900">Send HR Email</h1>
+                        <h1 className="mt-2 text-lg font-bold tracking-tight text-slate-900">
+                            {activeTab === 'history' ? 'HR Email History' : 'Send HR Email'}
+                        </h1>
+                        <p className="mt-0.5 text-xs text-slate-500">
+                            {activeTab === 'history'
+                                ? 'View and track all emails dispatched to employees from the Send HR Email flow, with attached files and full delivery logs.'
+                                : 'Compose and dispatch personalized communications and attachments to active employees.'}
+                        </p>
+                    </div>
+
+                    {/* Navigation Tabs */}
+                    <div className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white p-1 shadow-2xs">
+                        <button
+                            type="button"
+                            onClick={() => handleTabChange('send')}
+                            className={`inline-flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-all cursor-pointer ${
+                                activeTab === 'send'
+                                    ? 'bg-slate-900 text-white shadow-2xs'
+                                    : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                            }`}
+                        >
+                            <Send size={13} />
+                            <span>Send Email</span>
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => handleTabChange('history')}
+                            className={`inline-flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-all cursor-pointer ${
+                                activeTab === 'history'
+                                    ? 'bg-slate-900 text-white shadow-2xs'
+                                    : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                            }`}
+                        >
+                            <History size={13} />
+                            <span>Email History</span>
+                            {historyTotalCount !== null && (
+                                <span
+                                    className={`rounded-full px-1.5 py-0.2 text-[10px] font-bold ${
+                                        activeTab === 'history'
+                                            ? 'bg-blue-600 text-white'
+                                            : 'bg-slate-100 text-slate-600'
+                                    }`}
+                                >
+                                    {historyTotalCount}
+                                </span>
+                            )}
+                        </button>
                     </div>
                 </div>
             </div>
 
-            {renderStepIndicator()}
+            {activeTab === 'history' ? (
+                <HREmailHistory
+                    onComposeClick={() => handleTabChange('send')}
+                    onTotalCountChange={(count) => setHistoryTotalCount(count)}
+                />
+            ) : (
+                <>
+                    {renderStepIndicator()}
 
             {step === 1 && (
                 <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-2xs">
@@ -1646,6 +1728,8 @@ const HREmailSend = () => {
                         </div>
                     </div>
                 </div>
+            )}
+                </>
             )}
         </div>
     );
