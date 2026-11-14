@@ -765,13 +765,37 @@ const Discussions = () => {
             const workbook = new ExcelJS.Workbook();
             const sheet = workbook.addWorksheet('Discussions');
 
-            const formatPersonName = (person) =>
-                [person?.firstName, person?.lastName].filter(Boolean).join(' ') || '';
+            const formatPersonName = (person) => {
+                if (!person) return '';
+                if (typeof person === 'string') {
+                    const matched = (supervisors || []).find((s) => String(s._id || s.id) === String(person));
+                    if (matched) {
+                        return [matched.firstName, matched.lastName].filter(Boolean).join(' ') || matched.name || matched.email || '';
+                    }
+                    return '';
+                }
+                const fullName = [person.firstName, person.lastName].filter(Boolean).join(' ');
+                if (fullName) return fullName;
+                if (person.name) return person.name;
+                if (person.email) return person.email;
+                if (person._id || person.id) {
+                    const id = String(person._id || person.id);
+                    const matched = (supervisors || []).find((s) => String(s._id || s.id) === id);
+                    if (matched) {
+                        return [matched.firstName, matched.lastName].filter(Boolean).join(' ') || matched.name || matched.email || '';
+                    }
+                }
+                return '';
+            };
 
-            const formatVisibleUsers = (users) =>
-                Array.isArray(users)
-                    ? users.map((user) => formatPersonName(user)).filter(Boolean).join(', ')
-                    : '';
+            const formatUserList = (users) => {
+                if (!users) return '';
+                const list = Array.isArray(users) ? users : [users];
+                return list
+                    .map((user) => formatPersonName(user))
+                    .filter(Boolean)
+                    .join(', ');
+            };
 
             sheet.columns = [
                 { header: 'S.No', key: 'slNo', width: 10 },
@@ -796,8 +820,8 @@ const Discussions = () => {
                     slNo: index + 1,
                     description: item.discussion || '-',
                     createdBy: formatPersonName(item.createdBy) || '-',
-                    supervisor: formatPersonName(item.supervisor) || '-',
-                    visibleTo: formatVisibleUsers(item.visibleToUsers) || '-',
+                    supervisor: formatUserList(item.supervisor || item.supervisors) || '-',
+                    visibleTo: formatUserList(item.visibleToUsers) || '-',
                     project: item.project?.name || '-',
                     module: item.module?.name || '-',
                     hours: item.hours !== undefined && item.hours !== null ? item.hours : '-',
@@ -827,6 +851,7 @@ const Discussions = () => {
             });
 
             sheet.getColumn('description').alignment = { wrapText: true, vertical: 'top' };
+            sheet.getColumn('supervisor').alignment = { wrapText: true, vertical: 'top' };
             sheet.getColumn('visibleTo').alignment = { wrapText: true, vertical: 'top' };
 
             const buffer = await workbook.xlsx.writeBuffer();
