@@ -652,11 +652,13 @@ const ReviseSalaryDetailsTab = () => {
                 if (Array.isArray(parsed?.order) && parsed.order.length > 0) {
                     const validKeys = parsed.order.filter(k => DEFAULT_BULK_COLUMN_ORDER.includes(k));
                     const missingKeys = DEFAULT_BULK_COLUMN_ORDER.filter(k => !validKeys.includes(k));
-                    return [...validKeys, ...missingKeys];
+                    if (validKeys.length > 0) {
+                        return [...validKeys, ...missingKeys];
+                    }
                 }
             }
         } catch { }
-        return DEFAULT_BULK_COLUMN_ORDER;
+        return [...DEFAULT_BULK_COLUMN_ORDER];
     });
 
     const [columnVisibility, setColumnVisibility] = useState(() => {
@@ -665,7 +667,11 @@ const ReviseSalaryDetailsTab = () => {
             if (saved) {
                 const parsed = JSON.parse(saved);
                 if (parsed?.visibility && typeof parsed.visibility === 'object') {
-                    return { ...parsed.visibility };
+                    const result = {};
+                    DEFAULT_BULK_COLUMN_ORDER.forEach(k => {
+                        result[k] = parsed.visibility[k] !== undefined ? parsed.visibility[k] : true;
+                    });
+                    return result;
                 }
             }
         } catch { }
@@ -678,42 +684,70 @@ const ReviseSalaryDetailsTab = () => {
         try {
             localStorage.setItem(STORAGE_KEY_COL_PREFS, JSON.stringify({
                 order: newOrder,
-                visibility: newVisibility
+                visibility: newVisibility,
+                updatedAt: new Date().toISOString()
             }));
         } catch { }
     }, []);
 
+    const handleApplyColumnLayout = useCallback((newOrder, newVisibility) => {
+        const finalOrder = Array.isArray(newOrder) && newOrder.length > 0
+            ? [...newOrder]
+            : [...DEFAULT_BULK_COLUMN_ORDER];
+        const finalVisibility = newVisibility && typeof newVisibility === 'object'
+            ? { ...newVisibility }
+            : {};
+
+        setColumnOrder(finalOrder);
+        setColumnVisibility(finalVisibility);
+        saveColumnPrefs(finalOrder, finalVisibility);
+        toast.success('Column layout updated successfully');
+    }, [saveColumnPrefs]);
+
     const handleUpdateColumnOrder = useCallback((newOrder) => {
-        setColumnOrder(newOrder);
-        saveColumnPrefs(newOrder, columnVisibility);
+        const finalOrder = Array.isArray(newOrder) ? [...newOrder] : [...DEFAULT_BULK_COLUMN_ORDER];
+        setColumnOrder(finalOrder);
+        setColumnVisibility(prevVis => {
+            saveColumnPrefs(finalOrder, prevVis);
+            return prevVis;
+        });
         toast.success('Column order updated');
-    }, [columnVisibility, saveColumnPrefs]);
+    }, [saveColumnPrefs]);
 
     const handleUpdateColumnVisibility = useCallback((newVisibility) => {
-        setColumnVisibility(newVisibility);
-        saveColumnPrefs(columnOrder, newVisibility);
+        const finalVisibility = { ...newVisibility };
+        setColumnVisibility(finalVisibility);
+        setColumnOrder(prevOrder => {
+            saveColumnPrefs(prevOrder, finalVisibility);
+            return prevOrder;
+        });
         toast.success('Column visibility updated');
-    }, [columnOrder, saveColumnPrefs]);
+    }, [saveColumnPrefs]);
 
     const handleHideColumn = useCallback((colKey) => {
         setColumnVisibility(prev => {
             const next = { ...prev, [colKey]: false };
-            saveColumnPrefs(columnOrder, next);
+            setColumnOrder(currentOrder => {
+                saveColumnPrefs(currentOrder, next);
+                return currentOrder;
+            });
             toast.success(`Hidden "${BULK_GRID_COLUMN_DEFS[colKey]?.label || colKey}". Use "Columns" button to restore.`);
             return next;
         });
-    }, [columnOrder, saveColumnPrefs]);
+    }, [saveColumnPrefs]);
 
     const handleResetColumnDefaults = useCallback(() => {
         const defaultVis = {};
         DEFAULT_BULK_COLUMN_ORDER.forEach(k => { defaultVis[k] = true; });
-        setColumnOrder(DEFAULT_BULK_COLUMN_ORDER);
+        const defaultOrder = [...DEFAULT_BULK_COLUMN_ORDER];
+
+        setColumnOrder(defaultOrder);
         setColumnVisibility(defaultVis);
         try {
             localStorage.removeItem(STORAGE_KEY_COL_PREFS);
         } catch { }
         toast.success('Column layout reset to defaults');
-    }, [saveColumnPrefs]);
+    }, []);
 
     const orderedVisibleColKeys = useMemo(() => {
         return columnOrder.filter(k => columnVisibility[k] !== false);
@@ -4817,6 +4851,17 @@ const ReviseSalaryDetailsTab = () => {
                                 <SlidersHorizontal size={13} className="text-slate-500" />
                                 <span className="hidden sm:inline">Reset Widths</span>
                             </button>
+
+                            {/* Reset Column Layout */}
+                            <button
+                                type="button"
+                                onClick={handleResetColumnDefaults}
+                                className="px-2.5 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:text-slate-900 bg-white hover:bg-slate-50 flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
+                                title="Restore default column order and default visibility settings"
+                            >
+                                <RotateCcw size={13} className="text-slate-500" />
+                                <span className="hidden sm:inline">Reset Columns</span>
+                            </button>
                         </div>
 
                         {/* Revision Parameters & Save Execution */}
@@ -6295,8 +6340,10 @@ const ReviseSalaryDetailsTab = () => {
                 isOpen={showColumnManagerModal}
                 onClose={() => setShowColumnManagerModal(false)}
                 columnOrder={columnOrder}
+                defaultColumnOrder={DEFAULT_BULK_COLUMN_ORDER}
                 columnVisibility={columnVisibility}
                 columnDefinitions={BULK_GRID_COLUMN_DEFS}
+                onApplyLayout={handleApplyColumnLayout}
                 onUpdateOrder={handleUpdateColumnOrder}
                 onUpdateVisibility={handleUpdateColumnVisibility}
                 onResetDefaults={handleResetColumnDefaults}
