@@ -96,10 +96,11 @@ const SearchableFilterSelect = ({
     // Auto-focus search input when opened
     useEffect(() => {
         if (isOpen) {
-            setSearchTerm('');
-            setTimeout(() => {
+            const timer = setTimeout(() => {
+                setSearchTerm('');
                 searchInputRef.current?.focus();
             }, 50);
+            return () => clearTimeout(timer);
         }
     }, [isOpen]);
 
@@ -509,6 +510,36 @@ const GlobalTADashboard = () => {
 
             <div className="max-w-[1680px] w-full mx-auto px-6 py-8 space-y-8">
 
+                {/* Active User Performance Tracer Banner */}
+                {(filters.pulledBy || filters.uploadedBy) && (
+                    <div className="bg-indigo-50/80 border border-indigo-200/80 rounded-xl px-3.5 py-2 flex flex-col sm:flex-row items-center justify-between gap-2.5 shadow-xs animate-fade-in-down">
+                        <div className="flex items-center gap-2.5">
+                            <div className="w-6 h-6 rounded-md bg-indigo-600 text-white flex items-center justify-center font-bold text-[11px] shrink-0">
+                                {(filters.pulledBy || filters.uploadedBy).charAt(0).toUpperCase()}
+                            </div>
+                            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                                <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-wide flex items-center gap-1">
+                                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                                    Recruiter Tracer:
+                                </span>
+                                <span className="text-xs font-bold text-slate-800">
+                                    {filters.pulledBy || filters.uploadedBy}
+                                </span>
+                                <span className="text-[11px] text-slate-500 hidden md:inline">
+                                    • Metrics and positions reflect this recruiter's work
+                                </span>
+                            </div>
+                        </div>
+                        <button
+                            onClick={() => navigate(`/ta/user-dashboard/${encodeURIComponent(filters.pulledBy || filters.uploadedBy)}`)}
+                            className="flex items-center gap-1.5 px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold rounded-lg shadow-xs transition-colors whitespace-nowrap self-end sm:self-auto"
+                        >
+                            <span>Open Candidate Dossier</span>
+                            <ExternalLink size={12} />
+                        </button>
+                    </div>
+                )}
+
                 {/* 1. TOP METRICS CARDS */}
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-6">
                     <KpiCard label="Total Requisitions" val={topMetrics?.totalReqs} icon={<Briefcase />} color="indigo" />
@@ -725,6 +756,7 @@ const GlobalTADashboard = () => {
                                 <thead>
                                     <tr className="bg-slate-50 border-b border-slate-100">
                                         <th className="px-4 py-3 font-bold text-slate-500 uppercase tracking-wider">Team Member</th>
+                                        <th className="px-4 py-3 font-bold text-slate-500 uppercase tracking-wider text-center">Reqs</th>
                                         <th className="px-4 py-3 font-bold text-slate-500 uppercase tracking-wider text-center">Source</th>
                                         <th className="px-4 py-3 font-bold text-slate-500 uppercase tracking-wider text-center">Intv.</th>
                                         <th className="px-4 py-3 font-bold text-slate-500 uppercase tracking-wider text-center">Offer</th>
@@ -735,7 +767,17 @@ const GlobalTADashboard = () => {
                                 <tbody>
                                     {sourcingPerformance?.map((rec, i) => (
                                         <tr key={i} className="hover:bg-slate-50/80 transition-colors border-b border-slate-50 last:border-0 font-medium">
-                                            <td className="px-4 py-3 text-slate-800 font-bold">{rec.name}</td>
+                                            <td className="px-4 py-3">
+                                                <button
+                                                    onClick={() => navigate(`/ta/user-dashboard/${encodeURIComponent(rec.name)}`)}
+                                                    className="text-slate-800 font-bold hover:text-indigo-600 hover:underline flex items-center gap-1.5 text-left group"
+                                                    title={`Open ${rec.name}'s performance tracker`}
+                                                >
+                                                    <span>{rec.name}</span>
+                                                    <ExternalLink size={11} className="text-slate-400 group-hover:text-indigo-600 transition-colors" />
+                                                </button>
+                                            </td>
+                                            <td className="px-4 py-3 text-center text-slate-600 font-semibold">{rec.requisitionsCount ?? '-'}</td>
                                             <td className="px-4 py-3 text-center text-slate-600">{rec.sourced}</td>
                                             <td className="px-4 py-3 text-center text-slate-600">{rec.interviews}</td>
                                             <td className="px-4 py-3 text-center text-slate-600">{rec.offers}</td>
