@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Users, ThumbsUp, ThumbsDown, CheckCircle, Clock, UserCheck, Eye, FileText, Upload } from 'lucide-react';
+import { ArrowLeft, Users, ThumbsUp, ThumbsDown, CheckCircle, Clock, UserCheck, Eye, FileText, Upload, Briefcase } from 'lucide-react';
 import api from '@/lib/apiClient';
 import toast from 'react-hot-toast';
 import { format } from 'date-fns';
@@ -27,6 +27,20 @@ const UserTADashboard = ({ providedUserName }) => {
     const [totalPages, setTotalPages] = useState(1);
     const [totalCandidates, setTotalCandidates] = useState(0);
     const [loading, setLoading] = useState(true);
+    const [teamMembers, setTeamMembers] = useState([]);
+
+    useEffect(() => {
+        api.get('/ta/analytics/global')
+            .then(res => {
+                const options = res.data?.data?.filterOptions;
+                const members = Array.from(new Set([
+                    ...(options?.pulledBys || []),
+                    ...(options?.uploadedBys || [])
+                ])).filter(Boolean).sort((a, b) => a.localeCompare(b));
+                setTeamMembers(members);
+            })
+            .catch(() => {});
+    }, []);
 
     // Filter States
     const [searchTerm, setSearchTerm] = useState('');
@@ -155,17 +169,34 @@ const UserTADashboard = ({ providedUserName }) => {
 
     return (
         <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-6">
-            <div className="flex items-center gap-4 mb-2">
-                <button
-                    onClick={() => navigate(-1)}
-                    className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors"
-                >
-                    <ArrowLeft size={20} />
-                </button>
-                <div>
-                    <h1 className="text-2xl font-bold text-slate-800">{userName}'s Dashboard</h1>
-                    <p className="text-sm text-slate-500">Performance metrics and candidates sourced by {userName}</p>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-2">
+                <div className="flex items-center gap-4">
+                    <button
+                        onClick={() => navigate(-1)}
+                        className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors"
+                    >
+                        <ArrowLeft size={20} />
+                    </button>
+                    <div>
+                        <h1 className="text-2xl font-bold text-slate-800">{userName}'s Performance Tracer</h1>
+                        <p className="text-sm text-slate-500">Recruiter performance metrics, requisitions worked on, and candidate dossier for {userName}</p>
+                    </div>
                 </div>
+
+                {teamMembers.length > 0 && (
+                    <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Switch Recruiter:</span>
+                        <select
+                            value={userName}
+                            onChange={(e) => navigate(`/ta/user-dashboard/${encodeURIComponent(e.target.value)}`)}
+                            className="bg-white border border-slate-300 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-700 shadow-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                        >
+                            {teamMembers.map(m => (
+                                <option key={m} value={m}>{m}</option>
+                            ))}
+                        </select>
+                    </div>
+                )}
             </div>
 
             {/* Metrics */}
@@ -174,6 +205,11 @@ const UserTADashboard = ({ providedUserName }) => {
                     <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{metrics.total}</span>
                     <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">Total Sourced</span>
                     <Users className="absolute -right-2 top-1/2 -translate-y-1/2 text-purple-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
+                </div>
+                <div className="bg-white border-t border-x border-slate-200 border-b-4 border-b-indigo-500 shadow-sm p-5 relative overflow-hidden group">
+                    <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{summaryMetrics.requisitionsWorkedOn || uniqueProfiles.length}</span>
+                    <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">Requisitions Worked On</span>
+                    <Briefcase className="absolute -right-2 top-1/2 -translate-y-1/2 text-indigo-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
                 </div>
                 <div className="bg-white border-t border-x border-slate-200 border-b-4 border-b-amber-500 shadow-sm p-5 relative overflow-hidden group">
                     <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{metrics.inInterviews}</span>
