@@ -50,7 +50,7 @@ const HiringRequestList = () => {
                         search: debouncedSearch.trim() || undefined
                     })
                 }),
-                api.get('/projects/clients', createNoCacheRequestConfig())
+                api.get('/projects/clients', createNoCacheRequestConfig()).catch(() => ({ data: [] }))
             ]);
             // Backend now returns an object with requests, totalPages, totalRequests
             const reqList = reqRes.data.requests ? reqRes.data.requests : reqRes.data;
@@ -65,7 +65,7 @@ const HiringRequestList = () => {
             } else {
                 setTotalRequests(Array.isArray(reqList) ? reqList.length : 0);
             }
-            setClients(clientRes.data);
+            setClients(Array.isArray(clientRes?.data) ? clientRes.data : []);
         } catch (error) {
             console.error(error);
         } finally {
