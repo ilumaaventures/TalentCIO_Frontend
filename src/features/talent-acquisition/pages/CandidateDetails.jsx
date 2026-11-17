@@ -556,7 +556,7 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
         }
     }, []);
 
-    const { hasSuperApprove, canManageCandidateEdits, canScheduleRounds, canManagePhase3Decision } = useMemo(() => {
+    const { hasSuperApprove, canManageCandidateEdits, canScheduleRounds, canManagePhase3Decision, canMakeDecisions } = useMemo(() => {
         const admin = user?.roles?.includes('Admin') || user?.roles?.some(r => r.name === 'Admin');
         const perms = user?.permissions || [];
         const superApprove = perms.includes('ta.super_approve') || perms.includes('*') || admin;
@@ -568,6 +568,9 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
             || perms.includes('ta.candidate.edit')
             || analyticsCandidateAccess;
         const scheduleRounds = manageCandidateEdits;
+        const makeDecisions = manageCandidateEdits
+            || perms.includes('ta.candidate.make_decision')
+            || perms.includes('ta.interview.evaluate');
         const managePhase3Decision = admin
             || perms.includes('ta.edit')
             || perms.includes('ta.candidate.manage.assigned')
@@ -578,7 +581,8 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
             hasSuperApprove: superApprove,
             canManageCandidateEdits: manageCandidateEdits,
             canScheduleRounds: scheduleRounds,
-            canManagePhase3Decision: managePhase3Decision
+            canManagePhase3Decision: managePhase3Decision,
+            canMakeDecisions: makeDecisions
         };
     }, [user]);
 

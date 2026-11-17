@@ -192,15 +192,15 @@ const CreateHiringRequest = () => {
     const fetchWorkflowsData = async () => {
         try {
             const [wfRes, intWfRes, clientRes, phaseTemplateRes, usersRes] = await Promise.all([
-                api.get('/workflows', createNoCacheRequestConfig()),
-                api.get('/ta/interview-workflows', createNoCacheRequestConfig()),
-                api.get('/projects/clients', createNoCacheRequestConfig()),
-                api.get('/ta/phase-templates', createNoCacheRequestConfig()),
+                api.get('/workflows', createNoCacheRequestConfig()).catch(() => ({ data: [] })),
+                api.get('/ta/interview-workflows', createNoCacheRequestConfig()).catch(() => ({ data: [] })),
+                api.get('/projects/clients', createNoCacheRequestConfig()).catch(() => api.get('/ta/clients', createNoCacheRequestConfig()).catch(() => ({ data: [] }))),
+                api.get('/ta/phase-templates', createNoCacheRequestConfig()).catch(() => ({ data: { templates: [] } })),
                 api.get('/admin/users', createNoCacheRequestConfig()).catch(() => ({ data: [] }))
             ]);
-            setWorkflows(wfRes.data.filter(w => w.isActive));
-            setInterviewWorkflows(intWfRes.data.filter(w => w.isActive));
-            setClients(clientRes.data);
+            setWorkflows(Array.isArray(wfRes?.data) ? wfRes.data.filter(w => w.isActive) : []);
+            setInterviewWorkflows(Array.isArray(intWfRes?.data) ? intWfRes.data.filter(w => w.isActive) : []);
+            setClients(Array.isArray(clientRes?.data) ? clientRes.data : []);
             const fetchedUsers = Array.isArray(usersRes.data)
                 ? usersRes.data
                 : Array.isArray(usersRes.data?.data)

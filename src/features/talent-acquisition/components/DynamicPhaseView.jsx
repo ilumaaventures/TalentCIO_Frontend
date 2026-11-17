@@ -257,7 +257,7 @@ const hasCandidateCtcDetails = (candidate) => (
     || (candidate?.noticePeriod !== undefined && candidate?.noticePeriod !== null && candidate?.noticePeriod !== '')
 );
 
-const DynamicPhaseView = ({ hiringRequest, filterInterviewRound = '' }) => {
+const DynamicPhaseView = ({ hiringRequest, filterInterviewRound = '', onRefreshPhases }) => {
     const navigate = useNavigate();
     const { user } = useAuth();
     const [phases, setPhases] = useState((hiringRequest?.phases || []).slice().sort((left, right) => left.order - right.order));
@@ -1011,7 +1011,7 @@ const DynamicPhaseView = ({ hiringRequest, filterInterviewRound = '' }) => {
             toast.success(`Moved ${selectedCandidateIds.length} candidate(s) to next phase`, { id: 'bulk-move-phase' });
             setSelectedCandidateIds([]);
             await fetchCandidates(true);
-            if (onRefreshPhases) onRefreshPhases();
+            if (typeof onRefreshPhases === 'function') onRefreshPhases();
         } catch (error) {
             console.error('Failed to move candidates to next phase:', error);
             toast.error(error.response?.data?.message || 'Failed to move candidates to next phase', { id: 'bulk-move-phase' });
@@ -2339,7 +2339,7 @@ const DynamicPhaseView = ({ hiringRequest, filterInterviewRound = '' }) => {
                                                                 <Calendar size={15} className="text-emerald-600" />
                                                                 Schedule Interview
                                                             </button>
-                                                            {(viewedPhase?.order === 2 || candidate.currentPhaseOrder === 2) && (
+                                                            {(activePhase?.order === 2 || candidate.currentPhaseOrder === 2) && (
                                                                 <button
                                                                     type="button"
                                                                     onClick={() => {
