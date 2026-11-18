@@ -11,14 +11,21 @@ import {
 } from '@/features/email/utils/templatePlaceholders';
 import {
   AlertCircle,
+  CheckCircle2,
+  CheckSquare,
+  Clock,
+  DollarSign,
+  FileCheck,
   FileText,
   Loader2,
   Mail,
+  MessageSquare,
   Paperclip,
   Plus,
   RefreshCw,
   Search,
   Send,
+  ShieldCheck,
   UserMinus,
   X
 } from 'lucide-react';
@@ -256,6 +263,29 @@ const Offboarding = () => {
   const [sending, setSending] = useState(false);
   const [statusDraft, setStatusDraft] = useState('Initiated');
   const [statusSaving, setStatusSaving] = useState(false);
+  const [activeDetailTab, setActiveDetailTab] = useState('clearance');
+  const [clearanceDraft, setClearanceDraft] = useState({
+    it: false,
+    finance: false,
+    hr: false,
+    admin: false,
+    manager: false
+  });
+  const [clearanceSaving, setClearanceSaving] = useState(false);
+  const [exitInterviewDone, setExitInterviewDone] = useState(false);
+  const [exitInterviewNotes, setExitInterviewNotes] = useState('');
+  const [interviewSaving, setInterviewSaving] = useState(false);
+  const [fnfDraft, setFnfDraft] = useState({
+    basicSalaryDue: 0,
+    leaveEncashment: 0,
+    bonusDue: 0,
+    deductions: 0,
+    isSettled: false
+  });
+  const [fnfSaving, setFnfSaving] = useState(false);
+  const [docTypesSelected, setDocTypesSelected] = useState(['Relieving Letter', 'Experience Letter']);
+  const [docPersonalNote, setDocPersonalNote] = useState('');
+  const [docsGenerating, setDocsGenerating] = useState(false);
   const [isMobile, setIsMobile] = useState(() => (typeof window !== 'undefined' ? window.innerWidth < 1024 : false));
 
   useEffect(() => {
@@ -397,6 +427,22 @@ const Offboarding = () => {
     const personalEmail = selectedRecord?.userId?.employeeProfile?.contact?.personalEmail || '';
     setRecipientEmail(personalEmail || selectedRecord?.userId?.email || '');
     setStatusDraft(EDITABLE_STATUS_OPTIONS.includes(selectedRecord?.status) ? selectedRecord.status : 'In Progress');
+    setClearanceDraft({
+      it: Boolean(selectedRecord?.clearance?.it),
+      finance: Boolean(selectedRecord?.clearance?.finance),
+      hr: Boolean(selectedRecord?.clearance?.hr),
+      admin: Boolean(selectedRecord?.clearance?.admin),
+      manager: Boolean(selectedRecord?.clearance?.manager)
+    });
+    setExitInterviewDone(Boolean(selectedRecord?.exitInterviewDone));
+    setExitInterviewNotes(selectedRecord?.exitInterviewNotes || '');
+    setFnfDraft({
+      basicSalaryDue: selectedRecord?.fnfDetails?.basicSalaryDue ?? 0,
+      leaveEncashment: selectedRecord?.fnfDetails?.leaveEncashment ?? 0,
+      bonusDue: selectedRecord?.fnfDetails?.bonusDue ?? 0,
+      deductions: selectedRecord?.fnfDetails?.deductions ?? 0,
+      isSettled: Boolean(selectedRecord?.fnfDetails?.settledAt)
+    });
   }, [selectedRecord]);
 
   useEffect(() => {
@@ -609,6 +655,101 @@ const Offboarding = () => {
     }
   };
 
+  const calculatedNetPayable = useMemo(() => {
+    const basic = Number(fnfDraft.basicSalaryDue || 0);
+    const leave = Number(fnfDraft.leaveEncashment || 0);
+    const bonus = Number(fnfDraft.bonusDue || 0);
+    const deductions = Number(fnfDraft.deductions || 0);
+    return Math.max(0, basic + leave + bonus - deductions);
+  }, [fnfDraft]);
+
+  const handleSaveClearance = async () => {
+    if (!selectedRecord?._id) return;
+    setClearanceSaving(true);
+    try {
+      await api.put(`/offboarding/${selectedRecord._id}`, { clearance: clearanceDraft });
+      toast.success('Clearance checklist updated');
+      await Promise.all([fetchRecordDetail(selectedRecord._id), fetchRecords(), fetchStats()]);
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to update clearance');
+    } finally {
+      setClearanceSaving(false);
+    }
+  };
+
+  const handleSaveInterview = async () => {
+    if (!selectedRecord?._id) return;
+    setInterviewSaving(true);
+    try {
+      await api.put(`/offboarding/${selectedRecord._id}`, {
+        exitInterviewDone,
+        exitInterviewNotes
+      });
+      toast.success('Exit interview details saved');
+      await fetchRecordDetail(selectedRecord._id);
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to save exit interview');
+    } finally {
+      setInterviewSaving(false);
+    }
+  };
+
+  const handleSaveFnF = async () => {
+    if (!selectedRecord?._id) return;
+    setFnfSaving(true);
+    try {
+      const payload = {
+        basicSalaryDue: Number(fnfDraft.basicSalaryDue || 0),
+        leaveEncashment: Number(fnfDraft.leaveEncashment || 0),
+        bonusDue: Number(fnfDraft.bonusDue || 0),
+        deductions: Number(fnfDraft.deductions || 0),
+        settledAt: fnfDraft.isSettled ? (selectedRecord?.fnfDetails?.settledAt || new Date().toISOString()) : null
+      };
+      await api.put(`/offboarding/${selectedRecord._id}`, { fnfDetails: payload });
+      toast.success('F&F settlement details saved');
+      await fetchRecordDetail(selectedRecord._id);
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to save F&F details');
+    } finally {
+      setFnfSaving(false);
+    }
+  };
+
+  const handleToggleDocType = (docType) => {
+    setDocTypesSelected((prev) => (
+      prev.includes(docType) ? prev.filter((t) => t !== docType) : [...prev, docType]
+    ));
+  };
+
+  const handleGenerateExitDocuments = async () => {
+    if (!selectedRecord?._id) return;
+    if (docTypesSelected.length === 0) {
+      toast.error('Select at least one document type to generate');
+      return;
+    }
+    if (!recipientEmail.trim() || !isValidEmail(recipientEmail)) {
+      toast.error('Enter a valid recipient email');
+      return;
+    }
+
+    setDocsGenerating(true);
+    try {
+      await api.post(`/offboarding/${selectedRecord._id}/send-documents`, {
+        documentTypes: docTypesSelected,
+        recipientEmail: recipientEmail.trim(),
+        personalNote: docPersonalNote.trim(),
+        emailAccountId: selectedEmailAccountId || 'platform'
+      });
+      toast.success('Exit documents generated, archived to dossier, and sent!');
+      setDocPersonalNote('');
+      await Promise.all([fetchRecordDetail(selectedRecord._id), fetchRecords(), fetchStats()]);
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to generate and send exit documents');
+    } finally {
+      setDocsGenerating(false);
+    }
+  };
+
   const renderStatsCard = (label, value, accent) => (
     <div style={{
       ...cardStyle,
@@ -679,240 +820,644 @@ const Offboarding = () => {
             </div>
           </div>
 
-          <div style={{ ...cardStyle, padding: '12px 14px', borderRadius: '12px', boxShadow: 'none' }}>
-            <div style={sectionTitleStyle}>Workflow Status</div>
-            <label style={fieldLabelStyle}>Manual Status Update</label>
-            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'minmax(0, 1fr) auto', gap: '10px', alignItems: 'end' }}>
-              <select
-                value={statusDraft}
-                onChange={(event) => setStatusDraft(event.target.value)}
-                style={inputStyle}
-                disabled={!canUpdate || selectedRecord.status === 'Completed'}
-              >
-                {EDITABLE_STATUS_OPTIONS.map((status) => (
-                  <option key={status} value={status}>{status}</option>
-                ))}
-              </select>
+          {/* Detail Tabs Selector */}
+          <div style={{
+            display: 'flex',
+            borderBottom: '1px solid #e2e8f0',
+            gap: '4px',
+            background: '#f8fafc',
+            padding: '4px',
+            borderRadius: '10px'
+          }}>
+            {[
+              { id: 'clearance', label: 'Clearance & Exit', icon: ShieldCheck },
+              { id: 'fnf', label: 'F&F Settlement', icon: DollarSign },
+              { id: 'documents', label: 'Generate Letters', icon: FileCheck },
+              { id: 'email', label: 'Email & Ledger', icon: Mail }
+            ].map((tab) => {
+              const TabIcon = tab.icon;
+              const isActive = activeDetailTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setActiveDetailTab(tab.id)}
+                  style={{
+                    flex: 1,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px',
+                    padding: '8px 10px',
+                    borderRadius: '8px',
+                    border: 'none',
+                    fontSize: '11px',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    background: isActive ? '#ffffff' : 'transparent',
+                    color: isActive ? '#2563eb' : '#64748b',
+                    boxShadow: isActive ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+                    transition: 'all 0.15s'
+                  }}
+                >
+                  <TabIcon size={13} />
+                  <span>{tab.label}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          {activeDetailTab === 'clearance' && (
+            <>
+              {/* Departmental Clearances Card */}
+              <div style={{ ...cardStyle, padding: '14px', borderRadius: '12px', boxShadow: 'none' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                  <div>
+                    <div style={sectionTitleStyle}>Departmental Clearances</div>
+                    <p style={{ margin: 0, color: '#64748b', fontSize: '11px' }}>
+                      Mark clearances as each department completes their sign-off.
+                    </p>
+                  </div>
+                  {selectedRecord.clearance?.completedAt ? (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: '#dcfce7', color: '#15803d', padding: '3px 8px', borderRadius: '999px', fontSize: '10.5px', fontWeight: 700 }}>
+                      <CheckCircle2 size={12} />
+                      Completed
+                    </span>
+                  ) : (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: '#fef3c7', color: '#92400e', padding: '3px 8px', borderRadius: '999px', fontSize: '10.5px', fontWeight: 700 }}>
+                      <Clock size={12} />
+                      Pending
+                    </span>
+                  )}
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '8px' }}>
+                  {[
+                    { key: 'it', label: 'IT Department', desc: 'Hardware, licenses & systems access' },
+                    { key: 'finance', label: 'Finance Department', desc: 'Expense reports, advances & tax clearance' },
+                    { key: 'hr', label: 'HR Department', desc: 'Exit formalities & ID card surrender' },
+                    { key: 'admin', label: 'Admin Department', desc: 'Access card, keys & parking pass' },
+                    { key: 'manager', label: 'Reporting Manager', desc: 'Project handover & knowledge transfer' }
+                  ].map((item) => (
+                    <label
+                      key={item.key}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'flex-start',
+                        gap: '8px',
+                        padding: '8px 10px',
+                        borderRadius: '8px',
+                        border: '1px solid #e2e8f0',
+                        background: clearanceDraft[item.key] ? '#f0fdf4' : '#ffffff',
+                        cursor: canUpdate && selectedRecord.status !== 'Completed' ? 'pointer' : 'default'
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={Boolean(clearanceDraft[item.key])}
+                        onChange={(e) => setClearanceDraft(prev => ({ ...prev, [item.key]: e.target.checked }))}
+                        disabled={!canUpdate || selectedRecord.status === 'Completed'}
+                        style={{ marginTop: '3px' }}
+                      />
+                      <div>
+                        <div style={{ fontSize: '11.5px', fontWeight: 700, color: '#0f172a' }}>{item.label}</div>
+                        <div style={{ fontSize: '10px', color: '#64748b' }}>{item.desc}</div>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+
+                {selectedRecord.clearance?.completedAt ? (
+                  <div style={{ marginTop: '8px', fontSize: '10.5px', color: '#15803d' }}>
+                    All clearances completed on: {formatDateLabel(selectedRecord.clearance.completedAt)}
+                  </div>
+                ) : null}
+
+                <div style={{ marginTop: '10px', display: 'flex', justifyContent: 'flex-end' }}>
+                  <button
+                    type="button"
+                    onClick={handleSaveClearance}
+                    disabled={!canUpdate || selectedRecord.status === 'Completed' || clearanceSaving}
+                    style={{
+                      ...primaryButtonStyle,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      opacity: (!canUpdate || selectedRecord.status === 'Completed' || clearanceSaving) ? 0.7 : 1
+                    }}
+                  >
+                    {clearanceSaving ? <Loader2 size={13} className="animate-spin" /> : <ShieldCheck size={13} />}
+                    {clearanceSaving ? 'Saving...' : 'Save Clearances'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Exit Interview Card */}
+              <div style={{ ...cardStyle, padding: '14px', borderRadius: '12px', boxShadow: 'none' }}>
+                <div style={sectionTitleStyle}>Exit Interview</div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', fontWeight: 600, color: '#334155', marginBottom: '8px', cursor: canUpdate && selectedRecord.status !== 'Completed' ? 'pointer' : 'default' }}>
+                  <input
+                    type="checkbox"
+                    checked={exitInterviewDone}
+                    onChange={(e) => setExitInterviewDone(e.target.checked)}
+                    disabled={!canUpdate || selectedRecord.status === 'Completed'}
+                  />
+                  Exit Interview Completed
+                </label>
+                <label style={fieldLabelStyle}>Exit Interview Notes</label>
+                <textarea
+                  rows={3}
+                  value={exitInterviewNotes}
+                  onChange={(e) => setExitInterviewNotes(e.target.value)}
+                  placeholder="Feedback, reason for leaving, handover comments..."
+                  style={{ ...textareaStyle, minHeight: '65px' }}
+                  disabled={!canUpdate || selectedRecord.status === 'Completed'}
+                />
+                <div style={{ marginTop: '8px', display: 'flex', justifyContent: 'flex-end' }}>
+                  <button
+                    type="button"
+                    onClick={handleSaveInterview}
+                    disabled={!canUpdate || selectedRecord.status === 'Completed' || interviewSaving}
+                    style={{
+                      ...ghostButtonStyle,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      opacity: (!canUpdate || selectedRecord.status === 'Completed' || interviewSaving) ? 0.7 : 1
+                    }}
+                  >
+                    {interviewSaving ? <Loader2 size={13} className="animate-spin" /> : <MessageSquare size={13} />}
+                    {interviewSaving ? 'Saving...' : 'Save Interview'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Workflow Status Card */}
+              <div style={{ ...cardStyle, padding: '14px', borderRadius: '12px', boxShadow: 'none' }}>
+                <div style={sectionTitleStyle}>Workflow Status & Completion</div>
+                <label style={fieldLabelStyle}>Change Stage</label>
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'minmax(0, 1fr) auto', gap: '10px', alignItems: 'end' }}>
+                  <select
+                    value={statusDraft}
+                    onChange={(event) => setStatusDraft(event.target.value)}
+                    style={inputStyle}
+                    disabled={!canUpdate || selectedRecord.status === 'Completed'}
+                  >
+                    {EDITABLE_STATUS_OPTIONS.map((status) => (
+                      <option key={status} value={status}>{status}</option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={handleSaveStatus}
+                    disabled={!canUpdate || selectedRecord.status === 'Completed' || statusSaving || statusDraft === selectedRecord.status}
+                    style={{
+                      ...primaryButtonStyle,
+                      opacity: (!canUpdate || selectedRecord.status === 'Completed' || statusSaving || statusDraft === selectedRecord.status) ? 0.7 : 1,
+                      cursor: (!canUpdate || selectedRecord.status === 'Completed' || statusSaving || statusDraft === selectedRecord.status) ? 'not-allowed' : 'pointer',
+                      minWidth: '120px',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '6px'
+                    }}
+                  >
+                    {statusSaving ? <Loader2 size={14} className="animate-spin" /> : null}
+                    {statusSaving ? 'Saving...' : 'Save Status'}
+                  </button>
+                </div>
+                <p style={{ margin: '8px 0 0', color: '#64748b', fontSize: '11px' }}>
+                  Choosing <strong>Completed</strong> will finalize offboarding, deactivate the user account, update dossier employment status, and send a completion email.
+                </p>
+              </div>
+            </>
+          )}
+
+          {activeDetailTab === 'fnf' && (
+            <div style={{ ...cardStyle, padding: '14px', borderRadius: '12px', boxShadow: 'none', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div>
+                <div style={sectionTitleStyle}>Full & Final Settlement (FnF)</div>
+                <p style={{ margin: 0, color: '#64748b', fontSize: '11px' }}>
+                  Compute dues, leave encashment, and deductions for settlement.
+                </p>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '10px' }}>
+                <div>
+                  <label style={fieldLabelStyle}>Basic Salary Due (INR)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    value={fnfDraft.basicSalaryDue}
+                    onChange={(e) => setFnfDraft(prev => ({ ...prev, basicSalaryDue: e.target.value }))}
+                    style={inputStyle}
+                    disabled={!canUpdate || selectedRecord.status === 'Completed'}
+                  />
+                </div>
+                <div>
+                  <label style={fieldLabelStyle}>Leave Encashment (INR)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    value={fnfDraft.leaveEncashment}
+                    onChange={(e) => setFnfDraft(prev => ({ ...prev, leaveEncashment: e.target.value }))}
+                    style={inputStyle}
+                    disabled={!canUpdate || selectedRecord.status === 'Completed'}
+                  />
+                </div>
+                <div>
+                  <label style={fieldLabelStyle}>Bonus / Incentive Due (INR)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    value={fnfDraft.bonusDue}
+                    onChange={(e) => setFnfDraft(prev => ({ ...prev, bonusDue: e.target.value }))}
+                    style={inputStyle}
+                    disabled={!canUpdate || selectedRecord.status === 'Completed'}
+                  />
+                </div>
+                <div>
+                  <label style={fieldLabelStyle}>Deductions (INR)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    value={fnfDraft.deductions}
+                    onChange={(e) => setFnfDraft(prev => ({ ...prev, deductions: e.target.value }))}
+                    style={inputStyle}
+                    disabled={!canUpdate || selectedRecord.status === 'Completed'}
+                  />
+                </div>
+              </div>
+
+              {/* Net Payable Ribbon */}
+              <div style={{ padding: '12px 14px', borderRadius: '10px', background: '#ecfdf5', border: '1px solid #a7f3d0' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <div style={{ fontSize: '11px', fontWeight: 700, color: '#047857', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Net Payable Amount</div>
+                    <div style={{ fontSize: '18px', fontWeight: 800, color: '#065f46', marginTop: '2px' }}>
+                      INR {calculatedNetPayable.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </div>
+                  </div>
+                  <DollarSign size={24} color="#059669" />
+                </div>
+                <div style={{ fontSize: '10px', color: '#047857', marginTop: '4px' }}>
+                  = Basic Salary ({fnfDraft.basicSalaryDue || 0}) + Leave ({fnfDraft.leaveEncashment || 0}) + Bonus ({fnfDraft.bonusDue || 0}) - Deductions ({fnfDraft.deductions || 0})
+                </div>
+              </div>
+
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', fontWeight: 600, color: '#334155', cursor: canUpdate && selectedRecord.status !== 'Completed' ? 'pointer' : 'default' }}>
+                <input
+                  type="checkbox"
+                  checked={fnfDraft.isSettled}
+                  onChange={(e) => setFnfDraft(prev => ({ ...prev, isSettled: e.target.checked }))}
+                  disabled={!canUpdate || selectedRecord.status === 'Completed'}
+                />
+                Mark Settlement as Disbursed / Settled
+              </label>
+
+              {selectedRecord.fnfDetails?.settledAt ? (
+                <div style={{ fontSize: '11px', color: '#64748b' }}>
+                  Settled on: {formatDateLabel(selectedRecord.fnfDetails.settledAt)}
+                </div>
+              ) : null}
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '6px' }}>
+                <button
+                  type="button"
+                  onClick={handleSaveFnF}
+                  disabled={!canUpdate || selectedRecord.status === 'Completed' || fnfSaving}
+                  style={{
+                    ...primaryButtonStyle,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    opacity: (!canUpdate || selectedRecord.status === 'Completed' || fnfSaving) ? 0.7 : 1
+                  }}
+                >
+                  {fnfSaving ? <Loader2 size={13} className="animate-spin" /> : <DollarSign size={13} />}
+                  {fnfSaving ? 'Saving...' : 'Save Settlement Details'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {activeDetailTab === 'documents' && (
+            <div style={{ ...cardStyle, padding: '14px', borderRadius: '12px', boxShadow: 'none', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div>
+                <div style={sectionTitleStyle}>Generate Official Exit Documents</div>
+                <p style={{ margin: 0, color: '#64748b', fontSize: '11px' }}>
+                  Automatically synthesizes letterhead documents, archives them in the Employee Dossier, and emails them.
+                </p>
+              </div>
+
+              <div>
+                <label style={fieldLabelStyle}>Select Documents to Issue</label>
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '8px' }}>
+                  {[
+                    { id: 'Relieving Letter', desc: 'Formal relieving from company services' },
+                    { id: 'Experience Letter', desc: 'Service certificate & tenure' },
+                    { id: 'Full & Final Settlement', desc: 'Detailed breakdown statement of dues' },
+                    { id: 'NOC', desc: 'No Objection Certificate' }
+                  ].map((doc) => (
+                    <label
+                      key={doc.id}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'flex-start',
+                        gap: '8px',
+                        padding: '9px 10px',
+                        borderRadius: '8px',
+                        border: '1px solid #e2e8f0',
+                        background: docTypesSelected.includes(doc.id) ? '#eff6ff' : '#ffffff',
+                        cursor: canUpdate ? 'pointer' : 'default'
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={docTypesSelected.includes(doc.id)}
+                        onChange={() => handleToggleDocType(doc.id)}
+                        disabled={!canUpdate}
+                        style={{ marginTop: '2px' }}
+                      />
+                      <div>
+                        <div style={{ fontSize: '11.5px', fontWeight: 700, color: '#0f172a' }}>{doc.id}</div>
+                        <div style={{ fontSize: '10px', color: '#64748b' }}>{doc.desc}</div>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label style={fieldLabelStyle}>Recipient Email</label>
+                <input
+                  type="email"
+                  value={recipientEmail}
+                  onChange={(e) => setRecipientEmail(e.target.value)}
+                  placeholder="employee@example.com"
+                  style={inputStyle}
+                  disabled={!canUpdate}
+                />
+              </div>
+
+              <div>
+                <label style={fieldLabelStyle}>Sender Account</label>
+                <select
+                  value={selectedEmailAccountId}
+                  onChange={(e) => setSelectedEmailAccountId(e.target.value)}
+                  style={inputStyle}
+                  disabled={!canUpdate || sendersLoading}
+                >
+                  {emailSenderOptions.map((option) => (
+                    <option key={option._id} value={option._id}>
+                      {`${option.name} (${option.provider || 'platform'}) - ${option.fromAddress || 'no-reply'}`}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label style={fieldLabelStyle}>Personal Note from HR (Optional)</label>
+                <textarea
+                  rows={2}
+                  value={docPersonalNote}
+                  onChange={(e) => setDocPersonalNote(e.target.value)}
+                  placeholder="E.g., Thank you for your contributions. Wishing you the best in your next chapter!"
+                  style={{ ...textareaStyle, minHeight: '60px' }}
+                  disabled={!canUpdate}
+                />
+              </div>
+
+              <div style={{ borderRadius: '10px', background: '#f8fafc', border: '1px solid #e2e8f0', padding: '10px 12px', fontSize: '11px', color: '#64748b' }}>
+                Documents will be generated with company letterhead, uploaded to Cloudinary, attached to the email, and permanently saved under the employee&apos;s Dossier Documents tab.
+              </div>
+
               <button
                 type="button"
-                onClick={handleSaveStatus}
-                disabled={!canUpdate || selectedRecord.status === 'Completed' || statusSaving || statusDraft === selectedRecord.status}
+                onClick={handleGenerateExitDocuments}
+                disabled={!canUpdate || docsGenerating || docTypesSelected.length === 0}
                 style={{
                   ...primaryButtonStyle,
-                  opacity: (!canUpdate || selectedRecord.status === 'Completed' || statusSaving || statusDraft === selectedRecord.status) ? 0.7 : 1,
-                  cursor: (!canUpdate || selectedRecord.status === 'Completed' || statusSaving || statusDraft === selectedRecord.status) ? 'not-allowed' : 'pointer',
-                  minWidth: '120px',
+                  width: '100%',
+                  padding: '10px 14px',
                   display: 'inline-flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  gap: '6px'
+                  gap: '8px',
+                  opacity: (!canUpdate || docsGenerating || docTypesSelected.length === 0) ? 0.7 : 1,
+                  cursor: (!canUpdate || docsGenerating || docTypesSelected.length === 0) ? 'not-allowed' : 'pointer'
                 }}
               >
-                {statusSaving ? <Loader2 size={14} className="animate-spin" /> : null}
-                {statusSaving ? 'Saving...' : 'Save Status'}
+                {docsGenerating ? <Loader2 size={15} className="animate-spin" /> : <FileCheck size={15} />}
+                {docsGenerating ? 'Generating & Sending Documents...' : 'Generate & Send Official Documents'}
               </button>
             </div>
-            <p style={{ margin: '8px 0 0', color: '#64748b', fontSize: '11px' }}>
-              Sending the exit email will automatically move `Initiated` records to `In Progress`. Choosing `Completed` here will run the full completion flow and deactivate the employee account.
-            </p>
-          </div>
+          )}
 
-          <div style={{ ...cardStyle, padding: '12px 14px', borderRadius: '12px', boxShadow: 'none' }}>
-            <div style={sectionTitleStyle}>Recipient</div>
-            <label style={fieldLabelStyle}>Send To</label>
-            <input
-              type="email"
-              value={recipientEmail}
-              onChange={(event) => setRecipientEmail(event.target.value)}
-              placeholder="employee@example.com"
-              style={inputStyle}
-              disabled={!canUpdate}
-            />
-            <p style={{ margin: '6px 0 10px', color: '#64748b', fontSize: '11px' }}>
-              This is where the email will be delivered.
-            </p>
-
-            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '10px' }}>
-              <div>
-                <label style={fieldLabelStyle}>CC (Optional)</label>
+          {activeDetailTab === 'email' && (
+            <>
+              <div style={{ ...cardStyle, padding: '12px 14px', borderRadius: '12px', boxShadow: 'none' }}>
+                <div style={sectionTitleStyle}>Recipient</div>
+                <label style={fieldLabelStyle}>Send To</label>
                 <input
-                  type="text"
-                  value={emailCc}
-                  onChange={(event) => setEmailCc(event.target.value)}
-                  placeholder="hr@company.com"
+                  type="email"
+                  value={recipientEmail}
+                  onChange={(event) => setRecipientEmail(event.target.value)}
+                  placeholder="employee@example.com"
                   style={inputStyle}
                   disabled={!canUpdate}
                 />
-              </div>
-              <div>
-                <label style={fieldLabelStyle}>BCC (Optional)</label>
-                <input
-                  type="text"
-                  value={emailBcc}
-                  onChange={(event) => setEmailBcc(event.target.value)}
-                  placeholder="audit@company.com"
-                  style={inputStyle}
-                  disabled={!canUpdate}
-                />
-              </div>
-            </div>
-          </div>
-
-          <div style={{ ...cardStyle, padding: '12px 14px', borderRadius: '12px', boxShadow: 'none' }}>
-            <div style={sectionTitleStyle}>Template</div>
-            <label style={fieldLabelStyle}>Email Template</label>
-            <select
-              value={selectedTemplateId}
-              onChange={(event) => setSelectedTemplateId(event.target.value)}
-              style={inputStyle}
-              disabled={!canUpdate || templatesLoading}
-            >
-              <option value={NO_TEMPLATE_OPTION}>No template (custom only)</option>
-              {emailTemplates.map((template) => (
-                <option key={template._id} value={template._id}>{template.name}</option>
-              ))}
-            </select>
-            <button
-              type="button"
-              onClick={() => setShowBodyEditor((current) => !current)}
-              style={{ ...ghostButtonStyle, marginTop: '10px' }}
-            >
-              {showBodyEditor ? 'Hide Subject & Body' : 'Customize Subject & Body'}
-            </button>
-
-            {showBodyEditor ? (
-              <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                <div>
-                  <label style={fieldLabelStyle}>Subject</label>
-                  <input
-                    type="text"
-                    value={customSubject}
-                    onChange={(event) => setCustomSubject(event.target.value)}
-                    style={inputStyle}
-                    disabled={!canUpdate}
-                  />
-                </div>
-                <div>
-                  <label style={fieldLabelStyle}>Body</label>
-                  <textarea
-                    rows={5}
-                    value={customBody}
-                    onChange={(event) => setCustomBody(event.target.value)}
-                    style={{ ...textareaStyle, minHeight: '120px' }}
-                    disabled={!canUpdate}
-                  />
-                </div>
-                <div style={{ borderRadius: '12px', border: '1px solid #dbeafe', background: '#f8fbff', overflow: 'hidden' }}>
-                  <div style={{ padding: '8px 12px', borderBottom: '1px solid #dbeafe', background: '#eff6ff' }}>
-                    <div style={{ fontSize: '10.5px', fontWeight: 700, color: '#1d4ed8', textTransform: 'uppercase', letterSpacing: '0.12em' }}>Preview</div>
-                    <div style={{ marginTop: '4px', fontSize: '12px', fontWeight: 700, color: '#0f172a' }}>{previewSubject}</div>
-                  </div>
-                  <div
-                    style={{ padding: '12px', color: '#334155', fontSize: '12px', pointerEvents: 'none' }}
-                    dangerouslySetInnerHTML={{ __html: previewBody }}
-                  />
-                </div>
-                <p style={{ margin: 0, color: '#64748b', fontSize: '11px' }}>
-                  Supported placeholders: {placeholderHelpText}
+                <p style={{ margin: '6px 0 10px', color: '#64748b', fontSize: '11px' }}>
+                  This is where the email will be delivered.
                 </p>
+
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '10px' }}>
+                  <div>
+                    <label style={fieldLabelStyle}>CC (Optional)</label>
+                    <input
+                      type="text"
+                      value={emailCc}
+                      onChange={(event) => setEmailCc(event.target.value)}
+                      placeholder="hr@company.com"
+                      style={inputStyle}
+                      disabled={!canUpdate}
+                    />
+                  </div>
+                  <div>
+                    <label style={fieldLabelStyle}>BCC (Optional)</label>
+                    <input
+                      type="text"
+                      value={emailBcc}
+                      onChange={(event) => setEmailBcc(event.target.value)}
+                      placeholder="audit@company.com"
+                      style={inputStyle}
+                      disabled={!canUpdate}
+                    />
+                  </div>
+                </div>
               </div>
-            ) : null}
-          </div>
 
-          <div style={{ ...cardStyle, padding: '12px 14px', borderRadius: '12px', boxShadow: 'none' }}>
-            <div style={sectionTitleStyle}>Sender Account</div>
-            <label style={fieldLabelStyle}>Send From</label>
-            <select
-              value={selectedEmailAccountId}
-              onChange={(event) => setSelectedEmailAccountId(event.target.value)}
-              style={inputStyle}
-              disabled={!canUpdate || sendersLoading}
-            >
-              {emailSenderOptions.map((option) => (
-                <option key={option._id} value={option._id}>
-                  {`${option.name} (${option.provider || 'platform'}) - ${option.fromAddress || 'no-reply'}`}
-                </option>
-              ))}
-            </select>
-          </div>
+              <div style={{ ...cardStyle, padding: '12px 14px', borderRadius: '12px', boxShadow: 'none' }}>
+                <div style={sectionTitleStyle}>Template</div>
+                <label style={fieldLabelStyle}>Email Template</label>
+                <select
+                  value={selectedTemplateId}
+                  onChange={(event) => setSelectedTemplateId(event.target.value)}
+                  style={inputStyle}
+                  disabled={!canUpdate || templatesLoading}
+                >
+                  <option value={NO_TEMPLATE_OPTION}>No template (custom only)</option>
+                  {emailTemplates.map((template) => (
+                    <option key={template._id} value={template._id}>{template.name}</option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => setShowBodyEditor((current) => !current)}
+                  style={{ ...ghostButtonStyle, marginTop: '10px' }}
+                >
+                  {showBodyEditor ? 'Hide Subject & Body' : 'Customize Subject & Body'}
+                </button>
 
-          <div style={{ ...cardStyle, padding: '12px 14px', borderRadius: '12px', boxShadow: 'none' }}>
-            <div style={sectionTitleStyle}>Attach Files (Optional)</div>
-            <label style={{ ...primaryButtonStyle, display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: canUpdate ? 'pointer' : 'not-allowed', opacity: canUpdate ? 1 : 0.6 }}>
-              <Paperclip size={14} />
-              Choose Files
-              <input
-                type="file"
-                multiple
-                accept=".pdf,.doc,.docx,.xls,.xlsx,image/*"
-                onChange={handleAttachmentChange}
-                style={{ display: 'none' }}
-                disabled={!canUpdate}
-              />
-            </label>
-            <p style={{ margin: '8px 0 0', color: '#64748b', fontSize: '11px' }}>
-              Max {MAX_ATTACHMENTS} files. Each file must be 10MB or smaller.
-            </p>
-
-            {attachmentFiles.length > 0 ? (
-              <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {attachmentFiles.map((file, index) => (
-                  <div key={`${file.name}-${index}`} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '8px 10px', background: '#f8fafc' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
-                      <FileText size={14} color="#2563eb" />
-                      <div style={{ minWidth: 0 }}>
-                        <div style={{ fontSize: '12px', fontWeight: 600, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{file.name}</div>
-                        <div style={{ fontSize: '10.5px', color: '#64748b' }}>{(file.size / 1024 / 1024).toFixed(2)} MB</div>
+                {showBodyEditor ? (
+                  <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    <div>
+                      <label style={fieldLabelStyle}>Subject</label>
+                      <input
+                        type="text"
+                        value={customSubject}
+                        onChange={(event) => setCustomSubject(event.target.value)}
+                        style={inputStyle}
+                        disabled={!canUpdate}
+                      />
+                    </div>
+                    <div>
+                      <label style={fieldLabelStyle}>Body</label>
+                      <textarea
+                        rows={5}
+                        value={customBody}
+                        onChange={(event) => setCustomBody(event.target.value)}
+                        style={{ ...textareaStyle, minHeight: '120px' }}
+                        disabled={!canUpdate}
+                      />
+                    </div>
+                    <div style={{ borderRadius: '12px', border: '1px solid #dbeafe', background: '#f8fbff', overflow: 'hidden' }}>
+                      <div style={{ padding: '8px 12px', borderBottom: '1px solid #dbeafe', background: '#eff6ff' }}>
+                        <div style={{ fontSize: '10.5px', fontWeight: 700, color: '#1d4ed8', textTransform: 'uppercase', letterSpacing: '0.12em' }}>Preview</div>
+                        <div style={{ marginTop: '4px', fontSize: '12px', fontWeight: 700, color: '#0f172a' }}>{previewSubject}</div>
                       </div>
+                      <div
+                        style={{ padding: '12px', color: '#334155', fontSize: '12px', pointerEvents: 'none' }}
+                        dangerouslySetInnerHTML={{ __html: previewBody }}
+                      />
                     </div>
-                    <button type="button" onClick={() => handleRemoveAttachment(index)} style={{ ...ghostButtonStyle, padding: '5px 7px' }}>
-                      <X size={12} />
-                    </button>
+                    <p style={{ margin: 0, color: '#64748b', fontSize: '11px' }}>
+                      Supported placeholders: {placeholderHelpText}
+                    </p>
                   </div>
-                ))}
+                ) : null}
               </div>
-            ) : null}
-          </div>
 
-          <button
-            type="button"
-            onClick={handleSendEmail}
-            disabled={!canUpdate || sending}
-            style={{
-              ...primaryButtonStyle,
-              width: '100%',
-              padding: '10px 14px',
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '8px',
-              opacity: (!canUpdate || sending) ? 0.7 : 1,
-              cursor: (!canUpdate || sending) ? 'not-allowed' : 'pointer'
-            }}
-          >
-            {sending ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
-            {sending ? 'Sending...' : 'Send Email'}
-          </button>
+              <div style={{ ...cardStyle, padding: '12px 14px', borderRadius: '12px', boxShadow: 'none' }}>
+                <div style={sectionTitleStyle}>Sender Account</div>
+                <label style={fieldLabelStyle}>Send From</label>
+                <select
+                  value={selectedEmailAccountId}
+                  onChange={(event) => setSelectedEmailAccountId(event.target.value)}
+                  style={inputStyle}
+                  disabled={!canUpdate || sendersLoading}
+                >
+                  {emailSenderOptions.map((option) => (
+                    <option key={option._id} value={option._id}>
+                      {`${option.name} (${option.provider || 'platform'}) - ${option.fromAddress || 'no-reply'}`}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-          <div style={{ ...cardStyle, padding: '12px 14px', borderRadius: '12px', boxShadow: 'none' }}>
-            <div style={sectionTitleStyle}>Previously Sent</div>
-            {previouslySentItems.length === 0 ? (
-              <p style={{ margin: 0, color: '#64748b', fontSize: '12px' }}>No emails sent yet.</p>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {previouslySentItems.map((item, index) => (
-                  <div key={`${item.sentAt || item.type}-${index}`} style={{ border: '1px solid #e2e8f0', borderRadius: '10px', padding: '9px 11px', background: '#ffffff' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                      <span style={{ ...getStatusBadgeStyle(item.type || 'Other'), background: '#f1f5f9', color: '#334155' }}>{item.type || 'Other'}</span>
-                      <span style={{ fontSize: '12px', color: '#334155' }}>Sent to {item.sentTo || 'Unknown recipient'}</span>
-                    </div>
-                    <div style={{ marginTop: '4px', fontSize: '11px', color: '#64748b' }}>{formatDateLabel(item.sentAt)}</div>
-                    {item.notes ? <div style={{ marginTop: '3px', fontSize: '10.5px', color: '#94a3b8' }}>{item.notes}</div> : null}
+              <div style={{ ...cardStyle, padding: '12px 14px', borderRadius: '12px', boxShadow: 'none' }}>
+                <div style={sectionTitleStyle}>Attach Files (Optional)</div>
+                <label style={{ ...primaryButtonStyle, display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: canUpdate ? 'pointer' : 'not-allowed', opacity: canUpdate ? 1 : 0.6 }}>
+                  <Paperclip size={14} />
+                  Choose Files
+                  <input
+                    type="file"
+                    multiple
+                    accept=".pdf,.doc,.docx,.xls,.xlsx,image/*"
+                    onChange={handleAttachmentChange}
+                    style={{ display: 'none' }}
+                    disabled={!canUpdate}
+                  />
+                </label>
+                <p style={{ margin: '8px 0 0', color: '#64748b', fontSize: '11px' }}>
+                  Max {MAX_ATTACHMENTS} files. Each file must be 10MB or smaller.
+                </p>
+
+                {attachmentFiles.length > 0 ? (
+                  <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {attachmentFiles.map((file, index) => (
+                      <div key={`${file.name}-${index}`} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '8px 10px', background: '#f8fafc' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                          <FileText size={14} color="#2563eb" />
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontSize: '12px', fontWeight: 600, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{file.name}</div>
+                            <div style={{ fontSize: '10.5px', color: '#64748b' }}>{(file.size / 1024 / 1024).toFixed(2)} MB</div>
+                          </div>
+                        </div>
+                        <button type="button" onClick={() => handleRemoveAttachment(index)} style={{ ...ghostButtonStyle, padding: '5px 7px' }}>
+                          <X size={12} />
+                        </button>
+                      </div>
+                    ))}
                   </div>
-                ))}
+                ) : null}
               </div>
-            )}
-          </div>
+
+              <button
+                type="button"
+                onClick={handleSendEmail}
+                disabled={!canUpdate || sending}
+                style={{
+                  ...primaryButtonStyle,
+                  width: '100%',
+                  padding: '10px 14px',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px',
+                  opacity: (!canUpdate || sending) ? 0.7 : 1,
+                  cursor: (!canUpdate || sending) ? 'not-allowed' : 'pointer'
+                }}
+              >
+                {sending ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
+                {sending ? 'Sending...' : 'Send Email'}
+              </button>
+
+              <div style={{ ...cardStyle, padding: '12px 14px', borderRadius: '12px', boxShadow: 'none' }}>
+                <div style={sectionTitleStyle}>Previously Sent</div>
+                {previouslySentItems.length === 0 ? (
+                  <p style={{ margin: 0, color: '#64748b', fontSize: '12px' }}>No emails sent yet.</p>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {previouslySentItems.map((item, index) => (
+                      <div key={`${item.sentAt || item.type}-${index}`} style={{ border: '1px solid #e2e8f0', borderRadius: '10px', padding: '9px 11px', background: '#ffffff' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                          <span style={{ ...getStatusBadgeStyle(item.type || 'Other'), background: '#f1f5f9', color: '#334155' }}>{item.type || 'Other'}</span>
+                          <span style={{ fontSize: '12px', color: '#334155' }}>Sent to {item.sentTo || 'Unknown recipient'}</span>
+                        </div>
+                        <div style={{ marginTop: '4px', fontSize: '11px', color: '#64748b' }}>{formatDateLabel(item.sentAt)}</div>
+                        {item.notes ? <div style={{ marginTop: '3px', fontSize: '10.5px', color: '#94a3b8' }}>{item.notes}</div> : null}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
         </>
       ) : null}
     </div>
