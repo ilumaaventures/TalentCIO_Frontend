@@ -319,6 +319,14 @@ const GlobalTADashboard = () => {
         });
     };
 
+    const getUserDashboardUrl = (targetUserName) => {
+        const params = new URLSearchParams();
+        if (filters.startDate) params.set('startDate', filters.startDate);
+        if (filters.endDate) params.set('endDate', filters.endDate);
+        const queryString = params.toString() ? `?${params.toString()}` : '';
+        return `/ta/user-dashboard/${encodeURIComponent(targetUserName)}${queryString}`;
+    };
+
     if (loading && !data) {
         return (
             <div className="min-h-screen bg-slate-50 p-6 space-y-6">
@@ -531,7 +539,7 @@ const GlobalTADashboard = () => {
                             </div>
                         </div>
                         <button
-                            onClick={() => navigate(`/ta/user-dashboard/${encodeURIComponent(filters.pulledBy || filters.uploadedBy)}`)}
+                            onClick={() => navigate(getUserDashboardUrl(filters.pulledBy || filters.uploadedBy))}
                             className="flex items-center gap-1.5 px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold rounded-lg shadow-xs transition-colors whitespace-nowrap self-end sm:self-auto"
                         >
                             <span>Open Candidate Dossier</span>
@@ -769,7 +777,7 @@ const GlobalTADashboard = () => {
                                         <tr key={i} className="hover:bg-slate-50/80 transition-colors border-b border-slate-50 last:border-0 font-medium">
                                             <td className="px-4 py-3">
                                                 <button
-                                                    onClick={() => navigate(`/ta/user-dashboard/${encodeURIComponent(rec.name)}`)}
+                                                    onClick={() => navigate(getUserDashboardUrl(rec.name))}
                                                     className="text-slate-800 font-bold hover:text-indigo-600 hover:underline flex items-center gap-1.5 text-left group"
                                                     title={`Open ${rec.name}'s performance tracker`}
                                                 >

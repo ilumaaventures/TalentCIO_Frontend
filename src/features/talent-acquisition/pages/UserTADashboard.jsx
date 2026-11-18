@@ -1,23 +1,27 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Users, ThumbsUp, ThumbsDown, CheckCircle, Clock, UserCheck, Eye, FileText, Upload, Briefcase } from 'lucide-react';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import { ArrowLeft, Users, ThumbsUp, ThumbsDown, CheckCircle, Clock, UserCheck, Eye, FileText, Upload, Briefcase, Calendar, Filter, Search, X } from 'lucide-react';
 import api from '@/lib/apiClient';
 import toast from 'react-hot-toast';
 import { format } from 'date-fns';
 import Skeleton from '@/components/ui/Skeleton';
-import { Filter, Search, X } from 'lucide-react';
 
 const UserTADashboard = ({ providedUserName }) => {
     const { userName: routeUserName } = useParams();
     const navigate = useNavigate();
+    const [searchParams, setSearchParams] = useSearchParams();
     const itemsPerPage = 10;
 
     // Use the provided name (if used as embedded component) or the route param
     const userName = providedUserName || routeUserName;
 
+    const initialStartDate = searchParams.get('startDate') || searchParams.get('dateFrom') || '';
+    const initialEndDate = searchParams.get('endDate') || searchParams.get('dateTo') || '';
+
     const [candidates, setCandidates] = useState([]);
     const [summaryMetrics, setSummaryMetrics] = useState({
         total: 0,
+        requisitionsWorkedOn: 0,
         interested: 0,
         inInterviews: 0,
         rejected: 0,
@@ -28,6 +32,22 @@ const UserTADashboard = ({ providedUserName }) => {
     const [totalCandidates, setTotalCandidates] = useState(0);
     const [loading, setLoading] = useState(true);
     const [teamMembers, setTeamMembers] = useState([]);
+
+    // Filter States
+    const [searchTerm, setSearchTerm] = useState('');
+    const [filterDateFrom, setFilterDateFrom] = useState(initialStartDate);
+    const [filterDateTo, setFilterDateTo] = useState(initialEndDate);
+    const [filterProfile, setFilterProfile] = useState('');
+    const [filterStatus, setFilterStatus] = useState('');
+    const [showFilters, setShowFilters] = useState(false);
+
+    // Sync date filters if URL search params change
+    useEffect(() => {
+        const urlFrom = searchParams.get('startDate') || searchParams.get('dateFrom') || '';
+        const urlTo = searchParams.get('endDate') || searchParams.get('dateTo') || '';
+        setFilterDateFrom(urlFrom);
+        setFilterDateTo(urlTo);
+    }, [searchParams]);
 
     useEffect(() => {
         api.get('/ta/analytics/global')
@@ -42,21 +62,29 @@ const UserTADashboard = ({ providedUserName }) => {
             .catch(() => {});
     }, []);
 
-    // Filter States
-    const [searchTerm, setSearchTerm] = useState('');
-    const [filterDateFrom, setFilterDateFrom] = useState('');
-    const [filterDateTo, setFilterDateTo] = useState('');
-    const [filterProfile, setFilterProfile] = useState('');
-    const [filterStatus, setFilterStatus] = useState('');
-    const [showFilters, setShowFilters] = useState(false);
+    const handleDateFilterChange = (from, to) => {
+        setFilterDateFrom(from);
+        setFilterDateTo(to);
+        const newParams = new URLSearchParams(searchParams);
+        if (from) newParams.set('startDate', from);
+        else newParams.delete('startDate');
+        if (to) newParams.set('endDate', to);
+        else newParams.delete('endDate');
+        setSearchParams(newParams, { replace: true });
+    };
 
     const fetchUserCandidates = useCallback(async () => {
         try {
             setLoading(true);
-            const response = await api.get(`/ta/candidates/user/${encodeURIComponent(userName)}?page=${page}&limit=${itemsPerPage}`);
+            let url = `/ta/candidates/user/${encodeURIComponent(userName)}?page=${page}&limit=${itemsPerPage}`;
+            if (filterDateFrom) url += `&startDate=${encodeURIComponent(filterDateFrom)}`;
+            if (filterDateTo) url += `&endDate=${encodeURIComponent(filterDateTo)}`;
+
+            const response = await api.get(url);
             setCandidates(response.data.candidates || []);
             setSummaryMetrics(response.data.summary || {
                 total: response.data.count || 0,
+                requisitionsWorkedOn: 0,
                 interested: 0,
                 inInterviews: 0,
                 rejected: 0,
@@ -70,11 +98,11 @@ const UserTADashboard = ({ providedUserName }) => {
         } finally {
             setLoading(false);
         }
-    }, [itemsPerPage, page, userName]);
+    }, [filterDateFrom, filterDateTo, itemsPerPage, page, userName]);
 
     useEffect(() => {
         setPage(1);
-    }, [userName]);
+    }, [userName, filterDateFrom, filterDateTo]);
 
     useEffect(() => {
         if (userName) {
@@ -106,7 +134,8 @@ const UserTADashboard = ({ providedUserName }) => {
             // Date Range
             let matchesDate = true;
             if (filterDateFrom || filterDateTo) {
-                const dateAdded = new Date(candidate.uploadedAt).getTime();
+                const dateVal = candidate.uploadedAt || candidate.createdAt;
+                const dateAdded = dateVal ? new Date(dateVal).getTime() : 0;
                 if (filterDateFrom) {
                     const fromTime = new Date(filterDateFrom).getTime();
                     if (dateAdded < fromTime) matchesDate = false;
@@ -188,7 +217,10 @@ const UserTADashboard = ({ providedUserName }) => {
                         <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Switch Recruiter:</span>
                         <select
                             value={userName}
-                            onChange={(e) => navigate(`/ta/user-dashboard/${encodeURIComponent(e.target.value)}`)}
+                            onChange={(e) => {
+                                const qs = searchParams.toString() ? `?${searchParams.toString()}` : '';
+                                navigate(`/ta/user-dashboard/${encodeURIComponent(e.target.value)}${qs}`);
+                            }}
                             className="bg-white border border-slate-300 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-700 shadow-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                         >
                             {teamMembers.map(m => (
@@ -197,6 +229,56 @@ const UserTADashboard = ({ providedUserName }) => {
                         </select>
                     </div>
                 )}
+            </div>
+
+            {/* Date Filter & Scope Bar */}
+            <div className="bg-white border border-slate-200 rounded-xl px-4 py-2.5 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 shadow-xs">
+                <div className="flex items-center gap-2.5">
+                    <div className="p-1.5 bg-indigo-50 text-indigo-600 rounded-lg">
+                        <Calendar size={15} />
+                    </div>
+                    <div>
+                        <div className="flex items-center gap-2">
+                            <span className="text-xs font-bold text-slate-800">Sourcing Date Period</span>
+                            {(filterDateFrom || filterDateTo) && (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                                    Date Filter Active
+                                </span>
+                            )}
+                        </div>
+                        <p className="text-[11px] text-slate-500">Filter metrics, requisitions, and candidate dossier for this date range</p>
+                    </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2.5 w-full md:w-auto">
+                    <div className="flex items-center gap-1.5">
+                        <label className="text-[10px] font-bold text-slate-400 uppercase">From</label>
+                        <input
+                            type="date"
+                            value={filterDateFrom}
+                            onChange={(e) => handleDateFilterChange(e.target.value, filterDateTo)}
+                            className="px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all outline-none"
+                        />
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                        <label className="text-[10px] font-bold text-slate-400 uppercase">To</label>
+                        <input
+                            type="date"
+                            value={filterDateTo}
+                            onChange={(e) => handleDateFilterChange(filterDateFrom, e.target.value)}
+                            className="px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all outline-none"
+                        />
+                    </div>
+                    {(filterDateFrom || filterDateTo) && (
+                        <button
+                            onClick={() => handleDateFilterChange('', '')}
+                            className="px-2.5 py-1.5 text-xs font-bold text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors flex items-center gap-1"
+                            title="Reset date filter to show all time"
+                        >
+                            <X size={13} /> Clear Date
+                        </button>
+                    )}
+                </div>
             </div>
 
             {/* Metrics */}
@@ -262,8 +344,7 @@ const UserTADashboard = ({ providedUserName }) => {
                                     onClick={() => {
                                         setFilterProfile('');
                                         setFilterStatus('');
-                                        setFilterDateFrom('');
-                                        setFilterDateTo('');
+                                        handleDateFilterChange('', '');
                                     }}
                                     className="text-[11px] font-semibold text-red-600 hover:text-red-700 flex items-center gap-1"
                                 >
@@ -307,7 +388,7 @@ const UserTADashboard = ({ providedUserName }) => {
                                 <input
                                     type="date"
                                     value={filterDateFrom}
-                                    onChange={(e) => setFilterDateFrom(e.target.value)}
+                                    onChange={(e) => handleDateFilterChange(e.target.value, filterDateTo)}
                                     className="w-full p-2 text-sm border border-slate-200 rounded-md focus:outline-none focus:border-blue-500 bg-white"
                                 />
                             </div>
@@ -316,7 +397,7 @@ const UserTADashboard = ({ providedUserName }) => {
                                 <input
                                     type="date"
                                     value={filterDateTo}
-                                    onChange={(e) => setFilterDateTo(e.target.value)}
+                                    onChange={(e) => handleDateFilterChange(filterDateFrom, e.target.value)}
                                     className="w-full p-2 text-sm border border-slate-200 rounded-md focus:outline-none focus:border-blue-500 bg-white"
                                 />
                             </div>
