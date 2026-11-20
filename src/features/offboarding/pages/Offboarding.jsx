@@ -14,18 +14,24 @@ import {
   CheckCircle2,
   CheckSquare,
   Clock,
+  Copy,
   DollarSign,
+  ExternalLink,
+  Eye,
   FileCheck,
   FileText,
+  FolderOpen,
   Loader2,
   Mail,
   MessageSquare,
   Paperclip,
   Plus,
   RefreshCw,
+  RotateCcw,
   Search,
   Send,
   ShieldCheck,
+  Sparkles,
   UserMinus,
   X
 } from 'lucide-react';
@@ -43,6 +49,66 @@ const STATUS_OPTIONS = ['Initiated', 'In Progress', 'Clearance Pending', 'Comple
 const EDITABLE_STATUS_OPTIONS = ['Initiated', 'In Progress', 'Clearance Pending', 'Completed'];
 const NO_TEMPLATE_OPTION = '__custom__';
 const DEFAULT_SUBJECT = 'Exit Documents from {{companyName}}';
+
+const AVAILABLE_LETTER_TAGS = [
+  { tag: '{{fullName}}', label: 'Full Name', desc: 'Employee full legal name' },
+  { tag: '{{firstName}}', label: 'First Name', desc: 'Employee first name' },
+  { tag: '{{lastName}}', label: 'Last Name', desc: 'Employee last name' },
+  { tag: '{{employeeCode}}', label: 'Employee Code', desc: 'Employee ID' },
+  { tag: '{{designation}}', label: 'Designation', desc: 'Job title' },
+  { tag: '{{department}}', label: 'Department', desc: 'Department name' },
+  { tag: '{{joiningDate}}', label: 'Joining Date', desc: 'Date of joining' },
+  { tag: '{{lastWorkingDay}}', label: 'Last Working Day', desc: 'Official last day' },
+  { tag: '{{exitType}}', label: 'Exit Type', desc: 'Resignation / Termination' },
+  { tag: '{{companyName}}', label: 'Company Name', desc: 'Organization name' },
+  { tag: '{{companyAddress}}', label: 'Company Address', desc: 'Location / Country' },
+  { tag: '{{currentDate}}', label: 'Current Date', desc: 'Date of issue' },
+  { tag: '{{currentYear}}', label: 'Current Year', desc: 'Four digit year' },
+  { tag: '{{noticePeriodServed}}', label: 'Notice Period', desc: 'Yes or No' }
+];
+
+const DEFAULT_RELIEVING_BODY_FE = `<p>To whom it may concern,</p>
+<p>
+    This is to certify that <strong>{{fullName}}</strong>, Employee Code
+    <strong>{{employeeCode}}</strong>, worked with
+    <strong>{{companyName}}</strong> as
+    <strong>{{designation}}</strong> in the
+    <strong>{{department}}</strong> department from
+    <strong>{{joiningDate}}</strong> to
+    <strong>{{lastWorkingDay}}</strong>.
+</p>
+<p>
+    The employee has been formally relieved from their duties and responsibilities with effect from the close of business
+    on {{lastWorkingDay}}.
+</p>
+<p>We thank them for their contribution and wish them every success in their future endeavors.</p>
+<div style="margin-top:40px;">
+    <div style="font-weight:600;">HR Department</div>
+    <div>{{companyName}}</div>
+</div>`;
+
+const DEFAULT_EXPERIENCE_BODY_FE = `<p>To whom it may concern,</p>
+<p>
+    This is to certify that <strong>{{fullName}}</strong>, Employee Code
+    <strong>{{employeeCode}}</strong>, was employed with
+    <strong>{{companyName}}</strong> from
+    <strong>{{joiningDate}}</strong> to
+    <strong>{{lastWorkingDay}}</strong>.
+</p>
+<p>
+    During this period, the employee served as
+    <strong>{{designation}}</strong> in the
+    <strong>{{department}}</strong> department.
+</p>
+<p>
+    Throughout their tenure, the employee has been found to be sincere, hardworking, and dedicated in the discharge
+    of their responsibilities.
+</p>
+<p>We wish them continued success in their future professional journey.</p>
+<div style="margin-top:40px;">
+    <div style="font-weight:600;">HR Department</div>
+    <div>{{companyName}}</div>
+</div>`;
 const DEFAULT_BODY = '<p>Dear {{firstName}},<br>Please find attached your exit documents.<br>Best regards,<br>HR Team</p>';
 const MAX_ATTACHMENTS = 5;
 const MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024;
@@ -185,12 +251,16 @@ const getTemplatePreviewData = (record, userCompanyName) => {
     lastName: employee.lastName || '',
     fullName: getEmployeeName(employee),
     email: employee.email || '',
+    employeeCode: employee.employeeCode || profile?.employment?.employeeCode || '',
     designation: profile?.employment?.designation || '',
     department: employee.department || '',
     joiningDate: formatDateLabel(employee.joiningDate || profile?.employment?.joiningDate),
     lastWorkingDay: formatDateLabel(record?.lastWorkingDay),
     exitType: record?.exitType || '',
+    noticePeriodServed: record?.noticePeriodServed ? 'Yes' : 'No',
     companyName: userCompanyName || 'TalentCIO',
+    companyAddress: userCompanyName || 'Headquarters',
+    currentDate: formatDateLabel(new Date().toISOString()),
     currentYear: new Date().getFullYear().toString()
   };
 };
@@ -286,6 +356,24 @@ const Offboarding = () => {
   const [docTypesSelected, setDocTypesSelected] = useState(['Relieving Letter', 'Experience Letter']);
   const [docPersonalNote, setDocPersonalNote] = useState('');
   const [docsGenerating, setDocsGenerating] = useState(false);
+  const [lettersSubTab, setLettersSubTab] = useState('dossier');
+  const [letterTypeToGenerate, setLetterTypeToGenerate] = useState('Relieving Letter');
+  const [letterBodyDraft, setLetterBodyDraft] = useState(DEFAULT_RELIEVING_BODY_FE);
+  const [dossierLetters, setDossierLetters] = useState([]);
+  const [loadingDossierLetters, setLoadingDossierLetters] = useState(false);
+  const [selectedDossierDocIds, setSelectedDossierDocIds] = useState([]);
+  const [savingLetterToDossier, setSavingLetterToDossier] = useState(false);
+  const [sendingDossierLetters, setSendingDossierLetters] = useState(false);
+  const [dossierPersonalNote, setDossierPersonalNote] = useState('');
+  const [showTopLetterModal, setShowTopLetterModal] = useState(false);
+  const [topLetterForm, setTopLetterForm] = useState({
+    userId: '',
+    letterType: 'Relieving Letter',
+    customBody: DEFAULT_RELIEVING_BODY_FE,
+    lastWorkingDay: '',
+    exitType: 'Resignation'
+  });
+  const [topLetterSaving, setTopLetterSaving] = useState(false);
   const [isMobile, setIsMobile] = useState(() => (typeof window !== 'undefined' ? window.innerWidth < 1024 : false));
 
   useEffect(() => {
@@ -399,6 +487,23 @@ const Offboarding = () => {
     }
   }, []);
 
+  const fetchDossierLetters = useCallback(async (userId) => {
+    if (!userId) {
+      setDossierLetters([]);
+      return;
+    }
+    setLoadingDossierLetters(true);
+    try {
+      const response = await api.get(`/offboarding/dossier-letters/${userId}`);
+      setDossierLetters(Array.isArray(response.data?.letters) ? response.data.letters : []);
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to load letters from employee dossier');
+      setDossierLetters([]);
+    } finally {
+      setLoadingDossierLetters(false);
+    }
+  }, []);
+
   useEffect(() => {
     fetchStats();
   }, [fetchStats]);
@@ -423,7 +528,11 @@ const Offboarding = () => {
   }, [fetchComposerOptions, fetchRecordDetail, selectedRecordId]);
 
   useEffect(() => {
-    if (!selectedRecord) return;
+    if (!selectedRecord) {
+      setDossierLetters([]);
+      setSelectedDossierDocIds([]);
+      return;
+    }
     const personalEmail = selectedRecord?.userId?.employeeProfile?.contact?.personalEmail || '';
     setRecipientEmail(personalEmail || selectedRecord?.userId?.email || '');
     setStatusDraft(EDITABLE_STATUS_OPTIONS.includes(selectedRecord?.status) ? selectedRecord.status : 'In Progress');
@@ -443,7 +552,11 @@ const Offboarding = () => {
       deductions: selectedRecord?.fnfDetails?.deductions ?? 0,
       isSettled: Boolean(selectedRecord?.fnfDetails?.settledAt)
     });
-  }, [selectedRecord]);
+    setSelectedDossierDocIds([]);
+    if (selectedRecord?.userId?._id) {
+      fetchDossierLetters(selectedRecord.userId._id);
+    }
+  }, [selectedRecord, fetchDossierLetters]);
 
   useEffect(() => {
     const selectedTemplate = emailTemplates.find((template) => template._id === selectedTemplateId) || null;
@@ -750,6 +863,188 @@ const Offboarding = () => {
     }
   };
 
+  const handleSelectLetterType = (type) => {
+    setLetterTypeToGenerate(type);
+    if (type === 'Relieving Letter') {
+      setLetterBodyDraft(DEFAULT_RELIEVING_BODY_FE);
+    } else {
+      setLetterBodyDraft(DEFAULT_EXPERIENCE_BODY_FE);
+    }
+  };
+
+  const handleInsertTag = (tag) => {
+    setLetterBodyDraft((prev) => `${prev} ${tag}`);
+  };
+
+  const letterPreviewHtml = useMemo(() => {
+    return resolveTemplate(letterBodyDraft, templatePreviewData);
+  }, [letterBodyDraft, templatePreviewData]);
+
+  const handleGenerateAndSaveLetter = async () => {
+    if (!selectedRecord?._id || !selectedRecord?.userId?._id) {
+      toast.error('Select an offboarding record first');
+      return;
+    }
+    setSavingLetterToDossier(true);
+    try {
+      const res = await api.post('/offboarding/generate-letter', {
+        userId: selectedRecord.userId._id,
+        offboardingId: selectedRecord._id,
+        letterType: letterTypeToGenerate,
+        customBody: letterBodyDraft
+      });
+      toast.success(res.data?.message || `${letterTypeToGenerate} generated and saved to employee's Dossier!`);
+      await Promise.all([
+        fetchDossierLetters(selectedRecord.userId._id),
+        fetchRecordDetail(selectedRecord._id),
+        fetchRecords()
+      ]);
+      setLettersSubTab('dossier');
+    } catch (error) {
+      toast.error(error.response?.data?.message || `Failed to generate and save ${letterTypeToGenerate}`);
+    } finally {
+      setSavingLetterToDossier(false);
+    }
+  };
+
+  const handleToggleDossierDoc = (docId) => {
+    setSelectedDossierDocIds((prev) => (
+      prev.includes(docId) ? prev.filter((id) => id !== docId) : [...prev, docId]
+    ));
+  };
+
+  const handleSelectAllDossierDocs = () => {
+    if (selectedDossierDocIds.length === dossierLetters.length) {
+      setSelectedDossierDocIds([]);
+    } else {
+      setSelectedDossierDocIds(dossierLetters.map((doc) => doc._id));
+    }
+  };
+
+  const handleSendDossierLetters = async () => {
+    if (!selectedRecord?._id) return;
+    if (selectedDossierDocIds.length === 0) {
+      toast.error('Select at least one letter from the employee dossier');
+      return;
+    }
+    if (!recipientEmail.trim() || !isValidEmail(recipientEmail)) {
+      toast.error('Enter a valid recipient email');
+      return;
+    }
+
+    setSendingDossierLetters(true);
+    try {
+      const res = await api.post(`/offboarding/${selectedRecord._id}/send-dossier-letters`, {
+        dossierDocIds: selectedDossierDocIds,
+        recipientEmail: recipientEmail.trim(),
+        personalNote: dossierPersonalNote.trim(),
+        emailAccountId: selectedEmailAccountId || 'platform'
+      });
+      toast.success(res.data?.message || 'Selected letters sent to employee successfully!');
+      setSelectedDossierDocIds([]);
+      setDossierPersonalNote('');
+      await Promise.all([
+        fetchRecordDetail(selectedRecord._id),
+        fetchDossierLetters(selectedRecord.userId._id),
+        fetchRecords(),
+        fetchStats()
+      ]);
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to send dossier letters');
+    } finally {
+      setSendingDossierLetters(false);
+    }
+  };
+
+  const handleOpenTopLetterModal = async () => {
+    setShowTopLetterModal(true);
+    setTopLetterForm({
+      userId: '',
+      letterType: 'Relieving Letter',
+      customBody: DEFAULT_RELIEVING_BODY_FE,
+      lastWorkingDay: '',
+      exitType: 'Resignation'
+    });
+    setEmployeeSearchTerm('');
+    if (employees.length === 0) {
+      await fetchEmployees();
+    }
+  };
+
+  const topSelectedEmployee = useMemo(() => {
+    return employees.find(e => e._id === topLetterForm.userId) || null;
+  }, [employees, topLetterForm.userId]);
+
+  const topLetterPreviewData = useMemo(() => {
+    if (!topSelectedEmployee) {
+      return {
+        fullName: 'Employee Name',
+        firstName: 'Employee',
+        lastName: '',
+        employeeCode: 'EMP001',
+        designation: 'Designation',
+        department: 'Department',
+        joiningDate: formatDateLabel(new Date().toISOString()),
+        lastWorkingDay: formatDateLabel(topLetterForm.lastWorkingDay || new Date().toISOString()),
+        exitType: topLetterForm.exitType || 'Resignation',
+        noticePeriodServed: 'Yes',
+        companyName: user?.company?.name || 'TalentCIO',
+        companyAddress: 'Headquarters',
+        currentDate: formatDateLabel(new Date().toISOString()),
+        currentYear: new Date().getFullYear().toString()
+      };
+    }
+    const profile = topSelectedEmployee.employeeProfile || {};
+    return {
+      firstName: topSelectedEmployee.firstName || '',
+      lastName: topSelectedEmployee.lastName || '',
+      fullName: getEmployeeName(topSelectedEmployee),
+      email: topSelectedEmployee.email || '',
+      employeeCode: topSelectedEmployee.employeeCode || profile?.employment?.employeeCode || '',
+      designation: profile?.employment?.designation || '',
+      department: topSelectedEmployee.department || '',
+      joiningDate: formatDateLabel(topSelectedEmployee.joiningDate || profile?.employment?.joiningDate),
+      lastWorkingDay: formatDateLabel(topLetterForm.lastWorkingDay),
+      exitType: topLetterForm.exitType || 'Resignation',
+      noticePeriodServed: 'Yes',
+      companyName: user?.company?.name || 'TalentCIO',
+      companyAddress: user?.company?.name || 'Headquarters',
+      currentDate: formatDateLabel(new Date().toISOString()),
+      currentYear: new Date().getFullYear().toString()
+    };
+  }, [topSelectedEmployee, topLetterForm.lastWorkingDay, topLetterForm.exitType, user?.company?.name]);
+
+  const topLetterPreviewHtml = useMemo(() => {
+    return resolveTemplate(topLetterForm.customBody, topLetterPreviewData);
+  }, [topLetterForm.customBody, topLetterPreviewData]);
+
+  const handleTopGenerateLetter = async (e) => {
+    e.preventDefault();
+    if (!topLetterForm.userId) {
+      toast.error('Please select an employee');
+      return;
+    }
+    setTopLetterSaving(true);
+    try {
+      const res = await api.post('/offboarding/generate-letter', {
+        userId: topLetterForm.userId,
+        letterType: topLetterForm.letterType,
+        customBody: topLetterForm.customBody,
+        lastWorkingDay: topLetterForm.lastWorkingDay,
+        exitType: topLetterForm.exitType
+      });
+      toast.success(res.data?.message || `${topLetterForm.letterType} generated and saved to employee Dossier!`);
+      setShowTopLetterModal(false);
+      if (selectedRecord?.userId?._id === topLetterForm.userId) {
+        await fetchDossierLetters(topLetterForm.userId);
+      }
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to generate letter');
+    } finally {
+      setTopLetterSaving(false);
+    }
+  };
+
   const renderStatsCard = (label, value, accent) => (
     <div style={{
       ...cardStyle,
@@ -832,7 +1127,7 @@ const Offboarding = () => {
             {[
               { id: 'clearance', label: 'Clearance & Exit', icon: ShieldCheck },
               { id: 'fnf', label: 'F&F Settlement', icon: DollarSign },
-              { id: 'documents', label: 'Generate Letters', icon: FileCheck },
+              { id: 'documents', label: 'Letters & Dossier', icon: FileCheck },
               { id: 'email', label: 'Email & Ledger', icon: Mail }
             ].map((tab) => {
               const TabIcon = tab.icon;
@@ -1147,114 +1442,497 @@ const Offboarding = () => {
 
           {activeDetailTab === 'documents' && (
             <div style={{ ...cardStyle, padding: '14px', borderRadius: '12px', boxShadow: 'none', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <div>
-                <div style={sectionTitleStyle}>Generate Official Exit Documents</div>
-                <p style={{ margin: 0, color: '#64748b', fontSize: '11px' }}>
-                  Automatically synthesizes letterhead documents, archives them in the Employee Dossier, and emails them.
-                </p>
+              {/* Sub-tab navigation */}
+              <div style={{ display: 'flex', gap: '6px', borderBottom: '1px solid #e2e8f0', paddingBottom: '10px' }}>
+                <button
+                  type="button"
+                  onClick={() => setLettersSubTab('dossier')}
+                  style={{
+                    ...ghostButtonStyle,
+                    flex: 1,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px',
+                    padding: '8px 10px',
+                    background: lettersSubTab === 'dossier' ? '#eff6ff' : '#ffffff',
+                    color: lettersSubTab === 'dossier' ? '#2563eb' : '#64748b',
+                    borderColor: lettersSubTab === 'dossier' ? '#bfdbfe' : '#e2e8f0',
+                    fontWeight: 700
+                  }}
+                >
+                  <FolderOpen size={13} />
+                  <span>Select from Dossier</span>
+                  {dossierLetters.length > 0 && (
+                    <span style={{ background: '#2563eb', color: '#fff', borderRadius: '999px', padding: '1px 6px', fontSize: '10px' }}>
+                      {dossierLetters.length}
+                    </span>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLettersSubTab('generate')}
+                  style={{
+                    ...ghostButtonStyle,
+                    flex: 1,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px',
+                    padding: '8px 10px',
+                    background: lettersSubTab === 'generate' ? '#eff6ff' : '#ffffff',
+                    color: lettersSubTab === 'generate' ? '#2563eb' : '#64748b',
+                    borderColor: lettersSubTab === 'generate' ? '#bfdbfe' : '#e2e8f0',
+                    fontWeight: 700
+                  }}
+                >
+                  <Sparkles size={13} />
+                  <span>Generate New Letter</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLettersSubTab('quick')}
+                  style={{
+                    ...ghostButtonStyle,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px',
+                    padding: '8px 10px',
+                    background: lettersSubTab === 'quick' ? '#eff6ff' : '#ffffff',
+                    color: lettersSubTab === 'quick' ? '#2563eb' : '#64748b',
+                    borderColor: lettersSubTab === 'quick' ? '#bfdbfe' : '#e2e8f0',
+                    fontWeight: 700
+                  }}
+                >
+                  <FileCheck size={13} />
+                  <span>Quick Batch</span>
+                </button>
               </div>
 
-              <div>
-                <label style={fieldLabelStyle}>Select Documents to Issue</label>
-                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '8px' }}>
-                  {[
-                    { id: 'Relieving Letter', desc: 'Formal relieving from company services' },
-                    { id: 'Experience Letter', desc: 'Service certificate & tenure' },
-                    { id: 'Full & Final Settlement', desc: 'Detailed breakdown statement of dues' },
-                    { id: 'NOC', desc: 'No Objection Certificate' }
-                  ].map((doc) => (
-                    <label
-                      key={doc.id}
+              {/* Subtab 1: Select from Dossier & Send */}
+              {lettersSubTab === 'dossier' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  <div>
+                    <div style={sectionTitleStyle}>Employee Dossier Documents</div>
+                    <p style={{ margin: 0, color: '#64748b', fontSize: '11px' }}>
+                      Select Relieving and Experience letters directly from {getEmployeeName(selectedRecord?.userId)}&apos;s Dossier to send via offboarding email.
+                    </p>
+                  </div>
+
+                  {loadingDossierLetters ? (
+                    <div style={{ padding: '24px', textAlign: 'center', color: '#64748b', fontSize: '12px' }}>
+                      <Loader2 size={16} className="animate-spin" style={{ margin: '0 auto 6px' }} />
+                      Loading letters from employee dossier...
+                    </div>
+                  ) : dossierLetters.length === 0 ? (
+                    <div style={{ padding: '24px 16px', textAlign: 'center', border: '1px dashed #cbd5e1', borderRadius: '12px', background: '#f8fafc' }}>
+                      <FolderOpen size={28} color="#94a3b8" style={{ margin: '0 auto 8px' }} />
+                      <div style={{ fontSize: '12px', fontWeight: 600, color: '#334155' }}>No Letters in Dossier Yet</div>
+                      <p style={{ fontSize: '11px', color: '#64748b', margin: '4px 0 12px' }}>
+                        No Relieving or Experience letters have been saved in this employee&apos;s dossier yet.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setLettersSubTab('generate')}
+                        style={{ ...primaryButtonStyle, fontSize: '11px', padding: '6px 12px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                      >
+                        <Sparkles size={12} />
+                        Generate Letter Now
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 600 }}>
+                          {selectedDossierDocIds.length} of {dossierLetters.length} letter(s) selected
+                        </span>
+                        <button
+                          type="button"
+                          onClick={handleSelectAllDossierDocs}
+                          style={{ ...ghostButtonStyle, padding: '3px 8px', fontSize: '10.5px' }}
+                        >
+                          {selectedDossierDocIds.length === dossierLetters.length ? 'Deselect All' : 'Select All'}
+                        </button>
+                      </div>
+
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '220px', overflowY: 'auto' }}>
+                        {dossierLetters.map((doc) => {
+                          const isChecked = selectedDossierDocIds.includes(doc._id);
+                          return (
+                            <div
+                              key={doc._id}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                padding: '9px 12px',
+                                borderRadius: '10px',
+                                border: isChecked ? '1px solid #93c5fd' : '1px solid #e2e8f0',
+                                background: isChecked ? '#eff6ff' : '#ffffff',
+                                gap: '10px'
+                              }}
+                            >
+                              <label style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, flex: 1, cursor: 'pointer' }}>
+                                <input
+                                  type="checkbox"
+                                  checked={isChecked}
+                                  onChange={() => handleToggleDossierDoc(doc._id)}
+                                  disabled={!canUpdate}
+                                />
+                                <div style={{ minWidth: 0, flex: 1 }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <span style={{ fontSize: '12px', fontWeight: 700, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                      {doc.title || doc.name || 'Official Letter'}
+                                    </span>
+                                    <span style={{ fontSize: '9.5px', fontWeight: 700, padding: '1px 6px', borderRadius: '4px', background: '#dbeafe', color: '#1e40af' }}>
+                                      {doc.category}
+                                    </span>
+                                  </div>
+                                  <div style={{ fontSize: '10.5px', color: '#64748b', marginTop: '2px' }}>
+                                    Saved: {formatDateLabel(doc.uploadedAt)} {doc.status ? `• ${doc.status}` : ''}
+                                  </div>
+                                </div>
+                              </label>
+                              {doc.url && (
+                                <button
+                                  type="button"
+                                  onClick={() => window.open(doc.url, '_blank')}
+                                  title="View Letter in Dossier"
+                                  style={{ ...ghostButtonStyle, padding: '5px 8px', display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '11px' }}
+                                >
+                                  <Eye size={12} />
+                                  View
+                                </button>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      <div>
+                        <label style={fieldLabelStyle}>Recipient Email</label>
+                        <input
+                          type="email"
+                          value={recipientEmail}
+                          onChange={(e) => setRecipientEmail(e.target.value)}
+                          placeholder="employee@example.com"
+                          style={inputStyle}
+                          disabled={!canUpdate}
+                        />
+                      </div>
+
+                      <div>
+                        <label style={fieldLabelStyle}>Sender Account</label>
+                        <select
+                          value={selectedEmailAccountId}
+                          onChange={(e) => setSelectedEmailAccountId(e.target.value)}
+                          style={inputStyle}
+                          disabled={!canUpdate || sendersLoading}
+                        >
+                          {emailSenderOptions.map((option) => (
+                            <option key={option._id} value={option._id}>
+                              {`${option.name} (${option.provider || 'platform'}) - ${option.fromAddress || 'no-reply'}`}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label style={fieldLabelStyle}>Personal Note from HR (Optional)</label>
+                        <textarea
+                          rows={2}
+                          value={dossierPersonalNote}
+                          onChange={(e) => setDossierPersonalNote(e.target.value)}
+                          placeholder="E.g., Please find attached your verified exit letters from your dossier. Wishing you all the best!"
+                          style={{ ...textareaStyle, minHeight: '55px' }}
+                          disabled={!canUpdate}
+                        />
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={handleSendDossierLetters}
+                        disabled={!canUpdate || sendingDossierLetters || selectedDossierDocIds.length === 0}
+                        style={{
+                          ...primaryButtonStyle,
+                          width: '100%',
+                          padding: '10px 14px',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '8px',
+                          opacity: (!canUpdate || sendingDossierLetters || selectedDossierDocIds.length === 0) ? 0.7 : 1,
+                          cursor: (!canUpdate || sendingDossierLetters || selectedDossierDocIds.length === 0) ? 'not-allowed' : 'pointer'
+                        }}
+                      >
+                        {sendingDossierLetters ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
+                        {sendingDossierLetters ? 'Sending Dossier Letters...' : `Send Selected Dossier Letters (${selectedDossierDocIds.length})`}
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* Subtab 2: Generate New Letter & Save to Dossier */}
+              {lettersSubTab === 'generate' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  <div>
+                    <div style={sectionTitleStyle}>Letter Generator & Dossier Archival</div>
+                    <p style={{ margin: 0, color: '#64748b', fontSize: '11px' }}>
+                      Compose letters using template tags. Once generated, the letter is saved in {getEmployeeName(selectedRecord?.userId)}&apos;s Dossier.
+                    </p>
+                  </div>
+
+                  <div>
+                    <label style={fieldLabelStyle}>Letter Type</label>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      {['Relieving Letter', 'Experience Letter'].map((type) => (
+                        <button
+                          key={type}
+                          type="button"
+                          onClick={() => handleSelectLetterType(type)}
+                          style={{
+                            ...ghostButtonStyle,
+                            flex: 1,
+                            padding: '7px 12px',
+                            fontWeight: 700,
+                            background: letterTypeToGenerate === type ? '#0f172a' : '#ffffff',
+                            color: letterTypeToGenerate === type ? '#ffffff' : '#334155',
+                            borderColor: letterTypeToGenerate === type ? '#0f172a' : '#cbd5e1'
+                          }}
+                        >
+                          {type}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Available Template Tags Palette */}
+                  <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '10px 12px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                      <div style={{ fontSize: '11px', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                        Available Template Tags
+                      </div>
+                      <span style={{ fontSize: '10px', color: '#94a3b8' }}>Click tag to insert</span>
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
+                      {AVAILABLE_LETTER_TAGS.map((tagObj) => (
+                        <button
+                          key={tagObj.tag}
+                          type="button"
+                          onClick={() => handleInsertTag(tagObj.tag)}
+                          title={tagObj.desc}
+                          style={{
+                            border: '1px solid #cbd5e1',
+                            background: '#ffffff',
+                            borderRadius: '6px',
+                            padding: '2px 7px',
+                            fontSize: '11px',
+                            fontFamily: 'monospace',
+                            color: '#2563eb',
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px'
+                          }}
+                        >
+                          <span>{tagObj.tag}</span>
+                          <span style={{ fontSize: '9px', color: '#64748b', fontFamily: 'inherit' }}>({tagObj.label})</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                      <label style={fieldLabelStyle}>Letter Body Template (HTML / Text)</label>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (letterTypeToGenerate === 'Relieving Letter') {
+                            setLetterBodyDraft(DEFAULT_RELIEVING_BODY_FE);
+                          } else {
+                            setLetterBodyDraft(DEFAULT_EXPERIENCE_BODY_FE);
+                          }
+                        }}
+                        style={{ ...ghostButtonStyle, padding: '2px 7px', fontSize: '10px', display: 'inline-flex', alignItems: 'center', gap: '3px' }}
+                      >
+                        <RotateCcw size={10} />
+                        Reset Template
+                      </button>
+                    </div>
+                    <textarea
+                      rows={6}
+                      value={letterBodyDraft}
+                      onChange={(e) => setLetterBodyDraft(e.target.value)}
+                      style={{ ...textareaStyle, fontFamily: 'monospace', fontSize: '11px', minHeight: '110px' }}
+                      disabled={!canUpdate}
+                    />
+                  </div>
+
+                  <div>
+                    <div style={fieldLabelStyle}>Rendered Letterhead Preview</div>
+                    <div
                       style={{
-                        display: 'flex',
-                        alignItems: 'flex-start',
-                        gap: '8px',
-                        padding: '9px 10px',
-                        borderRadius: '8px',
                         border: '1px solid #e2e8f0',
-                        background: docTypesSelected.includes(doc.id) ? '#eff6ff' : '#ffffff',
-                        cursor: canUpdate ? 'pointer' : 'default'
+                        borderRadius: '10px',
+                        background: '#ffffff',
+                        padding: '14px',
+                        maxHeight: '160px',
+                        overflowY: 'auto',
+                        fontSize: '11.5px',
+                        lineHeight: '1.5',
+                        color: '#1e293b'
                       }}
                     >
-                      <input
-                        type="checkbox"
-                        checked={docTypesSelected.includes(doc.id)}
-                        onChange={() => handleToggleDocType(doc.id)}
-                        disabled={!canUpdate}
-                        style={{ marginTop: '2px' }}
-                      />
-                      <div>
-                        <div style={{ fontSize: '11.5px', fontWeight: 700, color: '#0f172a' }}>{doc.id}</div>
-                        <div style={{ fontSize: '10px', color: '#64748b' }}>{doc.desc}</div>
+                      <div style={{ borderBottom: '2px solid #2563eb', paddingBottom: '6px', marginBottom: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div>
+                          <div style={{ fontSize: '13px', fontWeight: 800, color: '#1e40af' }}>{user?.company?.name || 'TalentCIO'}</div>
+                          <div style={{ fontSize: '9.5px', color: '#64748b' }}>OFFICIAL PERSONNEL DOCUMENT</div>
+                        </div>
+                        <div style={{ textAlign: 'right', fontSize: '9.5px', color: '#64748b' }}>
+                          <div>Date: {formatDateLabel(new Date().toISOString())}</div>
+                        </div>
                       </div>
-                    </label>
-                  ))}
+                      <div style={{ textAlign: 'center', fontWeight: 700, fontSize: '12px', margin: '6px 0 10px', textDecoration: 'underline' }}>
+                        {letterTypeToGenerate.toUpperCase()}
+                      </div>
+                      <div dangerouslySetInnerHTML={{ __html: letterPreviewHtml }} />
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleGenerateAndSaveLetter}
+                    disabled={!canUpdate || savingLetterToDossier}
+                    style={{
+                      ...primaryButtonStyle,
+                      width: '100%',
+                      padding: '10px 14px',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '8px',
+                      opacity: (!canUpdate || savingLetterToDossier) ? 0.7 : 1,
+                      cursor: (!canUpdate || savingLetterToDossier) ? 'not-allowed' : 'pointer'
+                    }}
+                  >
+                    {savingLetterToDossier ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />}
+                    {savingLetterToDossier ? 'Generating & Archiving to Dossier...' : `Generate & Save to Dossier`}
+                  </button>
                 </div>
-              </div>
+              )}
 
-              <div>
-                <label style={fieldLabelStyle}>Recipient Email</label>
-                <input
-                  type="email"
-                  value={recipientEmail}
-                  onChange={(e) => setRecipientEmail(e.target.value)}
-                  placeholder="employee@example.com"
-                  style={inputStyle}
-                  disabled={!canUpdate}
-                />
-              </div>
+              {/* Subtab 3: Quick Batch Issue */}
+              {lettersSubTab === 'quick' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  <div>
+                    <div style={sectionTitleStyle}>Batch Generate & Dispatch</div>
+                    <p style={{ margin: 0, color: '#64748b', fontSize: '11px' }}>
+                      Automatically generate multiple documents simultaneously and email them to the employee.
+                    </p>
+                  </div>
 
-              <div>
-                <label style={fieldLabelStyle}>Sender Account</label>
-                <select
-                  value={selectedEmailAccountId}
-                  onChange={(e) => setSelectedEmailAccountId(e.target.value)}
-                  style={inputStyle}
-                  disabled={!canUpdate || sendersLoading}
-                >
-                  {emailSenderOptions.map((option) => (
-                    <option key={option._id} value={option._id}>
-                      {`${option.name} (${option.provider || 'platform'}) - ${option.fromAddress || 'no-reply'}`}
-                    </option>
-                  ))}
-                </select>
-              </div>
+                  <div>
+                    <label style={fieldLabelStyle}>Select Documents to Issue</label>
+                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '8px' }}>
+                      {[
+                        { id: 'Relieving Letter', desc: 'Formal relieving from company services' },
+                        { id: 'Experience Letter', desc: 'Service certificate & tenure' },
+                        { id: 'Full & Final Settlement', desc: 'Detailed breakdown statement of dues' },
+                        { id: 'NOC', desc: 'No Objection Certificate' }
+                      ].map((doc) => (
+                        <label
+                          key={doc.id}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'flex-start',
+                            gap: '8px',
+                            padding: '9px 10px',
+                            borderRadius: '8px',
+                            border: '1px solid #e2e8f0',
+                            background: docTypesSelected.includes(doc.id) ? '#eff6ff' : '#ffffff',
+                            cursor: canUpdate ? 'pointer' : 'default'
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={docTypesSelected.includes(doc.id)}
+                            onChange={() => handleToggleDocType(doc.id)}
+                            disabled={!canUpdate}
+                            style={{ marginTop: '2px' }}
+                          />
+                          <div>
+                            <div style={{ fontSize: '11.5px', fontWeight: 700, color: '#0f172a' }}>{doc.id}</div>
+                            <div style={{ fontSize: '10px', color: '#64748b' }}>{doc.desc}</div>
+                          </div>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
 
-              <div>
-                <label style={fieldLabelStyle}>Personal Note from HR (Optional)</label>
-                <textarea
-                  rows={2}
-                  value={docPersonalNote}
-                  onChange={(e) => setDocPersonalNote(e.target.value)}
-                  placeholder="E.g., Thank you for your contributions. Wishing you the best in your next chapter!"
-                  style={{ ...textareaStyle, minHeight: '60px' }}
-                  disabled={!canUpdate}
-                />
-              </div>
+                  <div>
+                    <label style={fieldLabelStyle}>Recipient Email</label>
+                    <input
+                      type="email"
+                      value={recipientEmail}
+                      onChange={(e) => setRecipientEmail(e.target.value)}
+                      placeholder="employee@example.com"
+                      style={inputStyle}
+                      disabled={!canUpdate}
+                    />
+                  </div>
 
-              <div style={{ borderRadius: '10px', background: '#f8fafc', border: '1px solid #e2e8f0', padding: '10px 12px', fontSize: '11px', color: '#64748b' }}>
-                Documents will be generated with company letterhead, uploaded to Cloudinary, attached to the email, and permanently saved under the employee&apos;s Dossier Documents tab.
-              </div>
+                  <div>
+                    <label style={fieldLabelStyle}>Sender Account</label>
+                    <select
+                      value={selectedEmailAccountId}
+                      onChange={(e) => setSelectedEmailAccountId(e.target.value)}
+                      style={inputStyle}
+                      disabled={!canUpdate || sendersLoading}
+                    >
+                      {emailSenderOptions.map((option) => (
+                        <option key={option._id} value={option._id}>
+                          {`${option.name} (${option.provider || 'platform'}) - ${option.fromAddress || 'no-reply'}`}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
 
-              <button
-                type="button"
-                onClick={handleGenerateExitDocuments}
-                disabled={!canUpdate || docsGenerating || docTypesSelected.length === 0}
-                style={{
-                  ...primaryButtonStyle,
-                  width: '100%',
-                  padding: '10px 14px',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '8px',
-                  opacity: (!canUpdate || docsGenerating || docTypesSelected.length === 0) ? 0.7 : 1,
-                  cursor: (!canUpdate || docsGenerating || docTypesSelected.length === 0) ? 'not-allowed' : 'pointer'
-                }}
-              >
-                {docsGenerating ? <Loader2 size={15} className="animate-spin" /> : <FileCheck size={15} />}
-                {docsGenerating ? 'Generating & Sending Documents...' : 'Generate & Send Official Documents'}
-              </button>
+                  <div>
+                    <label style={fieldLabelStyle}>Personal Note from HR (Optional)</label>
+                    <textarea
+                      rows={2}
+                      value={docPersonalNote}
+                      onChange={(e) => setDocPersonalNote(e.target.value)}
+                      placeholder="E.g., Thank you for your contributions. Wishing you the best in your next chapter!"
+                      style={{ ...textareaStyle, minHeight: '60px' }}
+                      disabled={!canUpdate}
+                    />
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleGenerateExitDocuments}
+                    disabled={!canUpdate || docsGenerating || docTypesSelected.length === 0}
+                    style={{
+                      ...primaryButtonStyle,
+                      width: '100%',
+                      padding: '10px 14px',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '8px',
+                      opacity: (!canUpdate || docsGenerating || docTypesSelected.length === 0) ? 0.7 : 1,
+                      cursor: (!canUpdate || docsGenerating || docTypesSelected.length === 0) ? 'not-allowed' : 'pointer'
+                    }}
+                  >
+                    {docsGenerating ? <Loader2 size={15} className="animate-spin" /> : <FileCheck size={15} />}
+                    {docsGenerating ? 'Generating & Sending Documents...' : 'Generate & Send Batch Documents'}
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
@@ -1502,12 +2180,29 @@ const Offboarding = () => {
             </span>
           </button>
           {canCreate ? (
-            <button type="button" onClick={handleOpenCreate} style={primaryButtonStyle}>
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                <Plus size={13} />
-                Initiate Offboarding
-              </span>
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={handleOpenTopLetterModal}
+                style={{
+                  ...ghostButtonStyle,
+                  background: '#eff6ff',
+                  borderColor: '#bfdbfe',
+                  color: '#1d4ed8'
+                }}
+              >
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                  <FileText size={13} />
+                  Letter Generator
+                </span>
+              </button>
+              <button type="button" onClick={handleOpenCreate} style={primaryButtonStyle}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                  <Plus size={13} />
+                  Initiate Offboarding
+                </span>
+              </button>
+            </>
           ) : null}
         </div>
       </div>
@@ -1721,6 +2416,233 @@ const Offboarding = () => {
               >
                 {createSaving ? <Loader2 size={15} className="animate-spin" /> : <Plus size={15} />}
                 {createSaving ? 'Creating...' : 'Create Offboarding Record'}
+              </button>
+            </div>
+          </form>
+        </ModalShell>
+      ) : null}
+
+      {showTopLetterModal ? (
+        <ModalShell
+          title="Generate Letter & Save to Dossier"
+          subtitle="Generate a verified Relieving Letter or Experience Letter and automatically archive it to the employee's Dossier"
+          onClose={() => setShowTopLetterModal(false)}
+        >
+          <form onSubmit={handleTopGenerateLetter} style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1.1fr 1.3fr', gap: '16px' }}>
+            {/* Left Column: Employee & Settings */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div style={{ ...cardStyle, padding: '14px', boxShadow: 'none' }}>
+                <div style={sectionTitleStyle}>1. Select Employee</div>
+                <div style={{ position: 'relative', marginBottom: '8px' }}>
+                  <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
+                  <input
+                    type="text"
+                    value={employeeSearchTerm}
+                    onChange={(e) => setEmployeeSearchTerm(e.target.value)}
+                    placeholder="Search employee by name, code, or department"
+                    style={{ ...inputStyle, paddingLeft: '32px' }}
+                  />
+                </div>
+                <div style={{ maxHeight: '180px', overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: '10px' }}>
+                  {employeesLoading ? (
+                    <div style={{ padding: '20px', textAlign: 'center', color: '#64748b', fontSize: '12px' }}>
+                      <Loader2 size={16} className="animate-spin" style={{ margin: '0 auto 6px' }} />
+                      Loading employees...
+                    </div>
+                  ) : filteredEmployees.length === 0 ? (
+                    <div style={{ padding: '16px', textAlign: 'center', color: '#64748b', fontSize: '11px' }}>
+                      No employees match your search.
+                    </div>
+                  ) : (
+                    filteredEmployees.map((emp) => {
+                      const isSelected = topLetterForm.userId === emp._id;
+                      return (
+                        <button
+                          key={emp._id}
+                          type="button"
+                          onClick={() => setTopLetterForm((prev) => ({ ...prev, userId: emp._id }))}
+                          style={{
+                            width: '100%',
+                            textAlign: 'left',
+                            border: 'none',
+                            borderBottom: '1px solid #e2e8f0',
+                            padding: '8px 10px',
+                            background: isSelected ? '#0f172a' : '#ffffff',
+                            color: isSelected ? '#ffffff' : '#0f172a',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          <div style={{ fontSize: '11.5px', fontWeight: 700 }}>{getEmployeeName(emp)}</div>
+                          <div style={{ fontSize: '10px', opacity: 0.8 }}>{emp.email || 'No email'}{emp.employeeCode ? ` • ${emp.employeeCode}` : ''}</div>
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+
+              <div style={{ ...cardStyle, padding: '14px', boxShadow: 'none', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <div style={sectionTitleStyle}>2. Letter Options</div>
+                <div>
+                  <label style={fieldLabelStyle}>Letter Type</label>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    {['Relieving Letter', 'Experience Letter'].map((type) => (
+                      <button
+                        key={type}
+                        type="button"
+                        onClick={() => {
+                          setTopLetterForm((prev) => ({
+                            ...prev,
+                            letterType: type,
+                            customBody: type === 'Relieving Letter' ? DEFAULT_RELIEVING_BODY_FE : DEFAULT_EXPERIENCE_BODY_FE
+                          }));
+                        }}
+                        style={{
+                          ...ghostButtonStyle,
+                          flex: 1,
+                          padding: '6px 10px',
+                          fontWeight: 700,
+                          fontSize: '11px',
+                          background: topLetterForm.letterType === type ? '#0f172a' : '#ffffff',
+                          color: topLetterForm.letterType === type ? '#ffffff' : '#334155',
+                          borderColor: topLetterForm.letterType === type ? '#0f172a' : '#cbd5e1'
+                        }}
+                      >
+                        {type}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                  <div>
+                    <label style={fieldLabelStyle}>Exit Type</label>
+                    <select
+                      value={topLetterForm.exitType}
+                      onChange={(e) => setTopLetterForm((prev) => ({ ...prev, exitType: e.target.value }))}
+                      style={inputStyle}
+                    >
+                      {EXIT_TYPE_OPTIONS.map((opt) => (
+                        <option key={opt} value={opt}>{opt}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={fieldLabelStyle}>Last Working Day</label>
+                    <input
+                      type="date"
+                      value={topLetterForm.lastWorkingDay}
+                      onChange={(e) => setTopLetterForm((prev) => ({ ...prev, lastWorkingDay: e.target.value }))}
+                      style={inputStyle}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Right Column: Tags, Editor, & Preview */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {/* Tags Palette */}
+              <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '10px 12px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                  <div style={{ fontSize: '10.5px', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                    Available Template Tags (Click to insert)
+                  </div>
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                  {AVAILABLE_LETTER_TAGS.map((tagObj) => (
+                    <button
+                      key={tagObj.tag}
+                      type="button"
+                      onClick={() => setTopLetterForm((prev) => ({ ...prev, customBody: `${prev.customBody} ${tagObj.tag}` }))}
+                      title={tagObj.desc}
+                      style={{
+                        border: '1px solid #cbd5e1',
+                        background: '#ffffff',
+                        borderRadius: '5px',
+                        padding: '2px 6px',
+                        fontSize: '10.5px',
+                        fontFamily: 'monospace',
+                        color: '#2563eb',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      {tagObj.tag}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Template Editor */}
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                  <label style={fieldLabelStyle}>Template Body (HTML)</label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTopLetterForm((prev) => ({
+                        ...prev,
+                        customBody: prev.letterType === 'Relieving Letter' ? DEFAULT_RELIEVING_BODY_FE : DEFAULT_EXPERIENCE_BODY_FE
+                      }));
+                    }}
+                    style={{ ...ghostButtonStyle, padding: '2px 6px', fontSize: '9.5px', display: 'inline-flex', alignItems: 'center', gap: '3px' }}
+                  >
+                    <RotateCcw size={9} />
+                    Reset
+                  </button>
+                </div>
+                <textarea
+                  rows={5}
+                  value={topLetterForm.customBody}
+                  onChange={(e) => setTopLetterForm((prev) => ({ ...prev, customBody: e.target.value }))}
+                  style={{ ...textareaStyle, fontFamily: 'monospace', fontSize: '11px', minHeight: '90px' }}
+                />
+              </div>
+
+              {/* Live Preview */}
+              <div>
+                <label style={fieldLabelStyle}>Rendered Preview</label>
+                <div
+                  style={{
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '10px',
+                    background: '#ffffff',
+                    padding: '12px',
+                    maxHeight: '130px',
+                    overflowY: 'auto',
+                    fontSize: '11px',
+                    lineHeight: '1.5',
+                    color: '#1e293b'
+                  }}
+                >
+                  <div style={{ borderBottom: '2px solid #2563eb', paddingBottom: '4px', marginBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ fontSize: '12px', fontWeight: 800, color: '#1e40af' }}>{user?.company?.name || 'TalentCIO'}</div>
+                    <div style={{ fontSize: '9px', color: '#64748b' }}>Date: {formatDateLabel(new Date().toISOString())}</div>
+                  </div>
+                  <div style={{ textAlign: 'center', fontWeight: 700, fontSize: '11.5px', margin: '4px 0 8px', textDecoration: 'underline' }}>
+                    {topLetterForm.letterType.toUpperCase()}
+                  </div>
+                  <div dangerouslySetInnerHTML={{ __html: topLetterPreviewHtml }} />
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={topLetterSaving || !topLetterForm.userId}
+                style={{
+                  ...primaryButtonStyle,
+                  width: '100%',
+                  padding: '9px 14px',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px',
+                  opacity: (topLetterSaving || !topLetterForm.userId) ? 0.7 : 1,
+                  cursor: (topLetterSaving || !topLetterForm.userId) ? 'not-allowed' : 'pointer'
+                }}
+              >
+                {topLetterSaving ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                {topLetterSaving ? 'Generating & Archiving to Dossier...' : `Generate & Save to Dossier`}
               </button>
             </div>
           </form>
