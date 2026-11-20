@@ -39,20 +39,20 @@ const Payroll = ({ defaultTab = 'calculator' }) => {
   };
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-200 pb-5">
+    <div className="p-4 sm:p-5 max-w-7xl mx-auto space-y-4">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-200/80 pb-3.5">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800 tracking-tight">
+          <h1 className="text-xl font-bold text-slate-900 tracking-tight">
             Payroll
           </h1>
-          <p className="text-slate-500 text-sm mt-1">
+          <p className="text-slate-500 text-xs mt-0.5">
             Simulate compensation structures, revise employee salaries, view payslips, enforce statutory rules, and manage Flance sync.
           </p>
         </div>
       </div>
 
       {/* Tab Navigation */}
-      <div className="flex border-b border-slate-200 gap-2 overflow-x-auto scrollbar-hide">
+      <div className="flex border-b border-slate-200/80 gap-1 overflow-x-auto scrollbar-hide">
         {tabs.map((tab) => {
           const Icon = tab.icon;
           const isActive = currentTab === tab.id;
@@ -61,13 +61,13 @@ const Payroll = ({ defaultTab = 'calculator' }) => {
               key={tab.id}
               type="button"
               onClick={() => handleTabChange(tab.id)}
-              className={`flex items-center gap-2 pb-3 px-4 text-sm font-semibold border-b-2 transition-colors whitespace-nowrap cursor-pointer ${
+              className={`flex items-center gap-1.5 pb-2.5 px-3.5 text-xs font-semibold border-b-2 transition-colors whitespace-nowrap cursor-pointer ${
                 isActive
                   ? 'border-blue-600 text-blue-600 font-bold'
-                  : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
+                  : 'border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300'
               }`}
             >
-              <Icon size={16} />
+              <Icon size={14} />
               <span>{tab.name}</span>
             </button>
           );
@@ -75,7 +75,7 @@ const Payroll = ({ defaultTab = 'calculator' }) => {
       </div>
 
       {/* Tab Content */}
-      <div className="pt-2">
+      <div className="pt-1">
         {currentTab === 'calculator' && <SalaryCalculator embedded={true} />}
         {currentTab === 'payslips' && <PayrollPayslips />}
         {currentTab === 'revisions' && canManageRevisions && (
