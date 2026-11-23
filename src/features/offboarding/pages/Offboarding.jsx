@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import api from '@/lib/apiClient';
 import toast from 'react-hot-toast';
 import { useAuth } from '@/features/auth/context/AuthContext';
@@ -11,6 +12,9 @@ import {
 } from '@/features/email/utils/templatePlaceholders';
 import {
   AlertCircle,
+  ArrowLeft,
+  ArrowRight,
+  Check,
   CheckCircle2,
   CheckSquare,
   Clock,
@@ -32,6 +36,7 @@ import {
   Send,
   ShieldCheck,
   Sparkles,
+  Upload,
   UserMinus,
   X
 } from 'lucide-react';
@@ -283,6 +288,7 @@ const ModalShell = ({ title, subtitle, onClose, children }) => (
 );
 
 const Offboarding = () => {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const permissions = Array.isArray(user?.permissions) ? user.permissions : [];
   const isAdmin = user?.roles?.some(role => ['Admin', 'Super Admin', 'System Admin'].includes(role)) || permissions.includes('*');
@@ -365,15 +371,50 @@ const Offboarding = () => {
   const [savingLetterToDossier, setSavingLetterToDossier] = useState(false);
   const [sendingDossierLetters, setSendingDossierLetters] = useState(false);
   const [dossierPersonalNote, setDossierPersonalNote] = useState('');
+  const [drawerUploadedFile, setDrawerUploadedFile] = useState(null);
   const [showTopLetterModal, setShowTopLetterModal] = useState(false);
+  const [wizardStep, setWizardStep] = useState(1); // 1: Manage Templates | 2: Generate Employee Letters | 3: Proceed with Offboarding
+
+  // Step 1: Manage Templates
+  const [activeTemplateType, setActiveTemplateType] = useState('Relieving Letter'); // 'Relieving Letter' | 'Experience Letter'
+  const [templateBodies, setTemplateBodies] = useState({
+    'Relieving Letter': DEFAULT_RELIEVING_BODY_FE,
+    'Experience Letter': DEFAULT_EXPERIENCE_BODY_FE
+  });
+  const [step1UploadedFiles, setStep1UploadedFiles] = useState({
+    'Relieving Letter': null,
+    'Experience Letter': null
+  });
+  const [step1DocxPreviews, setStep1DocxPreviews] = useState({
+    'Relieving Letter': '',
+    'Experience Letter': ''
+  });
+  const [step1LoadingTemplates, setStep1LoadingTemplates] = useState(false);
+  const [step1SavingTemplate, setStep1SavingTemplate] = useState(false);
+  const [step1PreviewLoading, setStep1PreviewLoading] = useState(false);
+
+  // Step 2: Generate Employee Letters
+  const [selectedRelievingCheck, setSelectedRelievingCheck] = useState(true);
+  const [selectedExperienceCheck, setSelectedExperienceCheck] = useState(true);
+  const [generatedLetterPreviews, setGeneratedLetterPreviews] = useState({});
+  const [activePreviewType, setActivePreviewType] = useState('Relieving Letter');
+  const [generatingPreviews, setGeneratingPreviews] = useState(false);
+  const [savingBatchToDossier, setSavingBatchToDossier] = useState(false);
+
+  // Step 3: Send & Proceed with Offboarding
+  const [topSendRecipientEmail, setTopSendRecipientEmail] = useState('');
+  const [topSendEmailAccountId, setTopSendEmailAccountId] = useState('platform');
+  const [topSendPersonalNote, setTopSendPersonalNote] = useState('');
+  const [topSendingLetters, setTopSendingLetters] = useState(false);
+
   const [topLetterForm, setTopLetterForm] = useState({
     userId: '',
+    offboardingId: '',
     letterType: 'Relieving Letter',
     customBody: DEFAULT_RELIEVING_BODY_FE,
     lastWorkingDay: '',
     exitType: 'Resignation'
   });
-  const [topLetterSaving, setTopLetterSaving] = useState(false);
   const [isMobile, setIsMobile] = useState(() => (typeof window !== 'undefined' ? window.innerWidth < 1024 : false));
 
   useEffect(() => {
@@ -495,7 +536,10 @@ const Offboarding = () => {
     setLoadingDossierLetters(true);
     try {
       const response = await api.get(`/offboarding/dossier-letters/${userId}`);
-      setDossierLetters(Array.isArray(response.data?.letters) ? response.data.letters : []);
+      const list = Array.isArray(response.data?.letters)
+        ? response.data.letters
+        : (Array.isArray(response.data?.documents) ? response.data.documents : []);
+      setDossierLetters(list);
     } catch (error) {
       toast.error(error.response?.data?.message || 'Failed to load letters from employee dossier');
       setDossierLetters([]);
@@ -597,6 +641,46 @@ const Offboarding = () => {
       ].join(' ').toLowerCase().includes(normalizedSearch)
     ));
   }, [employeeSearchTerm, employees]);
+
+  const offboardingEmployees = useMemo(() => {
+    const seen = new Set();
+    const list = [];
+    (records || []).forEach((record) => {
+      const u = record.userId;
+      if (u && u._id && !seen.has(String(u._id))) {
+        seen.add(String(u._id));
+        list.push({
+          ...u,
+          offboardingRecordId: record._id,
+          lastWorkingDay: record.lastWorkingDay,
+          exitType: record.exitType,
+          offboardingStatus: record.status,
+          noticePeriodServed: record.noticePeriodServed,
+          fnfSettled: Boolean(record.fnfDetails?.settledAt)
+        });
+      }
+    });
+    return list;
+  }, [records]);
+
+  const filteredOffboardingEmployees = useMemo(() => {
+    const normalizedSearch = employeeSearchTerm.trim().toLowerCase();
+    if (!normalizedSearch) return offboardingEmployees;
+    return offboardingEmployees.filter((emp) => (
+      [
+        getEmployeeName(emp),
+        emp.email,
+        emp.employeeCode,
+        emp.department,
+        emp.exitType,
+        emp.offboardingStatus
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+        .includes(normalizedSearch)
+    ));
+  }, [offboardingEmployees, employeeSearchTerm]);
 
   const selectedTemplate = useMemo(
     () => emailTemplates.find((template) => template._id === selectedTemplateId) || null,
@@ -887,11 +971,16 @@ const Offboarding = () => {
     }
     setSavingLetterToDossier(true);
     try {
-      const res = await api.post('/offboarding/generate-letter', {
-        userId: selectedRecord.userId._id,
-        offboardingId: selectedRecord._id,
-        letterType: letterTypeToGenerate,
-        customBody: letterBodyDraft
+      const formData = new FormData();
+      formData.append('userId', selectedRecord.userId._id);
+      formData.append('offboardingId', selectedRecord._id);
+      formData.append('letterType', letterTypeToGenerate);
+      formData.append('customBody', letterBodyDraft);
+      if (drawerUploadedFile) {
+        formData.append('file', drawerUploadedFile);
+      }
+      const res = await api.post('/offboarding/generate-letter', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
       });
       toast.success(res.data?.message || `${letterTypeToGenerate} generated and saved to employee's Dossier!`);
       await Promise.all([
@@ -899,6 +988,9 @@ const Offboarding = () => {
         fetchRecordDetail(selectedRecord._id),
         fetchRecords()
       ]);
+      if (res.data?.document?._id) {
+        setSelectedDossierDocIds([res.data.document._id]);
+      }
       setLettersSubTab('dossier');
     } catch (error) {
       toast.error(error.response?.data?.message || `Failed to generate and save ${letterTypeToGenerate}`);
@@ -956,92 +1048,323 @@ const Offboarding = () => {
     }
   };
 
+  const fetchLetterTemplates = useCallback(async () => {
+    setStep1LoadingTemplates(true);
+    try {
+      const res = await api.get('/offboarding/templates');
+      if (res.data?.templates) {
+        setTemplateBodies({
+          'Relieving Letter': res.data.templates['Relieving Letter']?.body || DEFAULT_RELIEVING_BODY_FE,
+          'Experience Letter': res.data.templates['Experience Letter']?.body || DEFAULT_EXPERIENCE_BODY_FE
+        });
+      }
+    } catch (err) {
+      console.warn('Failed to load offboarding templates:', err);
+    } finally {
+      setStep1LoadingTemplates(false);
+    }
+  }, []);
+
   const handleOpenTopLetterModal = async () => {
     setShowTopLetterModal(true);
-    setTopLetterForm({
-      userId: '',
-      letterType: 'Relieving Letter',
-      customBody: DEFAULT_RELIEVING_BODY_FE,
-      lastWorkingDay: '',
-      exitType: 'Resignation'
-    });
     setEmployeeSearchTerm('');
-    if (employees.length === 0) {
-      await fetchEmployees();
+    setGeneratedLetterPreviews({});
+    fetchLetterTemplates();
+
+    if (records.length === 0) {
+      await fetchRecords();
+    }
+
+    if (emailSenderOptions.length <= 1) {
+      fetchComposerOptions();
+    }
+
+    if (selectedRecord?.userId?._id) {
+      const emp = selectedRecord.userId;
+      const rawDate = selectedRecord.lastWorkingDay ? new Date(selectedRecord.lastWorkingDay) : null;
+      const formattedDate = rawDate && !isNaN(rawDate.getTime()) ? rawDate.toISOString().slice(0, 10) : '';
+
+      setTopLetterForm({
+        userId: emp._id,
+        offboardingId: selectedRecord._id,
+        letterType: 'Relieving Letter',
+        customBody: DEFAULT_RELIEVING_BODY_FE,
+        lastWorkingDay: formattedDate,
+        exitType: selectedRecord.exitType || 'Resignation'
+      });
+      const email = emp.employeeProfile?.contact?.personalEmail || emp.email || '';
+      setTopSendRecipientEmail(email);
+      await fetchDossierLetters(emp._id);
+      setWizardStep(2);
+    } else {
+      setTopLetterForm({
+        userId: '',
+        offboardingId: '',
+        letterType: 'Relieving Letter',
+        customBody: DEFAULT_RELIEVING_BODY_FE,
+        lastWorkingDay: '',
+        exitType: 'Resignation'
+      });
+      setTopSendRecipientEmail('');
+      setDossierLetters([]);
+      setWizardStep(1);
     }
   };
 
-  const topSelectedEmployee = useMemo(() => {
-    return employees.find(e => e._id === topLetterForm.userId) || null;
-  }, [employees, topLetterForm.userId]);
+  const handleStep1FileUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
 
-  const topLetterPreviewData = useMemo(() => {
-    if (!topSelectedEmployee) {
-      return {
-        fullName: 'Employee Name',
-        firstName: 'Employee',
-        lastName: '',
-        employeeCode: 'EMP001',
-        designation: 'Designation',
-        department: 'Department',
-        joiningDate: formatDateLabel(new Date().toISOString()),
-        lastWorkingDay: formatDateLabel(topLetterForm.lastWorkingDay || new Date().toISOString()),
-        exitType: topLetterForm.exitType || 'Resignation',
-        noticePeriodServed: 'Yes',
-        companyName: user?.company?.name || 'TalentCIO',
-        companyAddress: 'Headquarters',
-        currentDate: formatDateLabel(new Date().toISOString()),
-        currentYear: new Date().getFullYear().toString()
-      };
-    }
-    const profile = topSelectedEmployee.employeeProfile || {};
-    return {
-      firstName: topSelectedEmployee.firstName || '',
-      lastName: topSelectedEmployee.lastName || '',
-      fullName: getEmployeeName(topSelectedEmployee),
-      email: topSelectedEmployee.email || '',
-      employeeCode: topSelectedEmployee.employeeCode || profile?.employment?.employeeCode || '',
-      designation: profile?.employment?.designation || '',
-      department: topSelectedEmployee.department || '',
-      joiningDate: formatDateLabel(topSelectedEmployee.joiningDate || profile?.employment?.joiningDate),
-      lastWorkingDay: formatDateLabel(topLetterForm.lastWorkingDay),
-      exitType: topLetterForm.exitType || 'Resignation',
-      noticePeriodServed: 'Yes',
-      companyName: user?.company?.name || 'TalentCIO',
-      companyAddress: user?.company?.name || 'Headquarters',
-      currentDate: formatDateLabel(new Date().toISOString()),
-      currentYear: new Date().getFullYear().toString()
-    };
-  }, [topSelectedEmployee, topLetterForm.lastWorkingDay, topLetterForm.exitType, user?.company?.name]);
+    const fileName = file.name.toLowerCase();
+    const isDocx = fileName.endsWith('.docx');
+    const isHtml = fileName.endsWith('.html') || fileName.endsWith('.htm');
+    const isTxt = fileName.endsWith('.txt');
 
-  const topLetterPreviewHtml = useMemo(() => {
-    return resolveTemplate(topLetterForm.customBody, topLetterPreviewData);
-  }, [topLetterForm.customBody, topLetterPreviewData]);
-
-  const handleTopGenerateLetter = async (e) => {
-    e.preventDefault();
-    if (!topLetterForm.userId) {
-      toast.error('Please select an employee');
+    if (!isDocx && !isHtml && !isTxt) {
+      toast.error('Please upload a Word document (.docx), HTML file (.html), or Text file (.txt)');
       return;
     }
-    setTopLetterSaving(true);
-    try {
-      const res = await api.post('/offboarding/generate-letter', {
-        userId: topLetterForm.userId,
-        letterType: topLetterForm.letterType,
-        customBody: topLetterForm.customBody,
-        lastWorkingDay: topLetterForm.lastWorkingDay,
-        exitType: topLetterForm.exitType
-      });
-      toast.success(res.data?.message || `${topLetterForm.letterType} generated and saved to employee Dossier!`);
-      setShowTopLetterModal(false);
-      if (selectedRecord?.userId?._id === topLetterForm.userId) {
-        await fetchDossierLetters(topLetterForm.userId);
+
+    setStep1UploadedFiles(prev => ({ ...prev, [activeTemplateType]: file }));
+
+    if (isHtml || isTxt) {
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+        const text = evt.target.result || '';
+        setTemplateBodies(prev => ({ ...prev, [activeTemplateType]: text }));
+        setStep1DocxPreviews(prev => ({ ...prev, [activeTemplateType]: '' }));
+      };
+      reader.readAsText(file);
+      toast.success(`${activeTemplateType} template "${file.name}" loaded!`);
+    } else if (isDocx) {
+      setStep1PreviewLoading(true);
+      try {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('letterType', activeTemplateType);
+        const res = await api.post('/offboarding/preview-letter', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        });
+        if (res.data?.html) {
+          setStep1DocxPreviews(prev => ({ ...prev, [activeTemplateType]: res.data.html }));
+        }
+        toast.success(`Word template "${file.name}" attached & parsed!`);
+      } catch (err) {
+        console.warn('Docx preview error:', err);
+        setStep1DocxPreviews(prev => ({
+          ...prev,
+          [activeTemplateType]: '<p style="color:#64748b; font-style:italic;">Word document attached. Placeholders will be replaced when generating letters.</p>'
+        }));
+        toast.success(`Word template "${file.name}" attached!`);
+      } finally {
+        setStep1PreviewLoading(false);
       }
-    } catch (error) {
-      toast.error(error.response?.data?.message || 'Failed to generate letter');
+    }
+  };
+
+  const handleStep1InsertTag = (tag) => {
+    if (navigator?.clipboard?.writeText) {
+      navigator.clipboard.writeText(tag);
+    }
+    toast.success(`Copied ${tag}`);
+    setTemplateBodies(prev => ({
+      ...prev,
+      [activeTemplateType]: `${prev[activeTemplateType] || ''} ${tag}`
+    }));
+  };
+
+  const handleStep1SaveTemplate = async () => {
+    setStep1SavingTemplate(true);
+    try {
+      const formData = new FormData();
+      formData.append('letterType', activeTemplateType);
+      formData.append('body', templateBodies[activeTemplateType] || '');
+      if (step1UploadedFiles[activeTemplateType]) {
+        formData.append('file', step1UploadedFiles[activeTemplateType]);
+      }
+
+      const res = await api.post('/offboarding/templates', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      toast.success(res.data?.message || `${activeTemplateType} template saved successfully for future use!`);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to save template');
     } finally {
-      setTopLetterSaving(false);
+      setStep1SavingTemplate(false);
+    }
+  };
+
+  const step1SamplePreviewData = useMemo(() => ({
+    fullName: 'Jane Doe',
+    firstName: 'Jane',
+    lastName: 'Doe',
+    employeeCode: 'EMP0042',
+    designation: 'Senior Software Engineer',
+    department: 'Engineering',
+    joiningDate: '15 January 2023',
+    lastWorkingDay: '30 November 2026',
+    exitType: 'Resignation',
+    noticePeriodServed: 'Yes',
+    companyName: user?.company?.name || 'TalentCIO',
+    companyAddress: 'Headquarters',
+    currentDate: formatDateLabel(new Date().toISOString()),
+    currentYear: new Date().getFullYear().toString()
+  }), [user?.company?.name]);
+
+  const step1PreviewHtml = useMemo(() => {
+    if (step1DocxPreviews[activeTemplateType]) {
+      return step1DocxPreviews[activeTemplateType];
+    }
+    return resolveTemplate(templateBodies[activeTemplateType] || '', step1SamplePreviewData);
+  }, [activeTemplateType, templateBodies, step1DocxPreviews, step1SamplePreviewData]);
+
+  const handleSelectOffboardingEmployee = (emp) => {
+    const rawDate = emp.lastWorkingDay ? new Date(emp.lastWorkingDay) : null;
+    const formattedDate = rawDate && !isNaN(rawDate.getTime()) ? rawDate.toISOString().slice(0, 10) : '';
+
+    setTopLetterForm((prev) => ({
+      ...prev,
+      userId: emp._id,
+      offboardingId: emp.offboardingRecordId || '',
+      lastWorkingDay: formattedDate,
+      exitType: emp.exitType || 'Resignation'
+    }));
+
+    const email = emp.employeeProfile?.contact?.personalEmail || emp.email || '';
+    setTopSendRecipientEmail(email);
+    setGeneratedLetterPreviews({});
+    fetchDossierLetters(emp._id);
+  };
+
+  const topSelectedEmployee = useMemo(() => {
+    return offboardingEmployees.find(e => e._id === topLetterForm.userId) ||
+      (selectedRecord?.userId?._id === topLetterForm.userId ? selectedRecord.userId : null) ||
+      employees.find(e => e._id === topLetterForm.userId) || null;
+  }, [offboardingEmployees, selectedRecord, employees, topLetterForm.userId]);
+
+  const handleGenerateBatchPreviews = async () => {
+    if (!topLetterForm.userId) {
+      toast.error('Please select an employee in offboarding first');
+      return;
+    }
+    const chosenTypes = [
+      selectedRelievingCheck ? 'Relieving Letter' : null,
+      selectedExperienceCheck ? 'Experience Letter' : null
+    ].filter(Boolean);
+
+    if (chosenTypes.length === 0) {
+      toast.error('Please select at least one letter checkbox (Relieving or Experience)');
+      return;
+    }
+
+    setGeneratingPreviews(true);
+    try {
+      const payload = {
+        userId: topLetterForm.userId,
+        offboardingId: topLetterForm.offboardingId || '',
+        letterTypes: chosenTypes,
+        customBodies: templateBodies,
+        lastWorkingDay: topLetterForm.lastWorkingDay || '',
+        exitType: topLetterForm.exitType || 'Resignation',
+        saveToDossier: false
+      };
+
+      const res = await api.post('/offboarding/generate-batch-letters', payload);
+      const letters = res.data?.letters || [];
+      const previewsMap = {};
+      letters.forEach(item => {
+        previewsMap[item.type] = item.html;
+      });
+      setGeneratedLetterPreviews(previewsMap);
+      if (letters.length > 0) {
+        setActivePreviewType(letters[0].type);
+      }
+      toast.success(`${letters.length} letter preview(s) generated successfully!`);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to generate letter previews');
+    } finally {
+      setGeneratingPreviews(false);
+    }
+  };
+
+  const handleSaveApprovedBatchToDossier = async () => {
+    if (!topLetterForm.userId) {
+      toast.error('Please select an employee first');
+      return;
+    }
+    const chosenTypes = [
+      selectedRelievingCheck ? 'Relieving Letter' : null,
+      selectedExperienceCheck ? 'Experience Letter' : null
+    ].filter(Boolean);
+
+    if (chosenTypes.length === 0) {
+      toast.error('Please select at least one letter checkbox (Relieving or Experience)');
+      return;
+    }
+
+    setSavingBatchToDossier(true);
+    try {
+      const payload = {
+        userId: topLetterForm.userId,
+        offboardingId: topLetterForm.offboardingId || '',
+        letterTypes: chosenTypes,
+        customBodies: templateBodies,
+        lastWorkingDay: topLetterForm.lastWorkingDay || '',
+        exitType: topLetterForm.exitType || 'Resignation',
+        saveToDossier: true
+      };
+
+      const res = await api.post('/offboarding/generate-batch-letters', payload);
+      toast.success(res.data?.message || 'Letter(s) generated and saved to employee Dossier!');
+
+      await fetchDossierLetters(topLetterForm.userId);
+      await fetchRecords();
+      if (selectedRecord?._id) {
+        await fetchRecordDetail(selectedRecord._id);
+      }
+
+      setWizardStep(3);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to save letter(s) to dossier');
+    } finally {
+      setSavingBatchToDossier(false);
+    }
+  };
+
+  const handleTopSendDossierLetters = async () => {
+    if (!topLetterForm.userId) {
+      toast.error('Please select an employee first');
+      return;
+    }
+    if (selectedDossierDocIds.length === 0) {
+      toast.error('Please select at least one letter from the dossier to send');
+      return;
+    }
+    if (!topSendRecipientEmail.trim()) {
+      toast.error('Recipient email is required');
+      return;
+    }
+
+    setTopSendingLetters(true);
+    try {
+      const targetId = topLetterForm.offboardingId || topLetterForm.userId;
+      await api.post(`/offboarding/${targetId}/send-dossier-letters`, {
+        dossierDocIds: selectedDossierDocIds,
+        recipientEmail: topSendRecipientEmail.trim(),
+        personalNote: topSendPersonalNote.trim(),
+        emailAccountId: topSendEmailAccountId || 'platform'
+      });
+
+      toast.success('Letters successfully emailed to employee!');
+      await fetchRecords();
+      if (selectedRecord?._id) {
+        await fetchRecordDetail(selectedRecord._id);
+      }
+      await fetchDossierLetters(topLetterForm.userId);
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to send dossier letters');
+    } finally {
+      setTopSendingLetters(false);
     }
   };
 
@@ -1678,7 +2001,19 @@ const Offboarding = () => {
               {lettersSubTab === 'generate' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                   <div>
-                    <div style={sectionTitleStyle}>Letter Generator & Dossier Archival</div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                      <div style={sectionTitleStyle}>Letter Generator & Dossier Archival</div>
+                      {selectedRecord?.userId?._id && (
+                        <button
+                          type="button"
+                          onClick={() => navigate(`/offboarding/letter-generator?userId=${selectedRecord.userId._id}`)}
+                          style={{ ...ghostButtonStyle, padding: '3px 8px', fontSize: '10.5px', color: '#2563eb', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                        >
+                          <ExternalLink size={11} />
+                          Open Full Page
+                        </button>
+                      )}
+                    </div>
                     <p style={{ margin: 0, color: '#64748b', fontSize: '11px' }}>
                       Compose letters using template tags. Once generated, the letter is saved in {getEmployeeName(selectedRecord?.userId)}&apos;s Dossier.
                     </p>
@@ -1706,6 +2041,41 @@ const Offboarding = () => {
                         </button>
                       ))}
                     </div>
+                  </div>
+
+                  {/* Upload file with tags option */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', border: '1px dashed #cbd5e1', borderRadius: '8px', background: '#f8fafc' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                      <Upload size={16} color="#2563eb" style={{ flexShrink: 0 }} />
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: '11px', color: '#1e293b', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {drawerUploadedFile ? `File: ${drawerUploadedFile.name}` : 'Upload Template File with Tags'}
+                        </div>
+                        <div style={{ fontSize: '9.5px', color: '#64748b' }}>
+                          {drawerUploadedFile ? `${(drawerUploadedFile.size / 1024).toFixed(1)} KB` : 'Supports .docx, .html, .txt with tags'}
+                        </div>
+                      </div>
+                    </div>
+                    <label style={{ ...ghostButtonStyle, padding: '4px 8px', fontSize: '10.5px', cursor: 'pointer', background: '#ffffff', flexShrink: 0 }}>
+                      {drawerUploadedFile ? 'Change' : 'Browse'}
+                      <input
+                        type="file"
+                        accept=".docx,.doc,.html,.htm,.txt"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            setDrawerUploadedFile(file);
+                            if (file.name.endsWith('.txt') || file.name.endsWith('.html')) {
+                              const reader = new FileReader();
+                              reader.onload = (evt) => setLetterBodyDraft(evt.target.result || '');
+                              reader.readAsText(file);
+                            }
+                            toast.success(`Attached "${file.name}" with tags!`);
+                          }
+                        }}
+                        style={{ display: 'none' }}
+                      />
+                    </label>
                   </div>
 
                   {/* Available Template Tags Palette */}
@@ -2183,7 +2553,7 @@ const Offboarding = () => {
             <>
               <button
                 type="button"
-                onClick={handleOpenTopLetterModal}
+                onClick={() => navigate('/offboarding/letter-generator')}
                 style={{
                   ...ghostButtonStyle,
                   background: '#eff6ff',
@@ -2416,233 +2786,6 @@ const Offboarding = () => {
               >
                 {createSaving ? <Loader2 size={15} className="animate-spin" /> : <Plus size={15} />}
                 {createSaving ? 'Creating...' : 'Create Offboarding Record'}
-              </button>
-            </div>
-          </form>
-        </ModalShell>
-      ) : null}
-
-      {showTopLetterModal ? (
-        <ModalShell
-          title="Generate Letter & Save to Dossier"
-          subtitle="Generate a verified Relieving Letter or Experience Letter and automatically archive it to the employee's Dossier"
-          onClose={() => setShowTopLetterModal(false)}
-        >
-          <form onSubmit={handleTopGenerateLetter} style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1.1fr 1.3fr', gap: '16px' }}>
-            {/* Left Column: Employee & Settings */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <div style={{ ...cardStyle, padding: '14px', boxShadow: 'none' }}>
-                <div style={sectionTitleStyle}>1. Select Employee</div>
-                <div style={{ position: 'relative', marginBottom: '8px' }}>
-                  <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
-                  <input
-                    type="text"
-                    value={employeeSearchTerm}
-                    onChange={(e) => setEmployeeSearchTerm(e.target.value)}
-                    placeholder="Search employee by name, code, or department"
-                    style={{ ...inputStyle, paddingLeft: '32px' }}
-                  />
-                </div>
-                <div style={{ maxHeight: '180px', overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: '10px' }}>
-                  {employeesLoading ? (
-                    <div style={{ padding: '20px', textAlign: 'center', color: '#64748b', fontSize: '12px' }}>
-                      <Loader2 size={16} className="animate-spin" style={{ margin: '0 auto 6px' }} />
-                      Loading employees...
-                    </div>
-                  ) : filteredEmployees.length === 0 ? (
-                    <div style={{ padding: '16px', textAlign: 'center', color: '#64748b', fontSize: '11px' }}>
-                      No employees match your search.
-                    </div>
-                  ) : (
-                    filteredEmployees.map((emp) => {
-                      const isSelected = topLetterForm.userId === emp._id;
-                      return (
-                        <button
-                          key={emp._id}
-                          type="button"
-                          onClick={() => setTopLetterForm((prev) => ({ ...prev, userId: emp._id }))}
-                          style={{
-                            width: '100%',
-                            textAlign: 'left',
-                            border: 'none',
-                            borderBottom: '1px solid #e2e8f0',
-                            padding: '8px 10px',
-                            background: isSelected ? '#0f172a' : '#ffffff',
-                            color: isSelected ? '#ffffff' : '#0f172a',
-                            cursor: 'pointer'
-                          }}
-                        >
-                          <div style={{ fontSize: '11.5px', fontWeight: 700 }}>{getEmployeeName(emp)}</div>
-                          <div style={{ fontSize: '10px', opacity: 0.8 }}>{emp.email || 'No email'}{emp.employeeCode ? ` • ${emp.employeeCode}` : ''}</div>
-                        </button>
-                      );
-                    })
-                  )}
-                </div>
-              </div>
-
-              <div style={{ ...cardStyle, padding: '14px', boxShadow: 'none', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                <div style={sectionTitleStyle}>2. Letter Options</div>
-                <div>
-                  <label style={fieldLabelStyle}>Letter Type</label>
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    {['Relieving Letter', 'Experience Letter'].map((type) => (
-                      <button
-                        key={type}
-                        type="button"
-                        onClick={() => {
-                          setTopLetterForm((prev) => ({
-                            ...prev,
-                            letterType: type,
-                            customBody: type === 'Relieving Letter' ? DEFAULT_RELIEVING_BODY_FE : DEFAULT_EXPERIENCE_BODY_FE
-                          }));
-                        }}
-                        style={{
-                          ...ghostButtonStyle,
-                          flex: 1,
-                          padding: '6px 10px',
-                          fontWeight: 700,
-                          fontSize: '11px',
-                          background: topLetterForm.letterType === type ? '#0f172a' : '#ffffff',
-                          color: topLetterForm.letterType === type ? '#ffffff' : '#334155',
-                          borderColor: topLetterForm.letterType === type ? '#0f172a' : '#cbd5e1'
-                        }}
-                      >
-                        {type}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                  <div>
-                    <label style={fieldLabelStyle}>Exit Type</label>
-                    <select
-                      value={topLetterForm.exitType}
-                      onChange={(e) => setTopLetterForm((prev) => ({ ...prev, exitType: e.target.value }))}
-                      style={inputStyle}
-                    >
-                      {EXIT_TYPE_OPTIONS.map((opt) => (
-                        <option key={opt} value={opt}>{opt}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label style={fieldLabelStyle}>Last Working Day</label>
-                    <input
-                      type="date"
-                      value={topLetterForm.lastWorkingDay}
-                      onChange={(e) => setTopLetterForm((prev) => ({ ...prev, lastWorkingDay: e.target.value }))}
-                      style={inputStyle}
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Right Column: Tags, Editor, & Preview */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              {/* Tags Palette */}
-              <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '10px 12px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                  <div style={{ fontSize: '10.5px', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                    Available Template Tags (Click to insert)
-                  </div>
-                </div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-                  {AVAILABLE_LETTER_TAGS.map((tagObj) => (
-                    <button
-                      key={tagObj.tag}
-                      type="button"
-                      onClick={() => setTopLetterForm((prev) => ({ ...prev, customBody: `${prev.customBody} ${tagObj.tag}` }))}
-                      title={tagObj.desc}
-                      style={{
-                        border: '1px solid #cbd5e1',
-                        background: '#ffffff',
-                        borderRadius: '5px',
-                        padding: '2px 6px',
-                        fontSize: '10.5px',
-                        fontFamily: 'monospace',
-                        color: '#2563eb',
-                        cursor: 'pointer'
-                      }}
-                    >
-                      {tagObj.tag}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Template Editor */}
-              <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                  <label style={fieldLabelStyle}>Template Body (HTML)</label>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setTopLetterForm((prev) => ({
-                        ...prev,
-                        customBody: prev.letterType === 'Relieving Letter' ? DEFAULT_RELIEVING_BODY_FE : DEFAULT_EXPERIENCE_BODY_FE
-                      }));
-                    }}
-                    style={{ ...ghostButtonStyle, padding: '2px 6px', fontSize: '9.5px', display: 'inline-flex', alignItems: 'center', gap: '3px' }}
-                  >
-                    <RotateCcw size={9} />
-                    Reset
-                  </button>
-                </div>
-                <textarea
-                  rows={5}
-                  value={topLetterForm.customBody}
-                  onChange={(e) => setTopLetterForm((prev) => ({ ...prev, customBody: e.target.value }))}
-                  style={{ ...textareaStyle, fontFamily: 'monospace', fontSize: '11px', minHeight: '90px' }}
-                />
-              </div>
-
-              {/* Live Preview */}
-              <div>
-                <label style={fieldLabelStyle}>Rendered Preview</label>
-                <div
-                  style={{
-                    border: '1px solid #e2e8f0',
-                    borderRadius: '10px',
-                    background: '#ffffff',
-                    padding: '12px',
-                    maxHeight: '130px',
-                    overflowY: 'auto',
-                    fontSize: '11px',
-                    lineHeight: '1.5',
-                    color: '#1e293b'
-                  }}
-                >
-                  <div style={{ borderBottom: '2px solid #2563eb', paddingBottom: '4px', marginBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div style={{ fontSize: '12px', fontWeight: 800, color: '#1e40af' }}>{user?.company?.name || 'TalentCIO'}</div>
-                    <div style={{ fontSize: '9px', color: '#64748b' }}>Date: {formatDateLabel(new Date().toISOString())}</div>
-                  </div>
-                  <div style={{ textAlign: 'center', fontWeight: 700, fontSize: '11.5px', margin: '4px 0 8px', textDecoration: 'underline' }}>
-                    {topLetterForm.letterType.toUpperCase()}
-                  </div>
-                  <div dangerouslySetInnerHTML={{ __html: topLetterPreviewHtml }} />
-                </div>
-              </div>
-
-              <button
-                type="submit"
-                disabled={topLetterSaving || !topLetterForm.userId}
-                style={{
-                  ...primaryButtonStyle,
-                  width: '100%',
-                  padding: '9px 14px',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '8px',
-                  opacity: (topLetterSaving || !topLetterForm.userId) ? 0.7 : 1,
-                  cursor: (topLetterSaving || !topLetterForm.userId) ? 'not-allowed' : 'pointer'
-                }}
-              >
-                {topLetterSaving ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-                {topLetterSaving ? 'Generating & Archiving to Dossier...' : `Generate & Save to Dossier`}
               </button>
             </div>
           </form>

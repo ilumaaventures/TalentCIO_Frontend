@@ -64,6 +64,7 @@ const GlobalTADashboard = lazy(() => import('@/features/talent-acquisition/pages
 const InterviewAnalytics = lazy(() => import('@/features/talent-acquisition/pages/InterviewAnalytics'));
 const Onboarding = lazy(() => import('@/features/onboarding/pages/Onboarding'));
 const Offboarding = lazy(() => import('@/features/offboarding/pages/Offboarding'));
+const OffboardingLetterGenerator = lazy(() => import('@/features/offboarding/pages/OffboardingLetterGenerator'));
 const HREmailSend = lazy(() => import('@/features/email/pages/HREmailSend'));
 const RecycleBin = lazy(() => import('@/features/recycle-bin/pages/RecycleBin'));
 const PreOnboardingLogin = lazy(() => import('@/features/onboarding/pages/PreOnboardingLogin'));
@@ -358,6 +359,16 @@ function App() {
                     <Route path="/offboarding" element={(
                       <ProtectedRoute moduleName="offboarding" requiredPermissions={OFFBOARDING_PERMISSIONS} redirectTo="/">
                         <Offboarding />
+                      </ProtectedRoute>
+                    )} />
+                    <Route path="/offboarding/letter-generator" element={(
+                      <ProtectedRoute moduleName="offboarding" requiredPermissions={OFFBOARDING_PERMISSIONS} redirectTo="/">
+                        <OffboardingLetterGenerator />
+                      </ProtectedRoute>
+                    )} />
+                    <Route path="/offboarding/letters" element={(
+                      <ProtectedRoute moduleName="offboarding" requiredPermissions={OFFBOARDING_PERMISSIONS} redirectTo="/">
+                        <OffboardingLetterGenerator />
                       </ProtectedRoute>
                     )} />
                     <Route path="/hr-email/send" element={(
