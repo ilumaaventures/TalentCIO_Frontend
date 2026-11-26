@@ -354,6 +354,19 @@ const ShareRequisitionModal = ({ isOpen, onClose, hiringRequestId, onShareUpdate
                                                         }`}>
                                                             {(share.accessLevel || 'full_access') === 'view_only' ? 'View Only' : 'Full Access'}
                                                         </span>
+                                                        {share.status && (
+                                                            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wider ${
+                                                                share.status === 'Accepted'
+                                                                    ? 'bg-blue-100 text-blue-800 border border-blue-200'
+                                                                    : share.status === 'Rejected'
+                                                                        ? 'bg-rose-100 text-rose-800 border border-rose-200'
+                                                                        : 'bg-slate-100 text-slate-700 border border-slate-200'
+                                                            }`}>
+                                                                {share.status === 'Accepted' && share.assignedClient
+                                                                    ? `Accepted (${share.assignedClient})`
+                                                                    : share.status}
+                                                            </span>
+                                                        )}
                                                     </div>
                                                     <p className="text-[10px] text-slate-400 mt-0.5">
                                                         Shared on {share.sharedAt ? format(new Date(share.sharedAt), 'dd MMM yyyy, hh:mm a') : '-'}

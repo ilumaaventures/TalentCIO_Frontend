@@ -38,8 +38,9 @@ const ClientForm = ({ isOpen, onClose, clientId, onSuccess }) => {
 
             try {
                 const buRes = await api.get('/projects/business-units');
-                setBusinessUnits(buRes.data);
+                setBusinessUnits(Array.isArray(buRes.data) ? buRes.data : []);
             } catch {
+                setBusinessUnits([]);
                 toast.error('Failed to load business units');
             }
 
@@ -56,7 +57,7 @@ const ClientForm = ({ isOpen, onClose, clientId, onSuccess }) => {
                             name: client.name || '',
                             nickname: client.nickname || '',
                             email: client.email || '',
-                            businessUnit: client.businessUnit?._id || '',
+                            businessUnit: client.businessUnit?._id || (typeof client.businessUnit === 'string' ? client.businessUnit : ''),
                             location: client.location || '',
                             status: client.status || 'Active',
                         });
@@ -150,7 +151,11 @@ const ClientForm = ({ isOpen, onClose, clientId, onSuccess }) => {
             cp => cp.name.trim() || cp.email.trim() || cp.phone.trim()
         );
 
-        const payload = { ...formData, contactPersons };
+        const payload = {
+            ...formData,
+            businessUnit: formData.businessUnit || null,
+            contactPersons
+        };
 
         try {
             if (isEditing) {
@@ -163,8 +168,8 @@ const ClientForm = ({ isOpen, onClose, clientId, onSuccess }) => {
             sessionStorage.removeItem(`client_data_${user?._id}`);
             if (onSuccess) onSuccess();
             onClose();
-        } catch {
-            toast.error(isEditing ? 'Failed to update client' : 'Failed to create client');
+        } catch (err) {
+            toast.error(err.response?.data?.message || (isEditing ? 'Failed to update client' : 'Failed to create client'));
         } finally {
             setSubmitting(false);
         }
@@ -265,10 +270,10 @@ const ClientForm = ({ isOpen, onClose, clientId, onSuccess }) => {
                                     </div>
                                     <div>
                                         <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">
-                                            Business Unit <span className="text-red-500">*</span>
+                                            Business Unit
                                         </label>
                                         <select name="businessUnit" value={formData.businessUnit} onChange={handleChange} className="zoho-input">
-                                            <option value="">Select Business Unit</option>
+                                            <option value="">{businessUnits.length === 0 ? 'No Business Units Available' : 'Select Business Unit'}</option>
                                             {businessUnits.map(bu => (
                                                 <option key={bu._id} value={bu._id}>{bu.name}</option>
                                             ))}

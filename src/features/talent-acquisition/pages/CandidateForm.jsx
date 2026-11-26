@@ -5,6 +5,7 @@ import Skeleton from '@/components/ui/Skeleton';
 import DocPreviewer from '@/components/common/DocPreviewer';
 import api from '@/lib/apiClient';
 import toast from 'react-hot-toast';
+import { normalizeCandidateName } from '../utils/candidateHelpers';
 
 const sortRequestPhases = (request) => (
     [...(request?.phases || [])].sort((left, right) => (left.order || 0) - (right.order || 0))
@@ -425,7 +426,7 @@ const CandidateForm = () => {
                 // Update form data with parsed values
                 setFormData(prev => ({
                     ...prev,
-                    candidateName: parsed.candidateName || prev.candidateName,
+                    candidateName: parsed.candidateName ? normalizeCandidateName(parsed.candidateName) : prev.candidateName,
                     email: parsed.email || prev.email,
                     mobile: parsed.mobile || prev.mobile,
                     totalExperience: parsed.totalExperience || prev.totalExperience,
@@ -798,7 +799,16 @@ const CandidateForm = () => {
                                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                                         <div>
                                             <label className="block text-[11px] font-bold text-slate-600 mb-1">Candidate Name *</label>
-                                            <input type="text" name="candidateName" value={formData.candidateName} onChange={handleChange} className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-medium disabled:bg-slate-50" required disabled={isViewMode} />
+                                            <input
+                                                type="text"
+                                                name="candidateName"
+                                                value={formData.candidateName}
+                                                onChange={handleChange}
+                                                onBlur={(e) => setFormData(prev => ({ ...prev, candidateName: normalizeCandidateName(e.target.value) }))}
+                                                className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-medium disabled:bg-slate-50"
+                                                required
+                                                disabled={isViewMode}
+                                            />
                                         </div>
                                         <div>
                                             <label className="block text-[11px] font-bold text-slate-600 mb-1">Email *</label>

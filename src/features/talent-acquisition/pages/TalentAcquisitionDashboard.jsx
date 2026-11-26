@@ -43,6 +43,7 @@ import {
     YAxis
 } from 'recharts';
 import api from '@/lib/apiClient';
+import toast from 'react-hot-toast';
 import Skeleton from '@/components/ui/Skeleton';
 import PublicApplicationsView from '@/features/talent-acquisition/components/PublicApplicationsView';
 import {
@@ -121,9 +122,9 @@ const StatCard = ({ label, value, tone, meta, icon }) => {
             <div className={`absolute inset-x-0 top-0 h-1 ${tone}`} />
             <div className="flex items-start justify-between gap-3">
                 <div>
-                    <p className="text-[8.5px] font-bold uppercase tracking-[0.14em] text-slate-400">{label}</p>
-                    <p className="font-ta-head mt-1 text-[1.3rem] font-bold tracking-tight text-slate-900">{value}</p>
-                    <p className="mt-0.5 text-[10px] text-slate-500">{meta}</p>
+                    <p className="text-[8px] font-bold uppercase tracking-[0.14em] text-slate-400">{label}</p>
+                    <p className="font-ta-head mt-1 text-[1.1rem] font-bold tracking-tight text-slate-900">{value}</p>
+                    <p className="mt-0.5 text-[9.5px] text-slate-500">{meta}</p>
                 </div>
                 <div className="rounded-lg bg-slate-100 p-1.5 text-slate-600">
                     <IconComponent size={14} />
@@ -169,9 +170,9 @@ const PrimaryStatCard = ({ label, value, meta, icon, theme = 'blue' }) => {
             <div className={`absolute inset-x-0 top-0 h-1 ${styles.accent}`} />
             <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                    <p className="text-[9px] font-bold uppercase tracking-[0.15em] text-slate-500">{label}</p>
-                    <p className="font-ta-head mt-1 text-[1.4rem] font-bold tracking-tight text-slate-900 sm:text-[1.5rem]">{value}</p>
-                    <p className={`mt-0.5 text-[10px] font-medium ${styles.meta}`}>{meta}</p>
+                    <p className="text-[8.5px] font-bold uppercase tracking-[0.15em] text-slate-500">{label}</p>
+                    <p className="font-ta-head mt-1 text-[1.15rem] font-bold tracking-tight text-slate-900 sm:text-[1.25rem]">{value}</p>
+                    <p className={`mt-0.5 text-[9.5px] font-medium ${styles.meta}`}>{meta}</p>
                 </div>
                 <div className={`rounded-lg p-2 ${styles.icon}`}>
                     <IconComponent size={15} />
@@ -217,9 +218,9 @@ const TrendMetricCard = ({ label, value, meta, icon, trend, theme = 'blue' }) =>
             <div className={`mb-2 h-1 w-10 rounded-full ${styles.accent}`} />
             <div className="flex items-start justify-between gap-2.5">
                 <div className="min-w-0">
-                    <p className="text-[9px] font-bold uppercase tracking-[0.14em] text-slate-400">{label}</p>
-                    <p className="font-ta-head mt-1 text-[1.2rem] font-bold tracking-tight text-slate-900">{value}</p>
-                    <p className="mt-0.5 text-[9.5px] text-slate-500 line-clamp-1">{meta}</p>
+                    <p className="text-[8.5px] font-bold uppercase tracking-[0.14em] text-slate-400">{label}</p>
+                    <p className="font-ta-head mt-1 text-[1.05rem] font-bold tracking-tight text-slate-900">{value}</p>
+                    <p className="mt-0.5 text-[9px] text-slate-500 line-clamp-1">{meta}</p>
                 </div>
                 <div className={`rounded-lg p-1.5 ${styles.icon}`}>
                     <IconComponent size={14} />
@@ -240,7 +241,7 @@ const TrendMetricCard = ({ label, value, meta, icon, trend, theme = 'blue' }) =>
 const SectionCard = ({ title, action, children }) => (
     <section className="rounded-xl border border-slate-200 bg-white shadow-xs">
         <div className="flex items-center justify-between border-b border-slate-100 px-3.5 py-2.5">
-            <h3 className="font-ta-head text-xs font-bold text-slate-800">{title}</h3>
+            <h3 className="font-ta-head text-[11px] font-bold text-slate-800">{title}</h3>
             {action}
         </div>
         <div className="p-3.5">{children}</div>
@@ -335,6 +336,11 @@ const TalentAcquisitionDashboard = () => {
     const [modalPositionSearchTerm, setModalPositionSearchTerm] = useState('');
     const [showAllRequisitionsModal, setShowAllRequisitionsModal] = useState(false);
     const [modalReqSearchTerm, setModalReqSearchTerm] = useState('');
+    const [pendingSharedRequests, setPendingSharedRequests] = useState([]);
+    const [acceptShareTarget, setAcceptShareTarget] = useState(null);
+    const [denyShareTarget, setDenyShareTarget] = useState(null);
+    const [selectedShareClientName, setSelectedShareClientName] = useState('');
+    const [respondingShareId, setRespondingShareId] = useState(null);
 
     const getSavedVal = (key, defaultVal) => {
         try {
@@ -387,7 +393,7 @@ const TalentAcquisitionDashboard = () => {
     const [reqStatusFilter, setReqStatusFilter] = useState('All');
     const [reqTypeFilter, setReqTypeFilter] = useState(() => {
         const t = searchParams.get('type') || searchParams.get('subtab');
-        return t === 'shared' ? 'shared' : t === 'internal' ? 'internal' : 'all';
+        return t === 'shared' ? 'shared' : t === 'shared_by_me' ? 'shared_by_me' : t === 'internal' ? 'internal' : 'all';
     });
     const [reqPage, setReqPage] = useState(1);
     const [reqLimit, setReqLimit] = useState(30);
@@ -400,6 +406,10 @@ const TalentAcquisitionDashboard = () => {
         return requests.filter(r => r.isShared).length;
     }, [requests]);
 
+    const sharedByMeCount = useMemo(() => {
+        return requests.filter(r => !r.isShared && ((r.sharedWithCount || 0) > 0 || (Array.isArray(r.sharedTenants) && r.sharedTenants.length > 0))).length;
+    }, [requests]);
+
     const internalRequestsCount = useMemo(() => {
         return requests.filter(r => !r.isShared).length;
     }, [requests]);
@@ -408,6 +418,8 @@ const TalentAcquisitionDashboard = () => {
         const t = searchParams.get('type') || searchParams.get('subtab');
         if (t === 'shared') {
             setReqTypeFilter('shared');
+        } else if (t === 'shared_by_me') {
+            setReqTypeFilter('shared_by_me');
         } else if (t === 'internal') {
             setReqTypeFilter('internal');
         } else if (t === 'all') {
@@ -818,12 +830,13 @@ const canShowApplicationsTab = (user) => {
             ? api.get('/ta/analytics/global', createNoCacheRequestConfig())
             : Promise.resolve({ data: { data: null } });
 
-        const [analyticsResult, requestsResult, interviewsResult, clientsResult, publicAppsResult] = await Promise.allSettled([
+        const [analyticsResult, requestsResult, interviewsResult, clientsResult, publicAppsResult, pendingSharesResult] = await Promise.allSettled([
             analyticsPromise,
             api.get('/ta/hiring-request', createNoCacheRequestConfig({ page: 1, limit: 'all' })),
             api.get('/ta/candidates/my/interviews', createNoCacheRequestConfig()),
             refreshTAClientsCache(),
-            api.get('/ta/public-applications', createNoCacheRequestConfig())
+            api.get('/ta/public-applications', createNoCacheRequestConfig()),
+            api.get('/ta/shared-requests/pending', createNoCacheRequestConfig()).catch(() => ({ data: { pendingRequests: [] } }))
         ]);
 
         const failures = [];
@@ -854,6 +867,10 @@ const canShowApplicationsTab = (user) => {
 
         if (publicAppsResult.status === 'fulfilled') {
             setPublicApplications(Array.isArray(publicAppsResult.value.data) ? publicAppsResult.value.data : []);
+        }
+
+        if (pendingSharesResult.status === 'fulfilled') {
+            setPendingSharedRequests(Array.isArray(pendingSharesResult.value.data?.pendingRequests) ? pendingSharesResult.value.data.pendingRequests : []);
         }
 
         const totalExpectedFailures = canViewAnalytics ? 4 : 3;
@@ -1241,8 +1258,170 @@ const canShowApplicationsTab = (user) => {
         ));
     }, [publicProfilesData.positions, modalPositionSearchTerm]);
 
+    const openAcceptShareModal = (shareReq) => {
+        setAcceptShareTarget(shareReq);
+        const activeClientsList = clients.filter((c) => (c.status || 'Active') === 'Active');
+        const matchingClient = activeClientsList.find(
+            (c) => c.name?.toLowerCase() === (shareReq.originClient || '').toLowerCase()
+        );
+        setSelectedShareClientName(matchingClient ? matchingClient.name : (activeClientsList[0]?.name || ''));
+    };
+
+    const handleAcceptSharedRequest = async (e) => {
+        e.preventDefault();
+        if (!acceptShareTarget) return;
+        const chosenClient = selectedShareClientName.trim();
+        if (!chosenClient) {
+            toast.error('Please select a client to assign this requisition under.');
+            return;
+        }
+        const matchedClient = clients.find(
+            (c) => (c.name || '').trim().toLowerCase() === chosenClient.toLowerCase()
+        );
+        try {
+            setRespondingShareId(acceptShareTarget._id);
+            const res = await api.post(`/ta/hiring-request/${acceptShareTarget._id}/respond-share`, {
+                action: 'accept',
+                clientName: matchedClient?.name || chosenClient,
+                clientId: matchedClient?.id && matchedClient.id !== matchedClient.name ? matchedClient.id : undefined
+            });
+            toast.success(res.data?.message || `Requisition accepted under "${chosenClient}"`);
+            setPendingSharedRequests((prev) => prev.filter((item) => item._id !== acceptShareTarget._id));
+            setAcceptShareTarget(null);
+            setSelectedShareClientName('');
+            invalidateTACaches();
+            window.dispatchEvent(new Event('refreshNotifications'));
+            await loadDashboard({ silent: true });
+        } catch (err) {
+            console.error(err);
+            toast.error(err.response?.data?.message || 'Failed to accept shared requisition');
+        } finally {
+            setRespondingShareId(null);
+        }
+    };
+
+    const handleRejectSharedRequest = async (shareReq) => {
+        if (!shareReq?._id) return;
+        try {
+            setRespondingShareId(shareReq._id);
+            const res = await api.post(`/ta/hiring-request/${shareReq._id}/respond-share`, {
+                action: 'reject'
+            });
+            toast.success(res.data?.message || 'Shared requisition request declined');
+            setPendingSharedRequests((prev) => prev.filter((item) => item._id !== shareReq._id));
+            setDenyShareTarget(null);
+            window.dispatchEvent(new Event('refreshNotifications'));
+        } catch (err) {
+            console.error(err);
+            toast.error(err.response?.data?.message || 'Failed to decline shared requisition');
+        } finally {
+            setRespondingShareId(null);
+        }
+    };
+
     const renderOverview = () => (
         <div className="space-y-7">
+            {/* ========================================================================= */}
+            {/* INCOMING CROSS-TENANT SHARED REQUISITION REQUESTS                         */}
+            {/* ========================================================================= */}
+            {pendingSharedRequests.length > 0 && (
+                <section className="rounded-2xl border border-indigo-200/80 bg-gradient-to-br from-indigo-50/70 via-white to-white p-4 sm:p-5 shadow-xs space-y-3.5">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <div className="flex items-center gap-3">
+                            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-sm">
+                                <Share2 size={18} />
+                            </div>
+                            <div>
+                                <h2 className="font-ta-head text-xs sm:text-sm font-bold text-slate-900 flex items-center gap-2">
+                                    Incoming Shared Requisition Requests
+                                    <span className="inline-flex items-center rounded-full bg-indigo-100 px-2 py-0.5 text-[9.5px] font-bold text-indigo-700">
+                                        {pendingSharedRequests.length} Pending
+                                    </span>
+                                </h2>
+                                <p className="text-[10px] text-slate-500">
+                                    External workspaces have shared requisitions with you. Accept and assign a client to view them under that client, or deny the request.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {pendingSharedRequests.map((item) => {
+                            const isBusy = respondingShareId === item._id;
+                            const shareScopeLabel = item.shareType === 'all'
+                                ? 'All Data'
+                                : item.shareType === 'phase1'
+                                    ? 'Phase 1 Only'
+                                    : item.shareType === 'phase2'
+                                        ? 'Phase 2 Only'
+                                        : 'Public Applications';
+                            return (
+                                <div
+                                    key={item._id}
+                                    className="rounded-xl border border-slate-200 bg-white p-3.5 shadow-2xs flex flex-col justify-between gap-3"
+                                >
+                                    <div className="space-y-1.5">
+                                        <div className="flex items-start justify-between gap-2">
+                                            <div className="min-w-0">
+                                                <div className="flex items-center gap-1.5 flex-wrap">
+                                                    <span className="text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700">
+                                                        {item.requestId}
+                                                    </span>
+                                                    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200/70">
+                                                        From: {item.originCompanyName || item.originCompanySubdomain || 'Partner Workspace'}
+                                                    </span>
+                                                </div>
+                                                <h3 className="text-xs font-bold text-slate-900 mt-1 truncate">
+                                                    {item.roleTitle}
+                                                </h3>
+                                            </div>
+                                            <span className={`shrink-0 text-[9px] font-bold px-2 py-0.5 rounded-full border ${
+                                                item.accessLevel === 'view_only'
+                                                    ? 'bg-amber-50 text-amber-700 border-amber-200'
+                                                    : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                            }`}>
+                                                {item.accessLevel === 'view_only' ? 'View Only' : 'Full Access'}
+                                            </span>
+                                        </div>
+
+                                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-slate-500">
+                                            {item.department && <span>Dept: <strong className="text-slate-700">{item.department}</strong></span>}
+                                            <span>Positions: <strong className="text-slate-700">{item.openPositions}</strong></span>
+                                            <span>Scope: <strong className="text-slate-700">{shareScopeLabel}</strong></span>
+                                            {item.originClient && <span>Source Client: <strong className="text-slate-700">{item.originClient}</strong></span>}
+                                        </div>
+                                        <p className="text-[9.5px] text-slate-400">
+                                            Shared {item.sharedAt ? formatRelativeTimestamp(item.sharedAt) : 'recently'}
+                                            {item.sharedBy?.firstName ? ` by ${item.sharedBy.firstName} ${item.sharedBy.lastName || ''}` : ''}
+                                        </p>
+                                    </div>
+
+                                    <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                                        <button
+                                            type="button"
+                                            disabled={isBusy}
+                                            onClick={() => setDenyShareTarget(item)}
+                                            className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-700 hover:bg-rose-100 transition disabled:opacity-50 cursor-pointer"
+                                        >
+                                            <Ban size={12} />
+                                            Deny
+                                        </button>
+                                        <button
+                                            type="button"
+                                            disabled={isBusy}
+                                            onClick={() => openAcceptShareModal(item)}
+                                            className="inline-flex items-center gap-1 rounded-lg bg-indigo-600 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-indigo-700 transition shadow-2xs disabled:opacity-50 cursor-pointer"
+                                        >
+                                            <CheckCircle2 size={12} />
+                                            Accept
+                                        </button>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </section>
+            )}
             {/* ========================================================================= */}
             {/* FIRST HALF: Inbound & Public Profiles Received via Website & Public Posts */}
             {/* ========================================================================= */}
@@ -1253,31 +1432,31 @@ const canShowApplicationsTab = (user) => {
                         <Globe size={20} />
                     </div>
                     <div>
-                        <h2 className="font-ta-head text-base sm:text-lg font-bold tracking-tight text-slate-900">
+                        <h2 className="font-ta-head text-sm sm:text-base font-bold tracking-tight text-slate-900">
                             Public Profiles Intake & Position Distribution
                         </h2>
                     </div>
                 </div>
 
                 {/* Hero Banner: Real Total Public Profiles Received (White Background Theme) */}
-                <div className="relative overflow-hidden rounded-2xl bg-white p-4 sm:p-5 text-slate-900 shadow-sm border border-slate-200/90">
+                <div className="relative overflow-hidden rounded-2xl bg-white p-3.5 sm:p-4 text-slate-900 shadow-sm border border-slate-200/90">
                     <div className="absolute right-0 top-0 -mt-10 -mr-10 h-56 w-56 rounded-full bg-blue-50/70 blur-3xl pointer-events-none" />
                     <div className="absolute left-1/3 bottom-0 -mb-10 h-40 w-40 rounded-full bg-indigo-50/50 blur-2xl pointer-events-none" />
 
                     <div className="relative z-10 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-                        <div className="space-y-1.5">
+                        <div className="space-y-1">
                             <div className="flex items-center gap-2">
-                                <span className="inline-flex items-center rounded-full bg-blue-50 px-2 py-0.5 text-[9.5px] font-semibold text-blue-700 border border-blue-200/60">
+                                <span className="inline-flex items-center rounded-full bg-blue-50 px-2 py-0.5 text-[9px] font-semibold text-blue-700 border border-blue-200/60">
                                     Websites & Public Posts Channels
                                 </span>
-                                <span className="text-[9.5px] text-slate-500 font-medium">Real-time Sourcing</span>
+                                <span className="text-[9px] text-slate-500 font-medium">Real-time Sourcing</span>
                             </div>
                             <div>
                                 <div className="flex items-baseline gap-2 flex-wrap">
-                                    <span className="font-ta-head text-xl sm:text-2xl font-extrabold tracking-tight text-slate-900">
+                                    <span className="font-ta-head text-lg sm:text-xl font-extrabold tracking-tight text-slate-900">
                                         Total {publicProfilesData.totalCount}
                                     </span>
-                                    <span className="text-xs sm:text-sm font-semibold text-slate-600">
+                                    <span className="text-[11px] sm:text-xs font-semibold text-slate-600">
                                         Public {publicProfilesData.totalCount === 1 ? 'Profile' : 'Profiles'} Received
                                     </span>
                                 </div>
@@ -1338,7 +1517,7 @@ const canShowApplicationsTab = (user) => {
                                 {filteredPositions.length ? (
                                     <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xs">
                                         {/* Table Header */}
-                                        <div className="hidden sm:grid sm:grid-cols-12 border-b border-slate-200 bg-slate-50/90 px-4 py-2.5 text-[10.5px] font-bold uppercase tracking-wider text-slate-500">
+                                        <div className="hidden sm:grid sm:grid-cols-12 border-b border-slate-200 bg-slate-50/90 px-4 py-2 text-[9.5px] font-bold uppercase tracking-wider text-slate-500">
                                             <div className="sm:col-span-4">Requisition Name</div>
                                             <div className="sm:col-span-2">Client Name</div>
                                             <div className="sm:col-span-2 text-center">Total Sourced Candidates</div>
@@ -1358,13 +1537,13 @@ const canShowApplicationsTab = (user) => {
                                                             navigate('/ta?tab=applications');
                                                         }
                                                     }}
-                                                    className="group flex flex-col sm:grid sm:grid-cols-12 sm:items-center px-4 py-3 hover:bg-blue-50/40 cursor-pointer transition-colors"
+                                                    className="group flex flex-col sm:grid sm:grid-cols-12 sm:items-center px-4 py-2.5 hover:bg-blue-50/40 cursor-pointer transition-colors"
                                                 >
                                                     {/* Requisition Name */}
                                                     <div className="sm:col-span-4 flex items-center gap-2 min-w-0">
-                                                        <BriefcaseBusiness size={14} className="text-blue-600 shrink-0" />
+                                                        <BriefcaseBusiness size={13} className="text-blue-600 shrink-0" />
                                                         <span 
-                                                            className="text-xs font-bold text-slate-900 group-hover:text-blue-600 transition-colors truncate" 
+                                                            className="text-[11px] font-bold text-slate-900 group-hover:text-blue-600 transition-colors truncate" 
                                                             title={pos.title + (pos.desiredPositions?.length ? ` (${pos.desiredPositions.join(', ')})` : '')}
                                                         >
                                                             {pos.title}
@@ -1372,19 +1551,19 @@ const canShowApplicationsTab = (user) => {
                                                     </div>
 
                                                     {/* Client Name */}
-                                                    <div className="sm:col-span-2 flex items-center justify-between sm:justify-start mt-1.5 sm:mt-0 text-xs min-w-0">
-                                                        <span className="text-[11px] text-slate-500 sm:hidden font-medium">Client Name:</span>
+                                                    <div className="sm:col-span-2 flex items-center justify-between sm:justify-start mt-1.5 sm:mt-0 text-[11px] min-w-0">
+                                                        <span className="text-[10px] text-slate-500 sm:hidden font-medium">Client Name:</span>
                                                         <span className="truncate text-slate-700 font-medium" title={pos.client || '-'}>
                                                             {pos.client || '-'}
                                                         </span>
                                                     </div>
 
                                                     {/* Total Sourced Candidates on that Requisition */}
-                                                    <div className="sm:col-span-2 flex items-center justify-between sm:justify-center mt-1.5 sm:mt-0 text-xs">
+                                                    <div className="sm:col-span-2 flex items-center justify-between sm:justify-center mt-1.5 sm:mt-0 text-[11px]">
                                                         {!pos.isUnlisted && (
                                                             <>
-                                                                <span className="text-[11px] text-slate-500 sm:hidden font-medium">Total Sourced Candidates:</span>
-                                                                <span className="inline-flex items-center justify-center min-w-[28px] px-2.5 py-0.5 rounded-md bg-slate-100 font-bold text-slate-800 text-xs">
+                                                                <span className="text-[10px] text-slate-500 sm:hidden font-medium">Total Sourced Candidates:</span>
+                                                                <span className="inline-flex items-center justify-center min-w-[26px] px-2 py-0.5 rounded-md bg-slate-100 font-bold text-slate-800 text-[11px]">
                                                                     {pos.totalSourcedCandidates ?? 0}
                                                                 </span>
                                                             </>
@@ -1392,11 +1571,11 @@ const canShowApplicationsTab = (user) => {
                                                     </div>
 
                                                     {/* RG Public Profiles on that Requisition */}
-                                                    <div className="sm:col-span-2 flex items-center justify-between sm:justify-center mt-1.5 sm:mt-0 text-xs">
+                                                    <div className="sm:col-span-2 flex items-center justify-between sm:justify-center mt-1.5 sm:mt-0 text-[11px]">
                                                         {pos.isResourceGatewayPublic ? (
                                                             <>
-                                                                <span className="text-[11px] text-slate-500 sm:hidden font-medium">RG Public Profiles:</span>
-                                                                <span className="inline-flex items-center justify-center min-w-[28px] px-2.5 py-0.5 rounded-md bg-cyan-50 border border-cyan-200/70 font-bold text-cyan-700 text-xs">
+                                                                <span className="text-[10px] text-slate-500 sm:hidden font-medium">RG Public Profiles:</span>
+                                                                <span className="inline-flex items-center justify-center min-w-[26px] px-2 py-0.5 rounded-md bg-cyan-50 border border-cyan-200/70 font-bold text-cyan-700 text-[11px]">
                                                                     {pos.rgProfilesCount ?? 0}
                                                                 </span>
                                                             </>
@@ -1404,9 +1583,9 @@ const canShowApplicationsTab = (user) => {
                                                     </div>
 
                                                     {/* Public Profiles on that Requisition */}
-                                                    <div className="sm:col-span-2 flex items-center justify-between sm:justify-end mt-1.5 sm:mt-0 text-xs">
-                                                        <span className="text-[11px] text-slate-500 sm:hidden font-medium">Public Profiles:</span>
-                                                        <span className="inline-flex items-center justify-center min-w-[28px] px-2.5 py-0.5 rounded-md bg-blue-50 border border-blue-200/70 font-bold text-blue-700 text-xs">
+                                                    <div className="sm:col-span-2 flex items-center justify-between sm:justify-end mt-1.5 sm:mt-0 text-[11px]">
+                                                        <span className="text-[10px] text-slate-500 sm:hidden font-medium">Public Profiles:</span>
+                                                        <span className="inline-flex items-center justify-center min-w-[26px] px-2 py-0.5 rounded-md bg-blue-50 border border-blue-200/70 font-bold text-blue-700 text-[11px]">
                                                             {pos.totalProfiles}
                                                         </span>
                                                     </div>
@@ -2164,12 +2343,28 @@ const canShowApplicationsTab = (user) => {
                         }`}
                     >
                         <Share2 size={13} />
-                        Shared Requisitions
+                        Shared with Us
                         <span className={`ml-1 rounded-full px-1.5 py-0.2 text-[10px] font-bold ${reqTypeFilter === 'shared' ? 'bg-indigo-700 text-white' : 'bg-indigo-200/80 text-indigo-900'}`}>
                             {sharedRequestsCount}
                         </span>
                     </button>
                 )}
+
+                <button
+                    type="button"
+                    onClick={() => handleSelectReqType('shared_by_me')}
+                    className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all cursor-pointer ${
+                        reqTypeFilter === 'shared_by_me'
+                            ? 'bg-violet-600 text-white shadow-xs'
+                            : 'bg-violet-50 text-violet-700 hover:bg-violet-100 border border-violet-200'
+                    }`}
+                >
+                    <Share2 size={13} />
+                    Shared by Us
+                    <span className={`ml-1 rounded-full px-1.5 py-0.2 text-[10px] font-bold ${reqTypeFilter === 'shared_by_me' ? 'bg-violet-700 text-white' : 'bg-violet-200/80 text-violet-900'}`}>
+                        {sharedByMeCount}
+                    </span>
+                </button>
             </div>
 
             {/* Banner when viewing Shared Requisitions */}
@@ -2185,6 +2380,24 @@ const canShowApplicationsTab = (user) => {
                         type="button"
                         onClick={() => handleSelectReqType('all')}
                         className="text-[11px] font-semibold text-indigo-600 hover:underline shrink-0"
+                    >
+                        Show all requisitions
+                    </button>
+                </div>
+            )}
+
+            {reqTypeFilter === 'shared_by_me' && (
+                <div className="mb-4 flex items-center justify-between rounded-xl border border-violet-200 bg-gradient-to-r from-violet-50/80 via-indigo-50/50 to-white px-3.5 py-2.5 text-xs text-violet-900">
+                    <div className="flex items-center gap-2">
+                        <Share2 size={15} className="text-violet-600 shrink-0" />
+                        <span>
+                            Showing requisitions your workspace has shared with partner companies, along with each partner&apos;s acceptance status.
+                        </span>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={() => handleSelectReqType('all')}
+                        className="text-[11px] font-semibold text-violet-600 hover:underline shrink-0"
                     >
                         Show all requisitions
                     </button>
@@ -2281,13 +2494,24 @@ const canShowApplicationsTab = (user) => {
                                     <td colSpan={6} className="px-4 py-8 text-center text-slate-400">
                                         {reqTypeFilter === 'shared'
                                             ? 'No shared requisitions found.'
-                                            : reqTypeFilter === 'internal'
-                                                ? 'No internal requisitions found.'
-                                                : 'No requisitions found matching your search.'}
+                                            : reqTypeFilter === 'shared_by_me'
+                                                ? 'You have not shared any requisitions with other companies yet.'
+                                                : reqTypeFilter === 'internal'
+                                                    ? 'No internal requisitions found.'
+                                                    : 'No requisitions found matching your search.'}
                                     </td>
                                 </tr>
                             ) : (
-                                reqList.map((request) => (
+                                reqList.map((request) => {
+                                    const outgoingShares = Array.isArray(request.sharedWithTenants) && request.sharedWithTenants.length > 0
+                                        ? request.sharedWithTenants
+                                        : (Array.isArray(request.sharedTenants) ? request.sharedTenants.map((st) => ({
+                                            companyId: st.companyId?._id || st.companyId,
+                                            name: st.tenantName || st.companyId?.name || st.tenantSubdomain || 'Partner Workspace',
+                                            status: st.status || 'Accepted'
+                                        })) : []);
+
+                                    return (
                                     <tr
                                         key={request._id}
                                         className="cursor-pointer border-b border-slate-100 transition hover:bg-slate-50"
@@ -2298,11 +2522,31 @@ const canShowApplicationsTab = (user) => {
                                                 <p className="font-semibold text-slate-900">{request.roleDetails?.title || 'No Title'}</p>
                                                 {request.isShared && (
                                                     <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 shrink-0" title={request.sharedAt ? `Shared by ${request.originCompanyName || 'another workspace'} on ${formatShortDateTime(request.sharedAt)}` : `Shared by ${request.originCompanyName || 'another workspace'}`}>
-                                                        <Share2 size={9} /> Shared
+                                                        <Share2 size={9} /> From: {request.originCompanyName || request.originCompanySubdomain || 'Partner'}
                                                     </span>
                                                 )}
                                             </div>
                                             <p className="text-[11px] text-slate-500">{request.requestId}</p>
+                                            {!request.isShared && outgoingShares.length > 0 && (
+                                                <div className="mt-1 flex flex-wrap items-center gap-1">
+                                                    <span className="text-[9.5px] font-semibold text-slate-400">Shared with:</span>
+                                                    {outgoingShares.map((st, idx) => (
+                                                        <span
+                                                            key={st.companyId || idx}
+                                                            className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[9px] font-semibold border ${
+                                                                st.status === 'Accepted'
+                                                                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                                                    : st.status === 'Rejected'
+                                                                        ? 'bg-rose-50 text-rose-700 border-rose-200'
+                                                                        : 'bg-violet-50 text-violet-700 border-violet-200'
+                                                            }`}
+                                                        >
+                                                            {st.name}
+                                                            {st.status ? ` (${st.status})` : ''}
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            )}
                                         </td>
                                         <td className="px-4 py-3.5 text-xs text-slate-600">{request.client || 'General'}</td>
                                         <td className="px-4 py-3.5 text-xs text-slate-600">{request.roleDetails?.department || '—'}</td>
@@ -2325,7 +2569,8 @@ const canShowApplicationsTab = (user) => {
                                             </button>
                                         </td>
                                     </tr>
-                                ))
+                                    );
+                                })
                             )}
                         </tbody>
                     </table>
@@ -3540,10 +3785,10 @@ const canShowApplicationsTab = (user) => {
                 <div className="space-y-5">
                     <section className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
                         <div>
-                            <h1 className="font-ta-head text-lg font-bold tracking-tight text-slate-900 sm:text-xl">
+                            <h1 className="font-ta-head text-base font-bold tracking-tight text-slate-900 sm:text-lg">
                                 Talent Acquisition Dashboard
                             </h1>
-                            <p className="mt-1 text-[10px] text-slate-500">
+                            <p className="mt-0.5 text-[9.5px] text-slate-500">
                                 Requisitions, clients, interviews, candidates, and applications in one workspace.
                             </p>
                         </div>
@@ -3571,6 +3816,157 @@ const canShowApplicationsTab = (user) => {
                     {activeTab === 'candidates' && renderCandidates()}
                     {activeTab === 'applications' && renderApplications()}
                 </div>
+            )}
+
+            {acceptShareTarget && createPortal(
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4">
+                    <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white shadow-2xl overflow-hidden">
+                        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 bg-slate-50/70">
+                            <div className="flex items-center gap-2.5">
+                                <div className="p-2 rounded-xl bg-indigo-100 text-indigo-600">
+                                    <Building2 size={18} />
+                                </div>
+                                <div>
+                                    <h3 className="text-sm font-bold text-slate-900">Accept Shared Requisition</h3>
+                                    <p className="text-[11px] text-slate-500">
+                                        {acceptShareTarget.requestId} &bull; {acceptShareTarget.roleTitle}
+                                    </p>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setAcceptShareTarget(null)}
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition cursor-pointer"
+                            >
+                                <X size={16} />
+                            </button>
+                        </div>
+
+                        <form onSubmit={handleAcceptSharedRequest} className="p-5 space-y-4">
+                            <div className="rounded-xl bg-indigo-50/60 border border-indigo-100 p-3 text-xs text-slate-700 space-y-1">
+                                <p>
+                                    Shared from <strong>{acceptShareTarget.originCompanyName || acceptShareTarget.originCompanySubdomain}</strong>
+                                </p>
+                                {acceptShareTarget.originClient && (
+                                    <p className="text-[11px] text-slate-500">
+                                        Original client: <span className="font-semibold text-slate-700">{acceptShareTarget.originClient}</span>
+                                    </p>
+                                )}
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                                    In which client do you want to see this requisition? *
+                                </label>
+                                {clients.length > 0 ? (
+                                    <select
+                                        value={selectedShareClientName}
+                                        onChange={(e) => setSelectedShareClientName(e.target.value)}
+                                        required
+                                        className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+                                    >
+                                        <option value="" disabled>-- Select Client --</option>
+                                        {clients.map((c) => (
+                                            <option key={c.id || c.name} value={c.name}>
+                                                {c.name}{c.status === 'Inactive' ? ' (Inactive)' : ''}
+                                            </option>
+                                        ))}
+                                    </select>
+                                ) : (
+                                    <input
+                                        type="text"
+                                        value={selectedShareClientName}
+                                        onChange={(e) => setSelectedShareClientName(e.target.value)}
+                                        placeholder="Enter client name (e.g. General)"
+                                        required
+                                        className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+                                    />
+                                )}
+                                <p className="mt-1.5 text-[11px] text-slate-500">
+                                    Once accepted, this requisition will appear under the selected client in Clients and Requisitions.
+                                </p>
+                            </div>
+
+                            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                                <button
+                                    type="button"
+                                    onClick={() => setAcceptShareTarget(null)}
+                                    className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition cursor-pointer"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={respondingShareId === acceptShareTarget._id || !selectedShareClientName.trim()}
+                                    className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-semibold text-white hover:bg-indigo-700 transition shadow-sm disabled:opacity-50 cursor-pointer"
+                                >
+                                    <CheckCircle2 size={14} />
+                                    {respondingShareId === acceptShareTarget._id ? 'Accepting...' : 'Accept & Assign Client'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>,
+                document.body
+            )}
+
+            {denyShareTarget && createPortal(
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4">
+                    <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white shadow-2xl overflow-hidden">
+                        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 bg-rose-50/60">
+                            <div className="flex items-center gap-2.5">
+                                <div className="p-2 rounded-xl bg-rose-100 text-rose-600">
+                                    <AlertTriangle size={18} />
+                                </div>
+                                <div>
+                                    <h3 className="text-sm font-bold text-slate-900">Deny Shared Requisition</h3>
+                                    <p className="text-[11px] text-slate-500">
+                                        {denyShareTarget.requestId} &bull; {denyShareTarget.roleTitle}
+                                    </p>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setDenyShareTarget(null)}
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition cursor-pointer"
+                            >
+                                <X size={16} />
+                            </button>
+                        </div>
+
+                        <div className="p-5 space-y-4">
+                            <div className="rounded-xl bg-rose-50/70 border border-rose-200/70 p-3.5 text-xs text-slate-700 space-y-1.5">
+                                <p className="font-semibold text-rose-800">
+                                    Are you sure you want to deny this shared requisition request?
+                                </p>
+                                <p className="text-[11px] text-slate-600 leading-relaxed">
+                                    Once denied, this requisition from <strong>{denyShareTarget.originCompanyName || denyShareTarget.originCompanySubdomain || 'Partner Workspace'}</strong> will no longer be shown in your workspace, and the sharing company will be notified.
+                                </p>
+                            </div>
+
+                            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                                <button
+                                    type="button"
+                                    onClick={() => setDenyShareTarget(null)}
+                                    disabled={respondingShareId === denyShareTarget._id}
+                                    className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition cursor-pointer disabled:opacity-50"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => handleRejectSharedRequest(denyShareTarget)}
+                                    disabled={respondingShareId === denyShareTarget._id}
+                                    className="inline-flex items-center gap-1.5 rounded-xl bg-rose-600 px-4 py-2 text-xs font-semibold text-white hover:bg-rose-700 transition shadow-sm disabled:opacity-50 cursor-pointer"
+                                >
+                                    <Ban size={14} />
+                                    {respondingShareId === denyShareTarget._id ? 'Denying...' : 'Yes, Deny Request'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>,
+                document.body
             )}
         </div>
     );

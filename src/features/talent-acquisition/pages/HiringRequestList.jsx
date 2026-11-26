@@ -15,6 +15,7 @@ const HiringRequestList = () => {
     const [clients, setClients] = useState([]);
     const [loading, setLoading] = useState(true);
     const [filterStatus, setFilterStatus] = useState('Approved'); // Default to Approved
+    const [scopeFilter, setScopeFilter] = useState('All');
     const [searchTerm, setSearchTerm] = useState('');
     const [debouncedSearch, setDebouncedSearch] = useState('');
     const [page, setPage] = useState(1);
@@ -44,6 +45,7 @@ const HiringRequestList = () => {
                 api.get('/ta/hiring-request', {
                     ...createNoCacheRequestConfig({
                         status: filterStatus === 'All' ? '' : filterStatus,
+                        requisitionScope: scopeFilter === 'All' ? undefined : scopeFilter,
                         page,
                         limit: 30,
                         client: clientName ? decodeURIComponent(clientName) : '',
@@ -71,7 +73,7 @@ const HiringRequestList = () => {
         } finally {
             setLoading(false);
         }
-    }, [clientName, filterStatus, page, debouncedSearch]);
+    }, [clientName, filterStatus, scopeFilter, page, debouncedSearch]);
 
     const handleFilterChange = (status) => {
         setFilterStatus(status === 'All' ? 'All' : status === 'Pending' ? 'Pending_Approval' : status);
@@ -219,8 +221,24 @@ const HiringRequestList = () => {
                             </div>
                         </div>
 
-                        {/* Search Bar */}
-                        <div className="relative w-full lg:w-72 sm:w-80">
+                        {/* Scope & Search Controls */}
+                        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full lg:w-auto">
+                            <select
+                                value={scopeFilter}
+                                onChange={(e) => {
+                                    setScopeFilter(e.target.value);
+                                    setPage(1);
+                                }}
+                                aria-label="Filter by Requisition Scope"
+                                className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:bg-white transition-all cursor-pointer"
+                            >
+                                <option value="All">All</option>
+                                <option value="National">National</option>
+                                <option value="International">International</option>
+                            </select>
+
+                            {/* Search Bar */}
+                            <div className="relative w-full lg:w-72 sm:w-80">
                             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                             <input
                                 type="text"
@@ -239,6 +257,7 @@ const HiringRequestList = () => {
                                     <X size={14} />
                                 </button>
                             )}
+                        </div>
                         </div>
                     </div>
                 </div>

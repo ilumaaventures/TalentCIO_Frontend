@@ -137,6 +137,8 @@ const CreateHiringRequest = () => {
         title: '',
         department: '',
         employmentType: 'Full-time',
+        requisitionScope: 'National',
+        requisitionCountry: '',
 
         // Purpose
         purpose: '',
@@ -257,6 +259,8 @@ const CreateHiringRequest = () => {
 
                         department: data.roleDetails.department,
                         employmentType: data.roleDetails.employmentType,
+                        requisitionScope: data.requisitionScope === 'International' ? 'International' : 'National',
+                        requisitionCountry: data.requisitionCountry || '',
                         purpose: data.purpose,
                         replacedEmployeeName: data.replacementDetails?.employeeName || '',
                         replacedEmployeeId: data.replacementDetails?.employeeId || '',
@@ -386,6 +390,11 @@ const CreateHiringRequest = () => {
                     setLoading(false);
                     return;
                 }
+                if (formData.requisitionScope === 'International' && !formData.requisitionCountry?.trim()) {
+                    toast.error('Country is required for International requisitions');
+                    setLoading(false);
+                    return;
+                }
                 if (!formData.purpose) {
                     toast.error('Hiring Purpose is required');
                     setLoading(false);
@@ -425,6 +434,8 @@ const CreateHiringRequest = () => {
                 workflowId: formData.workflowId, // Send selected workflow ID
                 interviewWorkflowId: formData.interviewWorkflowId || undefined, // Send selected interview workflow
                 previousRequestId: formData.previousRequestId || undefined,
+                requisitionScope: formData.requisitionScope === 'International' ? 'International' : 'National',
+                requisitionCountry: formData.requisitionScope === 'International' ? (formData.requisitionCountry || '').trim() : '',
                 roleDetails: {
                     title: formData.title,
                     department: formData.department,
@@ -663,6 +674,17 @@ const CreateHiringRequest = () => {
                     <Input label="Job Title" name="title" value={formData.title} onChange={handleChange} required placeholder="e.g. Senior Frontend Developer" />
                     <Input label="Department" name="department" value={formData.department} onChange={handleChange} required placeholder="e.g. Engineering" />
                     <Input label="Employment Type" name="employmentType" value={formData.employmentType} onChange={handleChange} required options={['Full-time', 'Intern', 'Contract', 'Freelance']} />
+                    <Input label="Requisition Scope" name="requisitionScope" value={formData.requisitionScope} onChange={handleChange} required options={['National', 'International']} />
+                    {formData.requisitionScope === 'International' && (
+                        <Input
+                            label="Country"
+                            name="requisitionCountry"
+                            value={formData.requisitionCountry}
+                            onChange={handleChange}
+                            required
+                            placeholder="e.g. United States, UAE, Singapore"
+                        />
+                    )}
                 </Section>
 
                 {!isEditMode && (

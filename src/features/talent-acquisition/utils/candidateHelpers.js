@@ -479,3 +479,28 @@ export const formatInterviewDate = (dateVal, includeTime = true, timeZone = 'Asi
         return '';
     }
 };
+
+const toTitleCaseNameWord = (word) => {
+    if (!word) return '';
+    return word
+        .toLocaleLowerCase()
+        .replace(/(^|[-'’])(\p{L})/gu, (match, sep, char) => `${sep}${char.toLocaleUpperCase()}`);
+};
+
+export const normalizeCandidateName = (rawName = '') => {
+    if (typeof rawName !== 'string') return '';
+
+    const cleaned = rawName
+        .normalize('NFKC')
+        .replace(/[\u200B-\u200D\uFEFF\u00AD]/g, '')
+        .replace(/\u00A0/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+    if (!cleaned) return '';
+
+    return cleaned
+        .split(' ')
+        .map(toTitleCaseNameWord)
+        .join(' ');
+};

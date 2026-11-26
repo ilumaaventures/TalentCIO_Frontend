@@ -183,6 +183,8 @@ const getApplicantProfile = (application, fallbackRequisition = null) => {
         jobSearchStatus: rawProfile.jobSearchStatus || 'Actively Looking',
         willingToRelocate: rawProfile.willingToRelocate !== undefined ? rawProfile.willingToRelocate : true,
         profileCompletionScore: rawProfile.profileCompletionScore !== undefined ? rawProfile.profileCompletionScore : 83,
+        location: application?.location?.trim() || rawProfile.location?.trim() || '',
+        nationality: application?.nationality?.trim() || rawProfile.nationality?.trim() || '',
         currentCity: rawProfile.currentCity || (application?.coverNote?.includes('Preferred Location:') ? application.coverNote.split('Preferred Location:')[1]?.trim() : ''),
         workExperience: (rawProfile.workExperience && rawProfile.workExperience.length > 0)
             ? rawProfile.workExperience
@@ -213,7 +215,9 @@ const formatMonthYear = (month, year) => {
 };
 
 const joinLocation = (profile) => (
-    [profile.currentCity, profile.currentState, profile.currentCountry].filter(Boolean).join(', ') || 'Not added'
+    profile.location?.trim()
+    || [profile.currentCity, profile.currentState, profile.currentCountry].filter(Boolean).join(', ')
+    || 'Not added'
 );
 
 const ChipList = ({ items = [], renderItem = (item) => item }) => {
@@ -457,6 +461,7 @@ export const ProfileReviewModal = ({ application, onClose, hiringRequest = null,
                                     <InfoItem label="Email" value={profile.email || application.email} icon={Mail} />
                                     <InfoItem label="Mobile" value={profile.mobile || application.mobile} icon={Phone} />
                                     <InfoItem label="Location" value={joinLocation(profile)} icon={MapPin} />
+                                    <InfoItem label="Nationality" value={profile.nationality} />
                                     <InfoItem label="Job Search" value={profile.jobSearchStatus} />
                                     <InfoItem label="Willing To Relocate" value={profile.willingToRelocate ? 'Yes' : 'No'} />
                                     <InfoItem label="Profile Completion" value={profile.profileCompletionScore !== undefined ? `${profile.profileCompletionScore}%` : undefined} />
