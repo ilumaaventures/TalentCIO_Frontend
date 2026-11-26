@@ -1867,21 +1867,47 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                                                                 onChange={(e) => setEditingRoundForm({ ...editingRoundForm, assignAfterStage: e.target.value })}
                                                                                 className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-white"
                                                                             >
-                                                                                {currentPhase === 2 ? (
-                                                                                    <>
-                                                                                        <option value="Profile Shared">Profile Shared</option>
-                                                                                        <option value="Shortlisted">Shortlisted</option>
-                                                                                        <option value="Selected">Selected</option>
-                                                                                        <option value="Rejected">Rejected</option>
-                                                                                    </>
-                                                                                ) : (
-                                                                                    <>
-                                                                                        <option value="Total Sourced">Total Sourced</option>
-                                                                                        <option value="Interested">Interested</option>
-                                                                                        <option value="Shortlisted">Shortlisted</option>
-                                                                                        <option value="Profile Shared">Profile Shared</option>
-                                                                                    </>
-                                                                                )}
+                                                                                <optgroup label="Hiring Stages">
+                                                                                    {currentPhase === 2 ? (
+                                                                                        <>
+                                                                                            <option value="Profile Shared">Profile Shared</option>
+                                                                                            <option value="Shortlisted">Shortlisted</option>
+                                                                                            <option value="Selected">Selected</option>
+                                                                                            <option value="Rejected">Rejected</option>
+                                                                                        </>
+                                                                                    ) : currentPhase === 3 ? (
+                                                                                        <>
+                                                                                            <option value="Offer Sent">Offer Sent</option>
+                                                                                            <option value="Offer Accepted">Offer Accepted</option>
+                                                                                            <option value="Joined">Joined</option>
+                                                                                        </>
+                                                                                    ) : (
+                                                                                        <>
+                                                                                            <option value="Total Sourced">Total Sourced</option>
+                                                                                            <option value="Interested">Interested</option>
+                                                                                            <option value="Shortlisted">Shortlisted</option>
+                                                                                            <option value="Profile Shared">Profile Shared</option>
+                                                                                        </>
+                                                                                    )}
+                                                                                </optgroup>
+                                                                                {(() => {
+                                                                                    const otherRoundNames = [
+                                                                                        ...new Set(
+                                                                                            (candidate?.interviewRounds || [])
+                                                                                                .filter((r) => r._id !== round._id && Number(r.phase || 1) === (Number(currentPhase) || 1))
+                                                                                                .map((r) => String(r.levelName || '').trim())
+                                                                                                .filter(Boolean)
+                                                                                        )
+                                                                                    ];
+                                                                                    if (otherRoundNames.length === 0) return null;
+                                                                                    return (
+                                                                                        <optgroup label="After a Round (chain)">
+                                                                                            {otherRoundNames.map((name) => (
+                                                                                                <option key={name} value={name}>{name}</option>
+                                                                                            ))}
+                                                                                        </optgroup>
+                                                                                    );
+                                                                                })()}
                                                                             </select>
                                                                         </div>
                                                                     </div>

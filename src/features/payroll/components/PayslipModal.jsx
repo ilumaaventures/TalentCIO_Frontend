@@ -58,92 +58,145 @@ export const PayslipModal = ({ viewingPayslip, setViewingPayslip, profile, getPa
   }, []);
 
   if (!viewingPayslip) return null;
+
+  // Normalize slip object (can be { success: true, payslip: { ... } }, direct payslip, or legacy record)
+  const slip = viewingPayslip.payslip || viewingPayslip;
   const comps = getPayslipComponents ? getPayslipComponents(viewingPayslip) : null;
-  if (!comps) return null;
+
+  // Guard: if no comps and no slip data, exit
+  if (!comps && !slip.netSalary && !slip.earningsLineItems && !slip.breakdown && !slip.earnings) {
+    return null;
+  }
 
   // 1. Employee Details from Profile / User / Synced Payslip
-  const employeeName = profile?.personal?.fullName
-    || [profile?.firstName, profile?.lastName].filter(Boolean).join(' ')
-    || [profile?.user?.firstName, profile?.user?.lastName].filter(Boolean).join(' ')
+  const emp = slip.employee || profile || {};
+  const employeeName = emp.fullName
+    || emp.name
+    || emp.personal?.fullName
+    || [emp.firstName, emp.lastName].filter(Boolean).join(' ')
+    || [emp.user?.firstName, emp.user?.lastName].filter(Boolean).join(' ')
+    || slip.employeeName
     || 'Employee';
 
-  const employeeCode = viewingPayslip.employeeCode
-    || profile?.employment?.employeeCode
-    || profile?.user?.employeeCode
-    || profile?.employeeCode
-    || 'EMP-' + String(profile?._id || '').slice(-4).toUpperCase();
+  const employeeCode = slip.employeeCode
+    || emp.employeeCode
+    || emp.employeeId
+    || emp.employment?.employeeCode
+    || emp.user?.employeeCode
+    || (emp._id ? 'EMP-' + String(emp._id).slice(-4).toUpperCase() : 'EMP-001');
 
-  const designation = profile?.employment?.designation
-    || profile?.user?.designation
-    || profile?.designation
+  const designation = (typeof emp.designation === 'string' ? emp.designation : emp.designation?.name)
+    || emp.employment?.designation
+    || emp.user?.designation
+    || slip.designation
     || 'Software Developer';
 
-  const department = profile?.employment?.department
-    || profile?.user?.department
-    || profile?.department
+  const department = (typeof emp.department === 'string' ? emp.department : emp.department?.name)
+    || emp.employment?.department
+    || emp.user?.department
+    || slip.department
     || '';
 
-  const costCentre = profile?.employment?.costCentre || profile?.user?.costCentre || 'TaaS';
+  const costCentre = emp.costCentre
+    || emp.employment?.costCentre
+    || emp.user?.costCentre
+    || slip.costCentre
+    || 'TaaS';
 
-  const joiningDate = profile?.employment?.joiningDate
-    || profile?.user?.joiningDate
-    || profile?.joiningDate;
+  const joiningDate = emp.joiningDate
+    || emp.employment?.joiningDate
+    || emp.user?.joiningDate
+    || slip.joiningDate;
 
-  const uanNumber = profile?.compensation?.uanNumber
-    || profile?.identity?.uanNumber
+  const uanNumber = emp.uanNumber
+    || emp.compensation?.uanNumber
+    || emp.identity?.uanNumber
+    || slip.uanNumber
     || 'NA';
 
-  const panNumber = profile?.identity?.panNumber
-    || profile?.panNumber
+  const panNumber = emp.panNumber
+    || emp.identity?.panNumber
+    || slip.panNumber
     || '';
 
-  const location = profile?.employment?.workLocation
-    || profile?.user?.workLocation
+  const location = emp.location
+    || emp.employment?.workLocation
+    || emp.user?.workLocation
+    || slip.location
     || 'Office';
 
-  const bankAccount = profile?.compensation?.bankDetails?.accountNumber
-    || profile?.bankDetails?.accountNumber
+  const bankAccount = emp.bankDetails?.accountNumber
+    || emp.compensation?.bankDetails?.accountNumber
+    || emp.bankAccount
+    || slip.bankAccount
     || '';
 
-  const pfNumber = profile?.compensation?.pfNumber || 'NA';
-  const esiNumber = profile?.compensation?.esiNumber || 'NA';
-  const gender = profile?.personal?.gender || 'Male';
+  const pfNumber = emp.pfNumber || emp.compensation?.pfNumber || slip.pfNumber || 'NA';
+  const esiNumber = emp.esiNumber || emp.compensation?.esiNumber || slip.esiNumber || 'NA';
+  const gender = emp.gender || emp.personal?.gender || slip.gender || 'Male';
 
-  // 2. Settings & Feature Flags (Reference from Flance / compensation setup)
-  const comp = profile?.compensation || {};
+  // 2. Settings & Feature Flags
+  const comp = emp.compensation || profile?.compensation || {};
   const rawBreakup = comp.salaryBreakup instanceof Map
     ? Object.fromEntries(comp.salaryBreakup)
     : (comp.salaryBreakup || {});
 
-  const isPfEnabled = comp.pfEnabled !== undefined ? comp.pfEnabled : (rawBreakup.pfEnabled !== false && comp.pfNumber && comp.pfNumber !== 'NA');
-  const isEsiEnabled = comp.esiEnabled !== undefined ? comp.esiEnabled : (rawBreakup.esiEnabled !== false && comp.esiNumber && comp.esiNumber !== 'NA');
-  const isPtEnabled = comp.ptEnabled !== undefined ? comp.ptEnabled : (rawBreakup.ptEnabled !== false);
-  const isTdsEnabled = comp.tdsEnabled !== undefined ? comp.tdsEnabled : (rawBreakup.tdsEnabled !== false);
+  const isPfEnabled = slip.isPfEnabled !== undefined
+    ? slip.isPfEnabled
+    : (comp.pfEnabled !== undefined ? comp.pfEnabled : (rawBreakup.pfEnabled !== false && pfNumber && pfNumber !== 'NA'));
+  const isEsiEnabled = slip.isEsiEnabled !== undefined
+    ? slip.isEsiEnabled
+    : (comp.esiEnabled !== undefined ? comp.esiEnabled : (rawBreakup.esiEnabled !== false && esiNumber && esiNumber !== 'NA'));
+  const isPtEnabled = slip.isPtEnabled !== undefined
+    ? slip.isPtEnabled
+    : (comp.ptEnabled !== undefined ? comp.ptEnabled : (rawBreakup.ptEnabled !== false));
+  const isTdsEnabled = slip.isTdsEnabled !== undefined
+    ? slip.isTdsEnabled
+    : (comp.tdsEnabled !== undefined ? comp.tdsEnabled : (rawBreakup.tdsEnabled !== false));
 
-  const taxRegime = String(viewingPayslip.taxRegime || comp.taxRegime || rawBreakup.taxRegime || 'new').toUpperCase();
+  const taxRegime = String(slip.taxRegime || emp.taxRegime || comp.taxRegime || rawBreakup.taxRegime || 'new').toUpperCase();
 
-  const workingDays = Number(viewingPayslip.workingDays !== undefined ? viewingPayslip.workingDays : 31).toFixed(2);
-  let paidDaysNum = viewingPayslip.paidDays !== undefined ? Number(viewingPayslip.paidDays) : 31;
-  if (comps?.scale && comps.scale < 0.95 && (viewingPayslip.paidDays === undefined || viewingPayslip.paidDays === 31)) {
+  const workingDays = Number(slip.workingDays !== undefined ? slip.workingDays : 31).toFixed(2);
+  let paidDaysNum = slip.paidDays !== undefined ? Number(slip.paidDays) : 31;
+  if (comps?.scale && comps.scale < 0.95 && (slip.paidDays === undefined || slip.paidDays === 31)) {
     paidDaysNum = Math.round(comps.scale * Number(workingDays));
   }
   const paidDays = paidDaysNum.toFixed(2);
-  const payPeriod = String(viewingPayslip.period || 'JULY 2026').toUpperCase();
 
-  // 3. Company details & Logo (Inherit from branding / tenant company / synced records)
-  const companyName = brandingInfo?.name
+  // Pay Period String
+  let payPeriod = '';
+  if (slip.period) {
+    if (typeof slip.period === 'string') {
+      payPeriod = slip.period;
+    } else if (slip.period.label) {
+      payPeriod = slip.period.label;
+    } else if (slip.period.month && slip.period.year) {
+      payPeriod = `${MONTH_NAMES[slip.period.month - 1]} ${slip.period.year}`;
+    }
+  } else if (slip.month && slip.year) {
+    payPeriod = `${MONTH_NAMES[slip.month - 1]} ${slip.year}`;
+  } else {
+    payPeriod = 'JULY 2026';
+  }
+  payPeriod = payPeriod.toUpperCase();
+
+  // 3. Company details & Logo
+  const compObj = slip.company || {};
+  const companyName = compObj.companyName
+    || compObj.name
+    || brandingInfo?.name
     || companyConfig?.company?.name
     || user?.company?.name
     || profile?.company?.name
-    || profile?.companyDetails?.name
-    || viewingPayslip.companyName
+    || slip.companyName
     || 'Company';
 
-  const rawAddress = brandingInfo?.address
+  const rawAddress = compObj.address
+    || brandingInfo?.address
     || companyConfig?.company?.address
     || user?.company?.address
     || profile?.company?.address
-    || viewingPayslip.companyAddress
+    || slip.companyAddress
     || '';
 
   const companyAddress = typeof rawAddress === 'string'
@@ -152,30 +205,46 @@ export const PayslipModal = ({ viewingPayslip, setViewingPayslip, profile, getPa
         ? [rawAddress.line1, rawAddress.city, rawAddress.state, rawAddress.zip].filter(Boolean).join(', ')
         : '');
 
-  const companyLogo = brandingInfo?.companyLogoUrl
+  const companyLogo = compObj.logoUrl
+    || compObj.logo
+    || brandingInfo?.companyLogoUrl
     || companyConfig?.company?.logo
     || user?.company?.settings?.logo
     || user?.company?.logo
     || profile?.company?.logoUrl
-    || profile?.company?.settings?.logo
-    || viewingPayslip.companyLogo
+    || slip.companyLogo
     || '';
 
   // 4. Resolve Dynamic Earnings List
-  // Priority: 1. Synced earningsLineItems from Flance -> 2. Synced breakdown -> 3. Local company salary components
   let earningsList = [];
 
-  if (Array.isArray(viewingPayslip.earningsLineItems) && viewingPayslip.earningsLineItems.length > 0) {
-    earningsList = viewingPayslip.earningsLineItems.map(item => ({
-      id: item.name,
+  if (Array.isArray(slip.earningsLineItems) && slip.earningsLineItems.length > 0) {
+    earningsList = slip.earningsLineItems.map(item => ({
+      id: item.id || item.name,
       name: item.name,
-      rate: Number(item.amount) || 0,
-      monthly: Number(item.amount) || 0,
-      arrear: item.details || '-',
-      total: Number(item.amount) || 0
+      rate: Number(item.rate || item.amount) || 0,
+      monthly: Number(item.monthly || item.amount) || 0,
+      arrear: item.arrear || item.details || '-',
+      total: Number(item.total || item.amount) || 0,
+      isHeader: !!item.isHeader,
+      rightLabel: item.rightLabel || ''
     }));
-  } else if (viewingPayslip.breakdown && Object.keys(viewingPayslip.breakdown).length > 0) {
-    const bd = viewingPayslip.breakdown;
+  } else if (slip.earnings && typeof slip.earnings === 'object' && !comps) {
+    const e = slip.earnings;
+    if (e.basic > 0) earningsList.push({ id: 'basic', name: 'Basic Salary', rate: e.basic, monthly: e.basic, arrear: '-', total: e.basic });
+    if (e.hra > 0) earningsList.push({ id: 'hra', name: 'House Rent Allowance (HRA)', rate: e.hra, monthly: e.hra, arrear: '-', total: e.hra });
+    if (e.allowances > 0) earningsList.push({ id: 'allowances', name: 'Special / Flexi Allowance', rate: e.allowances, monthly: e.allowances, arrear: '-', total: e.allowances });
+    if (e.overtime > 0) earningsList.push({ id: 'overtime', name: 'Overtime Pay', rate: e.overtime, monthly: e.overtime, arrear: '-', total: e.overtime });
+    if (e.bonus > 0) earningsList.push({ id: 'bonus', name: 'Performance Bonus', rate: e.bonus, monthly: e.bonus, arrear: '-', total: e.bonus });
+    if (e.incentives > 0) earningsList.push({ id: 'incentives', name: 'Incentives / Commission', rate: e.incentives, monthly: e.incentives, arrear: '-', total: e.incentives });
+    if (e.reimbursements > 0) earningsList.push({ id: 'reimbursements', name: 'Tax-Free Reimbursements', rate: e.reimbursements, monthly: e.reimbursements, arrear: '-', total: e.reimbursements });
+    if (Array.isArray(e.customEarnings)) {
+      e.customEarnings.forEach(ce => {
+        if (ce.amount > 0) earningsList.push({ id: ce.name, name: ce.name, rate: ce.amount, monthly: ce.amount, arrear: '-', total: ce.amount });
+      });
+    }
+  } else if (slip.breakdown && Object.keys(slip.breakdown).length > 0) {
+    const bd = slip.breakdown;
     if (bd.basic > 0) earningsList.push({ id: 'basic', name: 'Basic Salary', rate: bd.basic, monthly: bd.basic, arrear: '-', total: bd.basic });
     if (bd.hra > 0) earningsList.push({ id: 'hra', name: 'House Rent Allowance (HRA)', rate: bd.hra, monthly: bd.hra, arrear: '-', total: bd.hra });
     if (bd.flexiAmount > 0) earningsList.push({ id: 'flexi', name: 'Flexi Allowance', rate: bd.flexiAmount, monthly: bd.flexiAmount, arrear: '-', total: bd.flexiAmount });
@@ -202,7 +271,6 @@ export const PayslipModal = ({ viewingPayslip, setViewingPayslip, profile, getPa
         } else if (c.id === 'flexi' || c.id === 'special') {
           amount = comps?.flexi || Number(rawBreakup.flexi) || (Number(rawBreakup.specialAllowance) > 0 ? Number(rawBreakup.specialAllowance) : 0);
         } else {
-          // Dynamic salary component configured in settings
           const val = rawBreakup[c.id] !== undefined
             ? rawBreakup[c.id]
             : (rawBreakup[c.name] !== undefined ? rawBreakup[c.name] : (rawBreakup[c.id + 'Allowance'] !== undefined ? rawBreakup[c.id + 'Allowance'] : 0));
@@ -226,23 +294,38 @@ export const PayslipModal = ({ viewingPayslip, setViewingPayslip, profile, getPa
   }
 
   // Employer PF (under RETIRALS) if PF is active
-  const employerPFVal = isPfEnabled ? Number(rawBreakup.employerPF || rawBreakup.pfEmployer || 0) : 0;
-  if (isPfEnabled && employerPFVal > 0) {
+  const employerPFVal = isPfEnabled ? Number(rawBreakup.employerPF || rawBreakup.pfEmployer || slip.employerContributions?.pfEmployer || 0) : 0;
+  if (isPfEnabled && employerPFVal > 0 && (!slip.employerContributionsLineItems || slip.employerContributionsLineItems.length === 0)) {
     earningsList.push({ isHeader: true, name: 'RETIRALS', rightLabel: 'Retirals Benefit' });
     earningsList.push({ id: 'employerPF', name: 'Employer PF', rate: employerPFVal, monthly: employerPFVal, arrear: '-', total: employerPFVal });
   }
 
   // 5. Deductions List
-  // Priority: 1. Synced deductionsLineItems -> 2. Synced breakdown -> 3. Local calculations
   let deductionsList = [];
 
-  if (Array.isArray(viewingPayslip.deductionsLineItems) && viewingPayslip.deductionsLineItems.length > 0) {
-    deductionsList = viewingPayslip.deductionsLineItems.map(item => ({
-      name: item.name + (item.details ? ` (${item.details})` : ''),
-      amount: Number(item.amount) || 0
+  if (Array.isArray(slip.deductionsLineItems) && slip.deductionsLineItems.length > 0) {
+    deductionsList = slip.deductionsLineItems.map(item => ({
+      name: item.name + (item.details && !item.details.includes('Statutory') && !item.details.includes('Employees') ? ` (${item.details})` : ''),
+      amount: Number(item.amount) || 0,
+      isHeader: !!item.isHeader
     }));
-  } else if (viewingPayslip.breakdown && Object.keys(viewingPayslip.breakdown).length > 0) {
-    const bd = viewingPayslip.breakdown;
+  } else if (slip.deductions && typeof slip.deductions === 'object' && !comps) {
+    const d = slip.deductions;
+    if (d.pfEmployee > 0 || d.pf > 0) deductionsList.push({ name: 'PF - Employees', amount: d.pfEmployee || d.pf });
+    if (d.esiEmployee > 0 || d.esi > 0) deductionsList.push({ name: 'ESIC Deduction', amount: d.esiEmployee || d.esi });
+    if (d.professionalTax > 0 || d.pt > 0) deductionsList.push({ name: 'Prof Tax Deduction', amount: d.professionalTax || d.pt });
+    if (d.tds > 0) deductionsList.push({ name: 'Income Tax', amount: d.tds });
+    if (d.advanceDeduction > 0) deductionsList.push({ name: 'Advance Deduction', amount: d.advanceDeduction });
+    if (d.loanDeduction > 0) deductionsList.push({ name: 'Loan Recovery', amount: d.loanDeduction });
+    if (d.insuranceEmployee > 0 || d.insurance > 0) deductionsList.push({ name: 'Insurance Deduction', amount: d.insuranceEmployee || d.insurance });
+    if (d.lwfEmployee > 0 || d.lwf > 0) deductionsList.push({ name: 'LWF Deduction', amount: d.lwfEmployee || d.lwf });
+    if (Array.isArray(d.customDeductions)) {
+      d.customDeductions.forEach(cd => {
+        if (cd.amount > 0) deductionsList.push({ name: cd.name, amount: cd.amount });
+      });
+    }
+  } else if (slip.breakdown && Object.keys(slip.breakdown).length > 0) {
+    const bd = slip.breakdown;
     deductionsList.push({ name: 'PF -Employees', amount: bd.pf || 0 });
     deductionsList.push({ name: 'ESIC Deduction', amount: bd.esi || 0 });
     deductionsList.push({ name: 'Prof Tax Deduction', amount: bd.pt || 0 });
@@ -250,16 +333,16 @@ export const PayslipModal = ({ viewingPayslip, setViewingPayslip, profile, getPa
     deductionsList.push({ name: 'Advance Deduction', amount: bd.advanceDeduction || 0 });
     deductionsList.push({ name: 'Insurance Deduction', amount: bd.insuranceDeduction || 0 });
   } else {
-    const pfEmployeeVal = isPfEnabled ? Number(rawBreakup.pfEmployee || comps.pfEmployee || 0) : 0;
+    const pfEmployeeVal = isPfEnabled ? Number(rawBreakup.pfEmployee || comps?.pfEmployee || 0) : 0;
     deductionsList.push({ name: 'PF -Employees', amount: pfEmployeeVal });
 
-    const esiEmployeeVal = isEsiEnabled ? Number(rawBreakup.esiEmployee || comps.esiEmployee || 0) : 0;
+    const esiEmployeeVal = isEsiEnabled ? Number(rawBreakup.esiEmployee || comps?.esiEmployee || 0) : 0;
     deductionsList.push({ name: 'ESIC Deduction', amount: esiEmployeeVal });
 
-    const ptVal = isPtEnabled ? Number(rawBreakup.professionalTax || comps.pt || 0) : 0;
+    const ptVal = isPtEnabled ? Number(rawBreakup.professionalTax || comps?.pt || 0) : 0;
     deductionsList.push({ name: 'Prof Tax Deduction', amount: ptVal });
 
-    const tdsVal = isTdsEnabled ? Number(rawBreakup.tds || comps.tds || 0) : 0;
+    const tdsVal = isTdsEnabled ? Number(rawBreakup.tds || comps?.tds || 0) : 0;
     deductionsList.push({ name: 'Income Tax', amount: tdsVal });
 
     const advanceVal = Number(rawBreakup.advanceDeduction || 0);
@@ -269,50 +352,107 @@ export const PayslipModal = ({ viewingPayslip, setViewingPayslip, profile, getPa
     deductionsList.push({ name: 'Insurance Deduction', amount: insuranceDedVal });
   }
 
-  if (isPfEnabled && employerPFVal > 0) {
-    deductionsList.push({ isHeader: true });
-    deductionsList.push({ name: 'Employer PF', amount: employerPFVal });
+  // 6. Employer Contributions & CTC List (Flance Parity)
+  let employerContributionsList = [];
+  if (Array.isArray(slip.employerContributionsLineItems) && slip.employerContributionsLineItems.length > 0) {
+    employerContributionsList = slip.employerContributionsLineItems.map(item => ({
+      name: item.name,
+      amount: Number(item.amount) || 0,
+      details: item.details || '-'
+    }));
+  } else if (slip.employerContributions && typeof slip.employerContributions === 'object') {
+    const ec = slip.employerContributions;
+    if (ec.pfEmployer > 0) employerContributionsList.push({ name: 'Provident Fund (Employer PF)', amount: ec.pfEmployer, details: 'Employer PF Contribution (EPF + EPS)' });
+    if (ec.esiEmployer > 0) employerContributionsList.push({ name: 'ESI (Employer Share)', amount: ec.esiEmployer, details: 'Employee State Insurance (3.25%)' });
+    if (ec.gratuity > 0) employerContributionsList.push({ name: 'Gratuity Provision', amount: ec.gratuity, details: 'Retirement Gratuity Provision (4.81%)' });
+    if (ec.insuranceEmployer > 0 || ec.insurance > 0) employerContributionsList.push({ name: 'Group Medical Insurance', amount: ec.insuranceEmployer || ec.insurance, details: 'Health & Accidental Coverage' });
+    if (ec.lwfEmployer > 0) employerContributionsList.push({ name: 'Labour Welfare Fund (Employer)', amount: ec.lwfEmployer, details: 'LWF Contribution' });
+    if (ec.nps > 0) employerContributionsList.push({ name: 'Employer NPS', amount: ec.nps, details: 'National Pension Scheme' });
+  } else if (isPfEnabled && employerPFVal > 0) {
+    employerContributionsList.push({ name: 'Provident Fund (Employer Contribution)', amount: employerPFVal, details: '12% of Basic up to stat limit (EPS + EPF)' });
   }
 
   // Totals calculation
   const computedEarnings = earningsList.reduce((acc, curr) => curr.isHeader ? acc : acc + (Number(curr.monthly) || 0), 0);
   const computedDeductions = deductionsList.reduce((acc, curr) => curr.isHeader ? acc : acc + (Number(curr.amount) || 0), 0);
 
-  const totalEarningsMonthly = Number(viewingPayslip.grossSalary) || computedEarnings;
-  const totalDeductions = Number(viewingPayslip.totalDeductions) || computedDeductions;
-  const netTakeHome = Number(viewingPayslip.netSalary) || (totalEarningsMonthly - totalDeductions);
+  const totalEarningsMonthly = Number(slip.grossSalary || slip.grossPay || slip.earnings?.totalEarnings) || computedEarnings;
+  const totalDeductions = Number(slip.totalDeductions || slip.deductions?.totalDeductions) || computedDeductions;
+  const netTakeHome = Number(slip.netSalary) || (totalEarningsMonthly - totalDeductions);
+  const totalEmployerContributions = Number(slip.totalEmployerContributions) || employerContributionsList.reduce((acc, c) => acc + (Number(c.amount) || 0), 0);
+  const monthlyCTC = Number(slip.monthlyCTC || slip.compensation?.ctcMonthly) || (totalEarningsMonthly + totalEmployerContributions);
 
-  // 6. Dynamic Financial Year Calculation for Tax Worksheet
-  const periodParts = String(viewingPayslip.period || 'JULY 2026').split(' ');
-  const pYear = parseInt(periodParts[1]) || viewingPayslip.year || new Date().getFullYear();
+  // 7. Dynamic Financial Year Calculation for Tax Worksheet
+  const periodParts = payPeriod.split(' ');
+  const pYear = parseInt(periodParts[1]) || slip.year || new Date().getFullYear();
   const pMonthStr = (periodParts[0] || '').toUpperCase();
   const pMonthIdx = MONTH_NAMES.findIndex(m => m.toUpperCase() === pMonthStr);
-  const pMonth = pMonthIdx !== -1 ? (pMonthIdx + 1) : (viewingPayslip.month || 7);
+  const pMonth = pMonthIdx !== -1 ? (pMonthIdx + 1) : (slip.month || 7);
 
   const fyStart = pMonth >= 4 ? pYear : pYear - 1;
   const fyEnd = fyStart + 1;
   const fyLabel = `April ${fyStart} - March ${fyEnd}`;
 
-  // 7. Income Tax Worksheet Calculations
-  const tw = viewingPayslip.taxWorksheet || null;
-  const annualGross = tw?.grossSalary || (totalEarningsMonthly * 12);
-  const standardDeduction = tw?.standardDeduction || (taxRegime.includes('NEW') ? 75000 : 50000);
-  const pfDeduction = deductionsList.find(d => d.name.includes('PF'))?.amount || 0;
-  const ptDeduction = deductionsList.find(d => d.name.includes('Prof Tax'))?.amount || 0;
+  // 8. Income Tax Worksheet Calculations (Matching Flance exactly)
+  const tw = slip.taxWorksheet || {};
+  const annualGross = tw.grossSalary || (totalEarningsMonthly * 12);
+  const standardDeduction = tw.standardDeduction || (taxRegime.includes('NEW') ? 75000 : 50000);
+  const pfDeduction = deductionsList.find(d => d.name.toLowerCase().includes('pf'))?.amount || 0;
+  const ptDeduction = deductionsList.find(d => d.name.toLowerCase().includes('prof tax') || d.name.toLowerCase().includes('pt'))?.amount || 0;
   const annualPF = isPfEnabled ? (pfDeduction * 12) : 0;
   const annualPT = isPtEnabled ? (ptDeduction * 12) : 0;
-  const chapterVIA = tw?.chapterVIA || (taxRegime.includes('OLD') ? Math.min(150000, annualPF) : 0);
-  const taxableIncome = tw?.taxableIncome !== undefined ? tw.taxableIncome : Math.max(0, annualGross - standardDeduction - annualPT - chapterVIA);
 
-  const months = ['April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December', 'January', 'February', 'March'];
-  const leaveBalance = Number(viewingPayslip.leaveBalance || profile?.leaveBalance || 0).toFixed(2);
+  const decl = emp.declarations || slip.employeeSnapshot?.declarations || {};
+  const epfVal = decl.epf || annualPF;
+  const ppfVal = decl.ppf || 0;
+  const homeLoanVal = decl.homeLoanPrincipal || 0;
+  const licVal = decl.lic || 0;
+  const elssVal = decl.elss || 0;
+  const sec80CVal = decl.section80C || (epfVal + ppfVal + homeLoanVal + licVal + elssVal);
+  const sec80CCapped = Math.min(150000, sec80CVal);
+  const sec80DVal = decl.section80D || 0;
+  const sec80CCDVal = decl.section80CCD1B || 0;
+  const sec24bVal = decl.section24b || 0;
+  const totalVIA = sec80CCapped + sec80DVal + sec80CCDVal;
+
+  const chapterVIA = tw.chapterVIA !== undefined
+    ? tw.chapterVIA
+    : (totalVIA > 0 ? totalVIA : (taxRegime.includes('OLD') ? Math.min(150000, annualPF) : 0));
+  const taxableIncome = tw.taxableIncome !== undefined ? tw.taxableIncome : Math.max(0, annualGross - standardDeduction - annualPT - chapterVIA);
+
+  // Month-by-month TDS list (April to March)
+  const monthsList = [
+    { key: 4, name: 'April' },
+    { key: 5, name: 'May' },
+    { key: 6, name: 'June' },
+    { key: 7, name: 'July' },
+    { key: 8, name: 'August' },
+    { key: 9, name: 'September' },
+    { key: 10, name: 'October' },
+    { key: 11, name: 'November' },
+    { key: 12, name: 'December' },
+    { key: 1, name: 'January' },
+    { key: 2, name: 'February' },
+    { key: 3, name: 'March' }
+  ];
+  const tdsMonths = tw.tdsMonths || {};
+  const leaveBalance = Number(slip.leaveBalance || emp.leaveBalance || profile?.leaveBalance || 0).toFixed(2);
 
   // Dynamic earnings rows for worksheet
-  const worksheetEarnings = earningsList.filter(e => !e.isHeader);
+  const worksheetEarnings = (tw.componentBreakdown && tw.componentBreakdown.length > 0)
+    ? tw.componentBreakdown
+    : earningsList.filter(e => !e.isHeader).map(e => ({
+        name: e.name,
+        gross: (Number(e.monthly) || Number(e.rate) || 0) * 12,
+        exempt: 0,
+        taxable: (Number(e.monthly) || Number(e.rate) || 0) * 12
+      }));
+
   const basicEarn = worksheetEarnings.find(e => e.name.toLowerCase().includes('basic'));
   const hraEarn = worksheetEarnings.find(e => e.name.toLowerCase().includes('hra') || e.name.toLowerCase().includes('house rent'));
-  const basicAnnual = (basicEarn?.monthly || 0) * 12;
-  const hraAnnual = (hraEarn?.monthly || 0) * 12;
+  const basicAnnual = basicEarn ? (basicEarn.gross || (basicEarn.monthly * 12) || 0) : 0;
+  const hraAnnual = hraEarn ? (hraEarn.gross || (hraEarn.monthly * 12) || 0) : 0;
+  const hraCalc = tw.hra || {};
 
   return (
     <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-xs flex items-start justify-center z-50 p-2 sm:p-6 overflow-y-auto print:p-0 print:bg-white">
@@ -366,7 +506,7 @@ export const PayslipModal = ({ viewingPayslip, setViewingPayslip, profile, getPa
           </div>
         </div>
 
-        {/* ================= EXACT PIXEL-PERFECT EXCEL SPREADSHEET PAYSLIP ================= */}
+        {/* ================= EXACT PIXEL-PERFECT EXCEL SPREADSHEET PAYSLIP (FLANCE SPEC) ================= */}
         <div className="p-3 sm:p-6 bg-slate-100/60 print:p-0 print:bg-white" id="payslip-print-area">
           <div className="payslip-container mx-auto max-w-4xl bg-white border-2 border-black p-4 sm:p-5 shadow-xs print:shadow-none print:border-2 print:border-black print:p-4 text-black font-sans text-[10px] leading-tight">
             
@@ -451,7 +591,9 @@ export const PayslipModal = ({ viewingPayslip, setViewingPayslip, profile, getPa
               <div className="col-span-1 border-r border-black py-0.5 text-right px-1">Rate</div>
               <div className="col-span-1 border-r border-black py-0.5 text-right px-1">Monthly</div>
               <div className="col-span-1 border-r border-black py-0.5">Arrear</div>
-              <div className="col-span-2 border-r border-black py-0.5 text-right px-1.5">Total Earning (Monthly)</div>
+              <div className="col-span-2 border-r border-black py-0.5 text-right px-1.5 leading-tight text-[8px] sm:text-[9px] flex items-center justify-end">
+                Total Earning (Monthly)
+              </div>
               {/* Deductions Headers */}
               <div className="col-span-3 border-r border-black py-0.5 text-left px-1.5">Description</div>
               <div className="col-span-2 py-0.5 text-right px-1.5">Amount</div>
@@ -479,7 +621,7 @@ export const PayslipModal = ({ viewingPayslip, setViewingPayslip, profile, getPa
                     <div className="col-span-1 border-r border-black text-right px-1">{earn ? fmtVal(earn.rate) : ''}</div>
                     <div className="col-span-1 border-r border-black text-right px-1">{earn ? fmtVal(earn.monthly) : ''}</div>
                     <div className="col-span-1 border-r border-black text-center">{earn?.arrear || ''}</div>
-                    <div className="col-span-2 border-r border-black text-right px-1.5 font-semibold">{earn ? fmtVal(earn.total) : ''}</div>
+                    <div className="col-span-2 border-r border-black text-right px-1.5 font-semibold">{earn ? fmtVal(earn.total || earn.monthly) : ''}</div>
 
                     {/* Deductions Cells */}
                     <div className="col-span-3 border-r border-black text-left px-1.5 font-medium">{ded?.name || ''}</div>
@@ -489,9 +631,9 @@ export const PayslipModal = ({ viewingPayslip, setViewingPayslip, profile, getPa
               })}
             </div>
 
-            {/* CTC / Totals Row */}
+            {/* Gross Earnings / Total Deductions Row */}
             <div className="grid grid-cols-12 border-b border-black font-bold py-1 bg-gray-50 items-center">
-              <div className="col-span-2 border-r border-black text-left px-1.5">CTC</div>
+              <div className="col-span-2 border-r border-black text-left px-1.5">Gross Earnings</div>
               <div className="col-span-1 border-r border-black text-right px-1">{fmtVal(totalEarningsMonthly)}</div>
               <div className="col-span-1 border-r border-black text-right px-1">{fmtVal(totalEarningsMonthly)}</div>
               <div className="col-span-1 border-r border-black text-center">-</div>
@@ -506,7 +648,39 @@ export const PayslipModal = ({ viewingPayslip, setViewingPayslip, profile, getPa
               <span className="text-xs font-black">{fmtVal(netTakeHome)}</span>
             </div>
 
-            {/* ----------------- INCOME TAX WORKSHEET (DARK BLUE BAR) ----------------- */}
+            {/* ----------------- EMPLOYER CONTRIBUTIONS & BENEFITS (FLANCE COST TO COMPANY) ----------------- */}
+            {employerContributionsList.length > 0 && (
+              <div>
+                <div className="border-b border-black text-center font-bold py-1 bg-gray-50 uppercase tracking-wider text-[9.5px]">
+                  Employer Contributions & Benefits (Cost to Company)
+                </div>
+                <div className="grid grid-cols-12 border-b border-black font-bold text-center text-[9px] bg-white">
+                  <div className="col-span-5 border-r border-black py-0.5 text-left px-1.5">Contribution / Benefit Head</div>
+                  <div className="col-span-3 border-r border-black py-0.5 text-right px-1.5">Monthly Amount</div>
+                  <div className="col-span-4 py-0.5 text-left px-1.5">Description</div>
+                </div>
+                <div className="divide-y divide-black border-b border-black text-[9px]">
+                  {employerContributionsList.map((contrib, cIdx) => (
+                    <div key={cIdx} className="grid grid-cols-12 py-0.5 items-center bg-white">
+                      <div className="col-span-5 border-r border-black text-left px-1.5 font-medium">{contrib.name}</div>
+                      <div className="col-span-3 border-r border-black text-right px-1.5 font-semibold">{fmtVal(contrib.amount)}</div>
+                      <div className="col-span-4 text-left px-1.5 text-gray-700">{contrib.details}</div>
+                    </div>
+                  ))}
+                </div>
+                <div className="grid grid-cols-12 border-b border-black font-bold py-1 bg-gray-50 items-center text-[9px]">
+                  <div className="col-span-5 border-r border-black text-left px-1.5">Total Employer Contributions</div>
+                  <div className="col-span-3 border-r border-black text-right px-1.5 font-black">{fmtVal(totalEmployerContributions)}</div>
+                  <div className="col-span-4 text-left px-1.5 text-gray-600">Benefits included in CTC</div>
+                </div>
+                <div className="flex justify-between items-center font-bold border-b border-black px-4 py-1.5 bg-slate-100 text-[10px]">
+                  <span className="uppercase tracking-wider">TOTAL COST TO COMPANY (MONTHLY CTC)</span>
+                  <span className="text-xs font-black">{fmtVal(monthlyCTC)}</span>
+                </div>
+              </div>
+            )}
+
+            {/* ----------------- INCOME TAX WORKSHEET (DARK BLUE BAR #0f2d59) ----------------- */}
             <div className="border-b border-black text-center font-bold py-1 bg-[#0f2d59] text-white uppercase tracking-wider text-[10px]">
               Income Tax Worksheet for the period {fyLabel}
             </div>
@@ -523,18 +697,20 @@ export const PayslipModal = ({ viewingPayslip, setViewingPayslip, profile, getPa
                   <div className="col-span-3 text-right px-1">Taxable</div>
                 </div>
                 <div className="divide-y divide-gray-200">
-                  {worksheetEarnings.map((e, idx) => (
-                    <div key={idx} className="grid grid-cols-12 py-0.5">
-                      <div className="col-span-5 border-r border-black px-1">{e.name}</div>
-                      <div className="col-span-2 border-r border-black text-right px-1">{fmtVal(e.monthly * 12)}</div>
-                      <div className="col-span-2 border-r border-black text-center">-</div>
-                      <div className="col-span-3 text-right px-1">{fmtVal(e.monthly * 12)}</div>
+                  {worksheetEarnings.map((row, i) => (
+                    <div key={i} className="grid grid-cols-12 py-0.5">
+                      <div className="col-span-5 border-r border-black px-1 font-medium">{row.name}</div>
+                      <div className="col-span-2 border-r border-black text-right px-1">{fmtVal(row.gross)}</div>
+                      <div className="col-span-2 border-r border-black text-center text-gray-500">{row.exempt ? fmtVal(row.exempt) : '-'}</div>
+                      <div className="col-span-3 text-right px-1">{fmtVal(row.taxable || row.gross)}</div>
                     </div>
                   ))}
-                  <div className="grid grid-cols-12 py-0.5"><div className="col-span-5 border-r border-black px-1">Other</div><div className="col-span-2 border-r border-black text-center">-</div><div className="col-span-2 border-r border-black text-center">-</div><div className="col-span-3 text-center">-</div></div>
-                  <div className="grid grid-cols-12 py-0.5"><div className="col-span-5 border-r border-black px-1">Bonus</div><div className="col-span-2 border-r border-black text-center">-</div><div className="col-span-2 border-r border-black text-center">-</div><div className="col-span-3 text-center">-</div></div>
-                  <div className="grid grid-cols-12 py-0.5"><div className="col-span-5 border-r border-black px-1">Arrear</div><div className="col-span-2 border-r border-black text-center">-</div><div className="col-span-2 border-r border-black text-center">-</div><div className="col-span-3 text-center">-</div></div>
-                  <div className="grid grid-cols-12 py-0.5 border-t border-black font-bold bg-gray-50"><div className="col-span-5 border-r border-black px-1">Gross Salary</div><div className="col-span-2 border-r border-black text-right px-1">{fmtVal(annualGross)}</div><div className="col-span-2 border-r border-black text-center">-</div><div className="col-span-3 text-right px-1 font-bold">{fmtVal(annualGross)}</div></div>
+                  <div className="grid grid-cols-12 py-0.5 border-t border-black font-bold bg-gray-50">
+                    <div className="col-span-5 border-r border-black px-1">Gross Salary</div>
+                    <div className="col-span-2 border-r border-black text-right px-1">{fmtVal(annualGross)}</div>
+                    <div className="col-span-2 border-r border-black text-center">-</div>
+                    <div className="col-span-3 text-right px-1 font-bold">{fmtVal(annualGross)}</div>
+                  </div>
                   <div className="grid grid-cols-12 py-0.5"><div className="col-span-9 border-r border-black px-1">Deduction - Income from House Property (Intt)</div><div className="col-span-3 text-center">-</div></div>
                   <div className="grid grid-cols-12 py-0.5"><div className="col-span-9 border-r border-black px-1 font-medium">Standard Deduction</div><div className="col-span-3 text-right px-1">{fmtVal(standardDeduction)}</div></div>
                   <div className="grid grid-cols-12 py-0.5"><div className="col-span-9 border-r border-black px-1">Previous Employer Professional Tax</div><div className="col-span-3 text-center">-</div></div>
@@ -542,18 +718,18 @@ export const PayslipModal = ({ viewingPayslip, setViewingPayslip, profile, getPa
                   <div className="grid grid-cols-12 py-0.5"><div className="col-span-9 border-r border-black px-1">Under Chapter VI-A</div><div className="col-span-3 text-right px-1">{fmtVal(chapterVIA)}</div></div>
                   <div className="grid grid-cols-12 py-0.5"><div className="col-span-9 border-r border-black px-1">Any Other Income</div><div className="col-span-3 text-center">-</div></div>
                   <div className="grid grid-cols-12 py-0.5 font-bold bg-gray-50 border-t border-black"><div className="col-span-9 border-r border-black px-1">Taxable Income</div><div className="col-span-3 text-right px-1">{fmtVal(taxableIncome)}</div></div>
-                  <div className="grid grid-cols-12 py-0.5"><div className="col-span-9 border-r border-black px-1">Total Tax</div><div className="col-span-3 text-center">-</div></div>
+                  <div className="grid grid-cols-12 py-0.5"><div className="col-span-9 border-r border-black px-1">Total Tax</div><div className="col-span-3 text-center">{tw.totalTax ? fmtVal(tw.totalTax) : '-'}</div></div>
                   <div className="grid grid-cols-12 py-0.5"><div className="col-span-9 border-r border-black px-1">Tax Rebate</div><div className="col-span-3 text-center">-</div></div>
                   <div className="grid grid-cols-12 py-0.5"><div className="col-span-9 border-r border-black px-1">Surcharge</div><div className="col-span-3 text-center">-</div></div>
                   <div className="grid grid-cols-12 py-0.5"><div className="col-span-9 border-r border-black px-1">Tax Due</div><div className="col-span-3 text-center">-</div></div>
-                  <div className="grid grid-cols-12 py-0.5"><div className="col-span-9 border-r border-black px-1">Educational Cess</div><div className="col-span-3 text-center">-</div></div>
-                  <div className="grid grid-cols-12 py-0.5 font-bold"><div className="col-span-9 border-r border-black px-1">Net Tax</div><div className="col-span-3 text-center">-</div></div>
+                  <div className="grid grid-cols-12 py-0.5"><div className="col-span-9 border-r border-black px-1">Educational Cess</div><div className="col-span-3 text-right px-1">{tw.cess ? fmtVal(tw.cess) : '-'}</div></div>
+                  <div className="grid grid-cols-12 py-0.5 font-bold"><div className="col-span-9 border-r border-black px-1">Net Tax</div><div className="col-span-3 text-center">{tw.netTax ? fmtVal(tw.netTax) : '-'}</div></div>
                   <div className="grid grid-cols-12 py-0.5"><div className="col-span-9 border-r border-black px-1">Tax deducted (Previous Employer)</div><div className="col-span-3 text-center">-</div></div>
-                  <div className="grid grid-cols-12 py-0.5"><div className="col-span-9 border-r border-black px-1">Tax Deducted Till date</div><div className="col-span-3 text-center">-</div></div>
-                  <div className="grid grid-cols-12 py-0.5"><div className="col-span-9 border-r border-black px-1">Tax to be Deducted</div><div className="col-span-3 text-center">-</div></div>
+                  <div className="grid grid-cols-12 py-0.5"><div className="col-span-9 border-r border-black px-1">Tax Deducted Till date</div><div className="col-span-3 text-center">{tw.taxDeductedTillDate ? fmtVal(tw.taxDeductedTillDate) : '-'}</div></div>
+                  <div className="grid grid-cols-12 py-0.5"><div className="col-span-9 border-r border-black px-1">Tax to be Deducted</div><div className="col-span-3 text-center">{tw.taxToDeducted ? fmtVal(tw.taxToDeducted) : '-'}</div></div>
                   <div className="grid grid-cols-12 py-0.5"><div className="col-span-9 border-r border-black px-1">Tax/ Month</div><div className="col-span-3 text-right px-1">-</div></div>
                   <div className="grid grid-cols-12 py-0.5"><div className="col-span-9 border-r border-black px-1">Tax on Non-Recurring Earnings</div><div className="col-span-3 text-center">-</div></div>
-                  <div className="grid grid-cols-12 py-0.5 font-bold"><div className="col-span-9 border-r border-black px-1">Tax Deduction for this month</div><div className="col-span-3 text-right px-1">-</div></div>
+                  <div className="grid grid-cols-12 py-0.5 font-bold"><div className="col-span-9 border-r border-black px-1">Tax Deduction for this month</div><div className="col-span-3 text-right px-1 text-amber-900">{tw.taxDeductionThisMonth ? fmtVal(tw.taxDeductionThisMonth) : '-'}</div></div>
                 </div>
               </div>
 
@@ -567,26 +743,26 @@ export const PayslipModal = ({ viewingPayslip, setViewingPayslip, profile, getPa
                     Investments u/s 80C
                   </div>
                   <div className="divide-y divide-gray-200">
-                    <div className="flex justify-between px-1.5 py-0.5"><span>Provident Fund</span><span>{isPfEnabled ? fmtVal(annualPF, false) || '0.00' : '0.00'}</span></div>
-                    <div className="flex justify-between px-1.5 py-0.5"><span>Public Provident Fund</span><span>-</span></div>
-                    <div className="flex justify-between px-1.5 py-0.5"><span>Principal - Housing Loan</span><span>-</span></div>
-                    <div className="flex justify-between px-1.5 py-0.5"><span>Life Insurance Premium</span><span>-</span></div>
-                    <div className="flex justify-between px-1.5 py-0.5"><span>Mutual Fund</span><span>-</span></div>
+                    <div className="flex justify-between px-1.5 py-0.5"><span>Provident Fund</span><span>{fmtVal(epfVal, false) || '0.00'}</span></div>
+                    <div className="flex justify-between px-1.5 py-0.5"><span>Public Provident Fund</span><span>{fmtVal(ppfVal)}</span></div>
+                    <div className="flex justify-between px-1.5 py-0.5"><span>Principal - Housing Loan</span><span>{fmtVal(homeLoanVal)}</span></div>
+                    <div className="flex justify-between px-1.5 py-0.5"><span>Life Insurance Premium</span><span>{fmtVal(licVal)}</span></div>
+                    <div className="flex justify-between px-1.5 py-0.5"><span>Mutual Fund</span><span>{fmtVal(elssVal)}</span></div>
                     <div className="flex justify-between px-1.5 py-0.5"><span>Atal Pension Yojna</span><span>-</span></div>
-                    <div className="flex justify-between px-1.5 py-0.5 font-bold border-t border-black bg-gray-50"><span>Total of Investment u/s 80C</span><span>{isPfEnabled ? fmtVal(annualPF, false) || '0.00' : '0.00'}</span></div>
+                    <div className="flex justify-between px-1.5 py-0.5 font-bold border-t border-black bg-gray-50"><span>Total of Investment u/s 80C</span><span>{fmtVal(sec80CVal, false) || '0.00'}</span></div>
                   </div>
 
                   <div className="border-t border-black divide-y divide-gray-200">
-                    <div className="flex justify-between px-1.5 py-0.5"><span>U/S 80C</span><span>{isPfEnabled ? fmtVal(annualPF) : '-'}</span></div>
-                    <div className="flex justify-between px-1.5 py-0.5"><span>U/S 80D</span><span>-</span></div>
-                    <div className="flex justify-between px-1.5 py-0.5"><span>U/S 80CCD</span><span>-</span></div>
+                    <div className="flex justify-between px-1.5 py-0.5"><span>U/S 80C</span><span>{fmtVal(sec80CCapped || annualPF)}</span></div>
+                    <div className="flex justify-between px-1.5 py-0.5"><span>U/S 80D</span><span>{fmtVal(sec80DVal)}</span></div>
+                    <div className="flex justify-between px-1.5 py-0.5"><span>U/S 80CCD</span><span>{fmtVal(sec80CCDVal)}</span></div>
                     <div className="flex justify-between px-1.5 py-0.5"><span>U/S 80 G</span><span>-</span></div>
                   </div>
                 </div>
 
                 <div className="border-t border-black divide-y divide-gray-200 bg-gray-50">
-                  <div className="flex justify-between px-1.5 py-0.5 font-bold"><span>Total of Ded Under Chapter</span><span>{isPfEnabled ? fmtVal(annualPF) : '-'}</span></div>
-                  <div className="flex justify-between px-1.5 py-0.5"><span>Interest on Housing Loan</span><span>-</span></div>
+                  <div className="flex justify-between px-1.5 py-0.5 font-bold"><span>Total of Ded Under Chapter</span><span>{fmtVal(totalVIA || annualPF)}</span></div>
+                  <div className="flex justify-between px-1.5 py-0.5"><span>Interest on Housing Loan</span><span>{fmtVal(sec24bVal)}</span></div>
                   <div className="flex justify-between px-1.5 py-0.5"><span>Max Allowed</span><span>-</span></div>
                 </div>
               </div>
@@ -602,15 +778,15 @@ export const PayslipModal = ({ viewingPayslip, setViewingPayslip, profile, getPa
                     <div className="col-span-6 text-right">Amount</div>
                   </div>
                   <div className="divide-y divide-gray-200">
-                    {months.map((m, i) => (
+                    {monthsList.map((m, i) => (
                       <div key={i} className="grid grid-cols-12 px-1.5 py-0.5">
-                        <div className="col-span-6 text-left">{m}</div>
-                        <div className="col-span-6 text-right">-</div>
+                        <div className="col-span-6 text-left">{m.name}</div>
+                        <div className="col-span-6 text-right font-medium">{fmtVal(tdsMonths[m.key] || 0)}</div>
                       </div>
                     ))}
                     <div className="grid grid-cols-12 px-1.5 py-0.5 font-bold border-t border-black bg-gray-50">
                       <div className="col-span-6 text-left">Total</div>
-                      <div className="col-span-6 text-right">-</div>
+                      <div className="col-span-6 text-right">{fmtVal(Object.values(tdsMonths).reduce((a, b) => a + (Number(b) || 0), 0))}</div>
                     </div>
                   </div>
                 </div>
@@ -642,15 +818,15 @@ export const PayslipModal = ({ viewingPayslip, setViewingPayslip, profile, getPa
               <div className="grid grid-cols-12 text-center text-[9px] py-0.5 border-b border-black">
                 <div className="col-span-1 border-r border-black">April</div>
                 <div className="col-span-1 border-r border-black">March</div>
-                <div className="col-span-2 border-r border-black">-</div>
-                <div className="col-span-2 border-r border-black">{fmtVal(hraAnnual)}</div>
-                <div className="col-span-2 border-r border-black">{fmtVal(basicAnnual * 0.4)}</div>
-                <div className="col-span-2 border-r border-black">-</div>
-                <div className="col-span-2">{fmtVal(hraAnnual)}</div>
+                <div className="col-span-2 border-r border-black">{fmtVal(hraCalc.rentPaid)}</div>
+                <div className="col-span-2 border-r border-black">{fmtVal(hraCalc.actualHRA || hraAnnual)}</div>
+                <div className="col-span-2 border-r border-black">{fmtVal(hraCalc.basicPercent || (basicAnnual * 0.4))}</div>
+                <div className="col-span-2 border-r border-black">{fmtVal(hraCalc.rentMinusBasic10)}</div>
+                <div className="col-span-2 font-bold bg-gray-50">{fmtVal(hraCalc.exemptHRA !== undefined && hraCalc.exemptHRA !== null ? hraCalc.exemptHRA : hraAnnual)}</div>
               </div>
               <div className="grid grid-cols-12 text-center text-[9px] py-0.5 font-bold bg-gray-50">
                 <div className="col-span-2 border-r border-black text-center font-bold">Total</div>
-                <div className="col-span-10 text-center">-</div>
+                <div className="col-span-10 text-center">{fmtVal(hraCalc.exemptHRA !== undefined && hraCalc.exemptHRA !== null ? hraCalc.exemptHRA : hraAnnual)}</div>
               </div>
             </div>
 
@@ -669,7 +845,7 @@ export const PayslipModal = ({ viewingPayslip, setViewingPayslip, profile, getPa
           </Button>
           <Button
             onClick={() => window.print()}
-            className="bg-blue-600 hover:bg-blue-700 text-white text-xs shadow-md flex items-center gap-1.5"
+            className="bg-blue-600 hover:bg-blue-700 text-white text-xs shadow-md flex items-center gap-1.5 cursor-pointer"
           >
             <Printer size={14} />
             <span>Print Official Payslip</span>

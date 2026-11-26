@@ -631,32 +631,32 @@ const SalaryCalculator = ({ embedded = false }) => {
 
   if (loading) {
     return (
-      <div className="flex justify-center items-center h-64">
-        <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+      <div className="flex justify-center items-center h-48">
+        <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
       </div>
     );
   }
 
   return (
-    <div className={embedded ? "space-y-6" : "p-6 max-w-7xl mx-auto space-y-6"}>
-      {!embedded ? (
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-200 pb-6">
+    <div className={embedded ? "space-y-4" : "p-4 sm:p-5 max-w-7xl mx-auto space-y-4"}>
+      {!embedded && (
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-200/80 pb-4">
           <div>
-            <h1 className="text-2xl font-bold text-slate-800 tracking-tight">
+            <h1 className="text-xl font-bold text-slate-900 tracking-tight">
               Salary Calculator
             </h1>
-            <p className="text-slate-500 text-sm mt-1">
+            <p className="text-slate-500 text-xs mt-0.5">
               Simulate compensation structures, enforce statutory rules, apply default profiles, and compare regimes.
             </p>
           </div>
 
           {activeTab !== 'settings' && (
-            <div className="flex items-center gap-3 bg-slate-55 border border-slate-200 px-4 py-2 rounded-xl">
-              <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Salary Profile:</label>
+            <div className="flex items-center gap-2 bg-slate-50/80 border border-slate-200/80 px-3 py-1.5 rounded-lg shadow-xs">
+              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Salary Profile:</label>
               <select
                 value={form.salaryTemplate}
                 onChange={(e) => handleTemplateChange(e.target.value)}
-                className="bg-white text-xs font-bold text-blue-600 border border-slate-300 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="bg-white text-xs font-semibold text-blue-600 border border-slate-200 rounded-md px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500 shadow-xs cursor-pointer"
               >
                 <option value="custom">Custom Structure</option>
                 <option value="sde">SDE Preset</option>
@@ -666,58 +666,58 @@ const SalaryCalculator = ({ embedded = false }) => {
             </div>
           )}
         </div>
-      ) : (
-        activeTab !== 'settings' && (
-          <div className="flex justify-end">
-            <div className="flex items-center gap-3 bg-slate-50 border border-slate-200 px-4 py-2 rounded-xl">
-              <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Salary Profile:</label>
-              <select
-                value={form.salaryTemplate}
-                onChange={(e) => handleTemplateChange(e.target.value)}
-                className="bg-white text-xs font-bold text-blue-600 border border-slate-300 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="custom">Custom Structure</option>
-                <option value="sde">SDE Preset</option>
-                <option value="sales">Sales Preset</option>
-                <option value="operations">Operations Preset</option>
-              </select>
-            </div>
-          </div>
-        )
       )}
 
-      {/* Main Tab Bar at Page Level - Restyled to prevent wrapping */}
-      <div className="flex border-b border-slate-200 overflow-x-auto scrollbar-hide gap-1 mb-2">
-        {tabs.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            onClick={() => setActiveTab(t.id)}
-            className={`pb-3 px-4 text-xs sm:text-sm font-semibold border-b-2 transition-colors whitespace-nowrap ${
-              activeTab === t.id
-                ? 'border-blue-600 text-blue-600 font-bold'
-                : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
-            }`}
-          >
-            {t.name}
-          </button>
-        ))}
+      {/* Main Tab Bar at Page Level + Salary Profile Selector on same row */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-200/80 gap-2 pb-0.5">
+        <div className="flex overflow-x-auto scrollbar-hide gap-1">
+          {tabs.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setActiveTab(t.id)}
+              className={`pb-2 px-3 text-xs font-semibold border-b-2 transition-colors whitespace-nowrap cursor-pointer ${
+                activeTab === t.id
+                  ? 'border-blue-600 text-blue-600 font-bold'
+                  : 'border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300'
+              }`}
+            >
+              {t.name}
+            </button>
+          ))}
+        </div>
+
+        {embedded && activeTab !== 'settings' && (
+          <div className="flex items-center gap-2 pb-1.5 self-end sm:self-auto">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Salary Profile:</span>
+            <select
+              value={form.salaryTemplate}
+              onChange={(e) => handleTemplateChange(e.target.value)}
+              className="bg-white text-xs font-semibold text-blue-600 border border-slate-200 hover:border-slate-300 rounded-lg px-2.5 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500 shadow-xs cursor-pointer"
+            >
+              <option value="custom">Custom Structure</option>
+              <option value="sde">SDE Preset</option>
+              <option value="sales">Sales Preset</option>
+              <option value="operations">Operations Preset</option>
+            </select>
+          </div>
+        )}
       </div>
 
       {activeTab === 'settings' ? (
-        <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-6">
+        <div className="bg-white border border-slate-200/90 rounded-xl shadow-xs p-4 sm:p-5">
           <PayrollSettings embed={true} onSave={fetchConfig} />
         </div>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-[1.1fr,0.9fr] gap-6 items-start">
+        <div className="grid grid-cols-1 lg:grid-cols-[1.1fr,0.9fr] gap-5 items-start">
           {/* Left Form Panel */}
-          <form onSubmit={handleSubmit} className="bg-white border border-slate-200 rounded-2xl shadow-sm p-6 space-y-6">
-            <div className="space-y-4 min-h-[380px]">
+          <form onSubmit={handleSubmit} className="bg-white border border-slate-200/90 rounded-xl shadow-xs p-4 sm:p-5 space-y-4">
+            <div className="space-y-3.5 min-h-[350px]">
               {activeTab === 'ctc' && (
-                <div className="space-y-4">
-                  <div className="grid grid-cols-1 gap-4">
+                <div className="space-y-3.5">
+                  <div className="grid grid-cols-1 gap-3">
                     <div>
-                      <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Pay Type</label>
+                      <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Pay Type</label>
                       <select
                         value={form.payType || 'salaried'}
                         onChange={(e) => {
@@ -767,7 +767,7 @@ const SalaryCalculator = ({ embedded = false }) => {
                             })
                           }));
                         }}
-                        className="w-full mt-1.5 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-white"
+                        className="w-full mt-1 border border-slate-200 hover:border-slate-300 rounded-md px-2.5 py-1.5 text-xs text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-white transition-colors cursor-pointer"
                       >
                         <option value="salaried">Salaried (Monthly Base)</option>
                         <option value="hourly">Hourly Contractor</option>
@@ -777,7 +777,7 @@ const SalaryCalculator = ({ embedded = false }) => {
                   </div>
 
                   {form.payType === 'hourly' ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       <InputField
                         label="Hourly Rate"
                         value={form.hourlyRate || 0}
@@ -806,7 +806,7 @@ const SalaryCalculator = ({ embedded = false }) => {
                       />
                     </div>
                   ) : form.payType === 'flat' ? (
-                    <div className="grid grid-cols-1 gap-4">
+                    <div className="grid grid-cols-1 gap-3">
                       <InputField
                         label="Flat Monthly Salary"
                         value={form.flatSalary || 0}
@@ -823,7 +823,7 @@ const SalaryCalculator = ({ embedded = false }) => {
                     </div>
                   ) : (
                     <>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         <InputField
                           label="Annual CTC"
                           value={form.annualCTC}
@@ -853,8 +853,8 @@ const SalaryCalculator = ({ embedded = false }) => {
                       {config?.salaryComponents && config.salaryComponents.length > 0 ? (
                         <>
                           {/* Section label */}
-                          <div className="pt-1 pb-0.5">
-                            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Salary Components</span>
+                          <div className="pt-2 pb-0.5 border-t border-slate-100 flex items-center justify-between">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Salary Components</span>
                           </div>
                           {config.salaryComponents
                             .reduce((rows, c, idx, arr) => {
@@ -862,7 +862,7 @@ const SalaryCalculator = ({ embedded = false }) => {
                               return rows;
                             }, [])
                             .map((pair, rowIdx) => (
-                              <div key={rowIdx} className="grid grid-cols-2 gap-4">
+                              <div key={rowIdx} className="grid grid-cols-2 gap-3">
                                 {pair.map(c => {
                                   const isFixed = c.linkedTo === 'fixed';
                                   const isRemainder = c.linkedTo === 'remainder';
@@ -911,20 +911,20 @@ const SalaryCalculator = ({ embedded = false }) => {
                                     : '';
 
                                   return (
-                                    <div key={c.id} className="space-y-1">
+                                    <div key={c.id} className="space-y-0.5">
                                       <div className="flex items-center gap-1.5">
-                                        <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">{c.name}</label>
+                                        <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{c.name}</label>
                                         {isDeduction && (
-                                          <span className="text-[9px] font-extrabold text-rose-600 bg-rose-50 border border-rose-200 px-1.5 py-0.2 rounded uppercase">
+                                          <span className="text-[8.5px] font-extrabold text-rose-600 bg-rose-50 border border-rose-200 px-1 py-0.2 rounded uppercase">
                                             Deduction
                                           </span>
                                         )}
                                       </div>
-                                      <div className="flex items-center justify-between border border-slate-200 rounded-lg px-3 py-2 bg-slate-50">
-                                        <span className={`text-sm font-semibold ${isDeduction ? 'text-rose-600' : 'text-slate-700'}`}>
+                                      <div className="flex items-center justify-between border border-slate-200/90 rounded-md px-2.5 py-1.5 bg-slate-50/70 mt-1">
+                                        <span className={`text-xs font-semibold ${isDeduction ? 'text-rose-600' : 'text-slate-800'}`}>
                                           {isDeduction ? '-' : ''}{fmtMoney(monthlyCTC > 0 ? computedVal : 0)}
                                         </span>
-                                        <span className="text-[10px] font-semibold text-blue-500 bg-blue-50 border border-blue-100 rounded-full px-2 py-0.5">{badge}</span>
+                                        <span className="text-[9.5px] font-medium text-blue-600 bg-blue-50/90 border border-blue-100/80 rounded px-1.5 py-0.5">{badge}</span>
                                       </div>
                                     </div>
                                   );
@@ -935,22 +935,22 @@ const SalaryCalculator = ({ embedded = false }) => {
                         </>
                       ) : null}
 
-                      <div className="grid grid-cols-2 gap-4">
+                      <div className="grid grid-cols-2 gap-3">
                         <InputField label="Medical Insurance (Monthly)" value={form.insuranceAmount} onChange={(value) => setForm((prev) => ({ ...prev, insuranceAmount: value }))} />
                         <InputField label="Employer NPS (Monthly)" value={form.employerNPS} onChange={(value) => setForm((prev) => ({ ...prev, employerNPS: value }))} />
                       </div>
                     </>
                   )}
 
-                  <div className="grid grid-cols-1 gap-4 pt-2 border-t border-slate-100">
+                  <div className="grid grid-cols-1 gap-3 pt-2 border-t border-slate-100">
                     <div>
-                      <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Payroll Notes</label>
+                      <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Payroll Notes</label>
                       <textarea
                         placeholder="Special revision notes or remarks..."
                         rows="2"
                         value={form.remarks}
                         onChange={(e) => setForm((prev) => ({ ...prev, remarks: e.target.value }))}
-                        className="w-full mt-1.5 border border-slate-300 rounded-lg px-3 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-white"
+                        className="w-full mt-1 border border-slate-200 hover:border-slate-300 rounded-md px-2.5 py-1.5 text-xs text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-white transition-colors"
                       />
                     </div>
                   </div>
@@ -958,106 +958,106 @@ const SalaryCalculator = ({ embedded = false }) => {
               )}
 
               {activeTab === 'controls' && (
-                <div className="space-y-4 animate-fadeIn">
-                  <h3 className="text-sm font-bold text-slate-800 border-b border-slate-100 pb-2">Statutory Applicability</h3>
+                <div className="space-y-3.5 animate-fadeIn">
+                  <h3 className="text-xs font-bold text-slate-800 border-b border-slate-100 pb-1.5">Statutory Applicability</h3>
                   
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     {/* PF Toggle */}
-                    <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                    <div className="p-2.5 bg-slate-50/70 border border-slate-200/80 rounded-lg space-y-1.5">
                       <div className="flex items-center justify-between">
-                        <label className="text-xs font-bold uppercase tracking-wider text-slate-700">PF Applicable</label>
+                        <label className="text-[11px] font-bold uppercase tracking-wider text-slate-700">PF Applicable</label>
                         <input
                           type="checkbox"
                           checked={form.pfEnabled}
                           onChange={(e) => setForm((prev) => ({ ...prev, pfEnabled: e.target.checked }))}
-                          className="w-4 h-4 text-blue-600 border-slate-300 rounded focus:ring-blue-500"
+                          className="w-3.5 h-3.5 text-blue-600 border-slate-300 rounded focus:ring-blue-500 cursor-pointer"
                         />
                       </div>
                       {form.pfEnabled && (
-                        <div className="flex items-center justify-between text-xs text-slate-500 border-t border-slate-200/50 pt-2">
+                        <div className="flex items-center justify-between text-[11px] text-slate-500 border-t border-slate-200/50 pt-1.5">
                           <span>Include Employer PF in CTC</span>
                           <input
                             type="checkbox"
                             checked={form.includePfInCTC}
                             onChange={(e) => setForm((prev) => ({ ...prev, includePfInCTC: e.target.checked }))}
-                            className="w-3.5 h-3.5 text-blue-600 border-slate-300 rounded focus:ring-blue-500"
+                            className="w-3 h-3 text-blue-600 border-slate-300 rounded focus:ring-blue-500 cursor-pointer"
                           />
                         </div>
                       )}
                     </div>
 
                     {/* Gratuity Toggle */}
-                    <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                    <div className="p-2.5 bg-slate-50/70 border border-slate-200/80 rounded-lg space-y-1.5">
                       <div className="flex items-center justify-between">
-                        <label className="text-xs font-bold uppercase tracking-wider text-slate-700">Gratuity Provision</label>
+                        <label className="text-[11px] font-bold uppercase tracking-wider text-slate-700">Gratuity Provision</label>
                         <input
                           type="checkbox"
                           checked={form.gratuityEnabled}
                           onChange={(e) => setForm((prev) => ({ ...prev, gratuityEnabled: e.target.checked }))}
-                          className="w-4 h-4 text-blue-600 border-slate-300 rounded focus:ring-blue-500"
+                          className="w-3.5 h-3.5 text-blue-600 border-slate-300 rounded focus:ring-blue-500 cursor-pointer"
                         />
                       </div>
                       {form.gratuityEnabled && (
-                        <div className="flex items-center justify-between text-xs text-slate-500 border-t border-slate-200/50 pt-2">
+                        <div className="flex items-center justify-between text-[11px] text-slate-500 border-t border-slate-200/50 pt-1.5">
                           <span>Include Gratuity in CTC</span>
                           <input
                             type="checkbox"
                             checked={form.includeGratuityInCTC}
                             onChange={(e) => setForm((prev) => ({ ...prev, includeGratuityInCTC: e.target.checked }))}
-                            className="w-3.5 h-3.5 text-blue-600 border-slate-300 rounded focus:ring-blue-500"
+                            className="w-3 h-3 text-blue-600 border-slate-300 rounded focus:ring-blue-500 cursor-pointer"
                           />
                         </div>
                       )}
                     </div>
 
                     {/* ESI Toggle */}
-                    <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between">
+                    <div className="p-2.5 bg-slate-50/70 border border-slate-200/80 rounded-lg flex items-center justify-between">
                       <div>
-                        <label className="text-xs font-bold uppercase tracking-wider text-slate-700">ESI Applicable</label>
-                        <p className="text-[10px] text-slate-400">Triggered if Basic &lt; ₹21k</p>
+                        <label className="text-[11px] font-bold uppercase tracking-wider text-slate-700">ESI Applicable</label>
+                        <p className="text-[9.5px] text-slate-400">Triggered if Gross &le; ₹21k</p>
                       </div>
                       <input
                         type="checkbox"
                         checked={form.esiEnabled}
                         onChange={(e) => setForm((prev) => ({ ...prev, esiEnabled: e.target.checked }))}
-                        className="w-4 h-4 text-blue-600 border-slate-300 rounded focus:ring-blue-500"
+                        className="w-3.5 h-3.5 text-blue-600 border-slate-300 rounded focus:ring-blue-500 cursor-pointer"
                       />
                     </div>
 
                     {/* LWF Toggle */}
-                    <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between">
+                    <div className="p-2.5 bg-slate-50/70 border border-slate-200/80 rounded-lg flex items-center justify-between">
                       <div>
-                        <label className="text-xs font-bold uppercase tracking-wider text-slate-700">LWF Applicable</label>
-                        <p className="text-[10px] text-slate-400">Labour Welfare Fund</p>
+                        <label className="text-[11px] font-bold uppercase tracking-wider text-slate-700">LWF Applicable</label>
+                        <p className="text-[9.5px] text-slate-400">Labour Welfare Fund</p>
                       </div>
                       <input
                         type="checkbox"
                         checked={form.lwfEnabled}
                         onChange={(e) => setForm((prev) => ({ ...prev, lwfEnabled: e.target.checked }))}
-                        className="w-4 h-4 text-blue-600 border-slate-300 rounded focus:ring-blue-500"
+                        className="w-3.5 h-3.5 text-blue-600 border-slate-300 rounded focus:ring-blue-500 cursor-pointer"
                       />
                     </div>
                   </div>
 
-                  <div className="p-4 bg-blue-50/50 border border-blue-100 rounded-xl space-y-4">
+                  <div className="p-3 bg-blue-50/40 border border-blue-100/80 rounded-lg space-y-2.5">
                     <div className="flex items-center justify-between">
-                      <label className="text-xs font-bold uppercase tracking-wider text-blue-800">Professional Tax (PT) Config</label>
+                      <label className="text-[11px] font-bold uppercase tracking-wider text-blue-800">Professional Tax (PT) Config</label>
                       <input
                         type="checkbox"
                         checked={form.ptEnabled}
                         onChange={(e) => setForm((prev) => ({ ...prev, ptEnabled: e.target.checked }))}
-                        className="w-4 h-4 text-blue-600 border-slate-300 rounded focus:ring-blue-500"
+                        className="w-3.5 h-3.5 text-blue-600 border-slate-300 rounded focus:ring-blue-500 cursor-pointer"
                       />
                     </div>
 
                     {form.ptEnabled && (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div>
-                          <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">PT Jurisdiction State</label>
+                          <label className="text-[9.5px] font-bold text-slate-500 uppercase tracking-wider">PT Jurisdiction State</label>
                           <select
                             value={form.ptState}
                             onChange={(e) => handlePtStateChange(e.target.value)}
-                            className="w-full mt-1 bg-white border border-slate-300 rounded-lg p-2 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 font-semibold"
+                            className="w-full mt-1 bg-white border border-slate-200 hover:border-slate-300 rounded-md p-1.5 text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500 font-semibold cursor-pointer"
                           >
                             <option value="MH">Maharashtra (₹200/mo)</option>
                             <option value="KA">Karnataka (₹200/mo)</option>
@@ -1082,28 +1082,28 @@ const SalaryCalculator = ({ embedded = false }) => {
               )}
 
               {activeTab === 'bonuses' && (
-                <div className="space-y-4 animate-fadeIn">
-                  <h3 className="text-sm font-bold text-slate-800 border-b border-slate-100 pb-2">One-Time Bonuses & Variables</h3>
+                <div className="space-y-3.5 animate-fadeIn">
+                  <h3 className="text-xs font-bold text-slate-800 border-b border-slate-100 pb-1.5">One-Time Bonuses & Variables</h3>
                   
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-2 gap-3">
                     <InputField label="Joining Bonus" value={form.joiningBonus} onChange={(value) => setForm((prev) => ({ ...prev, joiningBonus: value }))} />
                     <InputField label="Performance Bonus" value={form.performanceBonus} onChange={(value) => setForm((prev) => ({ ...prev, performanceBonus: value }))} />
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-2 gap-3">
                     <InputField label="Special Bonus" value={form.specialBonus} onChange={(value) => setForm((prev) => ({ ...prev, specialBonus: value }))} />
                     <InputField label="Retention Bonus" value={form.retentionBonus} onChange={(value) => setForm((prev) => ({ ...prev, retentionBonus: value }))} />
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-2 gap-3">
                     <InputField label="Incentive" value={form.incentive} onChange={(value) => setForm((prev) => ({ ...prev, incentive: value }))} />
                     <InputField label="Arrear" value={form.arrear} onChange={(value) => setForm((prev) => ({ ...prev, arrear: value }))} />
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-2 gap-3">
                     <InputField label="Referral Bonus" value={form.referralBonus} onChange={(value) => setForm((prev) => ({ ...prev, referralBonus: value }))} />
                   </div>
 
-                  <div className="rounded-xl bg-indigo-50 border border-indigo-100 p-4 text-[11px] text-indigo-800">
+                  <div className="rounded-lg bg-indigo-50/60 border border-indigo-100 p-3 text-[10.5px] text-indigo-900">
                     <p className="font-semibold">One-Time Variables Calculation:</p>
-                    <p className="mt-1">
+                    <p className="mt-0.5 text-indigo-700">
                       These bonuses represent transient one-time additions for the target payroll month. They do not increase the recurring base master salary structure.
                     </p>
                   </div>
@@ -1111,17 +1111,17 @@ const SalaryCalculator = ({ embedded = false }) => {
               )}
 
               {activeTab === 'tax' && (
-                <div className="space-y-4 animate-fadeIn">
+                <div className="space-y-3.5 animate-fadeIn">
                   <div>
-                    <label className="text-xs font-bold uppercase tracking-wider text-slate-400">Default Target Regime</label>
-                    <p className="text-xs text-slate-500 mt-0.5">Determine the regime displayed in the detailed breakdown below.</p>
-                    <div className="grid grid-cols-2 gap-3 mt-2">
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Default Target Regime</label>
+                    <p className="text-[11px] text-slate-500 mt-0.5">Determine the regime displayed in the detailed breakdown below.</p>
+                    <div className="grid grid-cols-2 gap-2 mt-1.5">
                       {['new', 'old'].map((r) => (
                         <button
                           key={r}
                           type="button"
                           onClick={() => setForm((prev) => ({ ...prev, taxRegime: r }))}
-                          className={`py-2 px-3 text-center rounded-lg text-sm font-semibold border transition-all ${
+                          className={`py-1.5 px-3 text-center rounded-md text-xs font-semibold border transition-all cursor-pointer ${
                             form.taxRegime === r
                               ? 'bg-blue-50 border-blue-600 text-blue-600'
                               : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
@@ -1133,19 +1133,19 @@ const SalaryCalculator = ({ embedded = false }) => {
                     </div>
                   </div>
 
-                  <div className="border-t border-slate-100 pt-4">
-                    <h3 className="text-sm font-semibold text-slate-800 mb-3">Old Regime Declarations</h3>
-                    <div className="space-y-4">
-                      <div className="flex items-center justify-between bg-slate-50 p-3 rounded-lg border border-slate-200">
+                  <div className="border-t border-slate-100 pt-3">
+                    <h3 className="text-xs font-semibold text-slate-800 mb-2">Old Regime Declarations</h3>
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between bg-slate-50/70 p-2.5 rounded-lg border border-slate-200/80">
                         <div>
-                          <label className="text-sm font-semibold text-slate-700">Metro City Resident</label>
-                          <p className="text-xs text-slate-500">Raises HRA tax exemption threshold to 50% of Basic</p>
+                          <label className="text-xs font-semibold text-slate-700">Metro City Resident</label>
+                          <p className="text-[10.5px] text-slate-500">Raises HRA tax exemption threshold to 50% of Basic</p>
                         </div>
                         <input
                           type="checkbox"
                           checked={form.isMetroCity}
                           onChange={(e) => setForm((prev) => ({ ...prev, isMetroCity: e.target.checked }))}
-                          className="w-4 h-4 text-blue-600 border-slate-300 rounded focus:ring-blue-500"
+                          className="w-3.5 h-3.5 text-blue-600 border-slate-300 rounded focus:ring-blue-500 cursor-pointer"
                         />
                       </div>
                       <InputField label="Monthly Rent Paid" value={form.rentPaidMonthly} onChange={(value) => setForm((prev) => ({ ...prev, rentPaidMonthly: value }))} />
@@ -1163,11 +1163,11 @@ const SalaryCalculator = ({ embedded = false }) => {
             <button
               type="submit"
               disabled={submitting}
-              className="w-full bg-slate-900 hover:bg-slate-800 text-white py-3 rounded-xl text-sm font-semibold shadow-md transition-all disabled:opacity-60"
+              className="w-full bg-slate-900 hover:bg-slate-800 active:bg-slate-950 text-white py-2 rounded-lg text-xs font-semibold shadow-xs transition-colors disabled:opacity-60 cursor-pointer"
             >
               {submitting ? (
-                <span className="flex items-center justify-center gap-2">
-                  <Loader2 className="animate-spin h-4 w-4 text-white" />
+                <span className="flex items-center justify-center gap-1.5">
+                  <Loader2 className="animate-spin h-3.5 w-3.5 text-white" />
                   Syncing Calculations...
                 </span>
               ) : 'Run Calculator with Server Validation'}
@@ -1175,17 +1175,17 @@ const SalaryCalculator = ({ embedded = false }) => {
           </form>
 
           {/* Right Output Panel */}
-          <div className="space-y-6">
+          <div className="space-y-4">
             {monthlyCTC > 0 ? (
               <>
                 {/* Side-by-Side Regime Comparison */}
                 {comparison && form.payType === 'salaried' && (
-                  <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-6 space-y-6">
-                    <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-                      <h2 className="text-lg font-bold text-slate-800">Regime Comparison (FY 2024-25)</h2>
+                  <div className="bg-white border border-slate-200/90 rounded-xl shadow-xs p-4 sm:p-5 space-y-4">
+                    <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
+                      <h2 className="text-sm font-bold text-slate-800">Regime Comparison (FY 2024-25)</h2>
                       {comparison.recommended !== 'equal' && (
-                        <span className="px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 text-xs font-semibold flex items-center gap-1 border border-emerald-200">
-                          <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+                        <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10.5px] font-semibold flex items-center gap-1 border border-emerald-200">
+                          <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
                             <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
                           </svg>
                           {comparison.recommended === 'new' ? 'New Regime saves more!' : 'Old Regime saves more!'}
@@ -1193,23 +1193,23 @@ const SalaryCalculator = ({ embedded = false }) => {
                       )}
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-2 gap-3">
                       {/* New Regime Card */}
-                      <div className={`p-4 rounded-xl border transition-all ${
+                      <div className={`p-3 rounded-lg border transition-all ${
                         comparison.recommended === 'new'
-                          ? 'border-emerald-500 bg-emerald-50/50 shadow-sm'
+                          ? 'border-emerald-500 bg-emerald-50/40 shadow-xs'
                           : 'border-slate-200 bg-white'
                       }`}>
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="text-xs font-bold text-slate-400 uppercase">New Regime</span>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase">New Regime</span>
                           {comparison.recommended === 'new' && (
-                            <span className="text-[10px] bg-emerald-600 text-white font-bold px-2 py-0.5 rounded-full">Best</span>
+                            <span className="text-[9px] bg-emerald-600 text-white font-bold px-1.5 py-0.2 rounded-full">Best</span>
                           )}
                         </div>
-                        <div className="text-xl font-extrabold text-slate-900">{fmtMoney(comparison.newRegime.monthlyTakeHome)}<span className="text-xs font-normal text-slate-500"> /mo</span></div>
-                        <p className="text-[11px] text-slate-500 mt-1">Net Take-Home Salary</p>
+                        <div className="text-lg font-bold text-slate-900">{fmtMoney(comparison.newRegime.monthlyTakeHome)}<span className="text-xs font-normal text-slate-500"> /mo</span></div>
+                        <p className="text-[10.5px] text-slate-500 mt-0.5">Net Take-Home Salary</p>
 
-                        <div className="border-t border-dashed border-slate-200 mt-3 pt-3 space-y-1.5 text-xs text-slate-600">
+                        <div className="border-t border-dashed border-slate-200 mt-2.5 pt-2 space-y-1 text-xs text-slate-600">
                           <div className="flex justify-between">
                             <span>Standard Ded.</span>
                             <span className="font-semibold">{fmtMoney(comparison.newRegime.standardDeduction)}</span>
@@ -1222,7 +1222,7 @@ const SalaryCalculator = ({ embedded = false }) => {
                             <span>Taxable Income</span>
                             <span className="font-semibold">{fmtMoney(toAnnual(comparison.newRegime.netTaxableIncome) / 12)}</span>
                           </div>
-                          <div className="flex justify-between border-t border-slate-200/50 pt-1.5">
+                          <div className="flex justify-between border-t border-slate-200/50 pt-1">
                             <span>Monthly TDS</span>
                             <span className={`font-semibold ${comparison.newRegime.monthlyTax > 0 ? 'text-rose-600' : 'text-slate-550'}`}>
                               {fmtMoney(comparison.newRegime.monthlyTax)}
@@ -1232,21 +1232,21 @@ const SalaryCalculator = ({ embedded = false }) => {
                       </div>
 
                       {/* Old Regime Card */}
-                      <div className={`p-4 rounded-xl border transition-all ${
+                      <div className={`p-3 rounded-lg border transition-all ${
                         comparison.recommended === 'old'
-                          ? 'border-emerald-500 bg-emerald-50/50 shadow-sm'
+                          ? 'border-emerald-500 bg-emerald-50/40 shadow-xs'
                           : 'border-slate-200 bg-white'
                       }`}>
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="text-xs font-bold text-slate-400 uppercase">Old Regime</span>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase">Old Regime</span>
                           {comparison.recommended === 'old' && (
-                            <span className="text-[10px] bg-emerald-600 text-white font-bold px-2 py-0.5 rounded-full">Best</span>
+                            <span className="text-[9px] bg-emerald-600 text-white font-bold px-1.5 py-0.2 rounded-full">Best</span>
                           )}
                         </div>
-                        <div className="text-xl font-extrabold text-slate-900">{fmtMoney(comparison.oldRegime.monthlyTakeHome)}<span className="text-xs font-normal text-slate-500"> /mo</span></div>
-                        <p className="text-[11px] text-slate-500 mt-1">Net Take-Home Salary</p>
+                        <div className="text-lg font-bold text-slate-900">{fmtMoney(comparison.oldRegime.monthlyTakeHome)}<span className="text-xs font-normal text-slate-500"> /mo</span></div>
+                        <p className="text-[10.5px] text-slate-500 mt-0.5">Net Take-Home Salary</p>
 
-                        <div className="border-t border-dashed border-slate-200 mt-3 pt-3 space-y-1.5 text-xs text-slate-600">
+                        <div className="border-t border-dashed border-slate-200 mt-2.5 pt-2 space-y-1 text-xs text-slate-600">
                           <div className="flex justify-between">
                             <span>Standard Ded.</span>
                             <span className="font-semibold">{fmtMoney(comparison.oldRegime.standardDeduction)}</span>
@@ -1259,7 +1259,7 @@ const SalaryCalculator = ({ embedded = false }) => {
                             <span>Taxable Income</span>
                             <span className="font-semibold">{fmtMoney(toAnnual(comparison.oldRegime.netTaxableIncome) / 12)}</span>
                           </div>
-                          <div className="flex justify-between border-t border-slate-200/50 pt-1.5">
+                          <div className="flex justify-between border-t border-slate-200/50 pt-1">
                             <span>Monthly TDS</span>
                             <span className={`font-semibold ${comparison.oldRegime.monthlyTax > 0 ? 'text-rose-600' : 'text-slate-550'}`}>
                               {fmtMoney(comparison.oldRegime.monthlyTax)}
@@ -1270,17 +1270,17 @@ const SalaryCalculator = ({ embedded = false }) => {
                     </div>
 
                     {comparison.recommended !== 'equal' && (
-                      <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-100 flex items-start gap-3">
-                        <div className="p-1 rounded-lg bg-emerald-500 text-white mt-0.5">
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                      <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-100 flex items-start gap-2.5">
+                        <div className="p-1 rounded-md bg-emerald-500 text-white mt-0.5">
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
                           </svg>
                         </div>
                         <div>
-                          <h4 className="text-sm font-bold text-emerald-950">
+                          <h4 className="text-xs font-bold text-emerald-950">
                             Save {fmtMoney(comparison.savings)} per month!
                           </h4>
-                          <p className="text-xs text-emerald-700 mt-0.5">
+                          <p className="text-[11px] text-emerald-700 mt-0.5">
                             By selecting the <strong className="uppercase">{comparison.recommended} regime</strong>, the projected annual tax savings is <strong>{fmtMoney(comparison.savings * 12)}</strong>.
                           </p>
                         </div>
@@ -1290,24 +1290,24 @@ const SalaryCalculator = ({ embedded = false }) => {
                 )}
 
                 {/* Detailed Component Breakdown */}
-                <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-6 space-y-5">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-100 pb-4 gap-3">
+                <div className="bg-white border border-slate-200/90 rounded-xl shadow-xs p-4 sm:p-5 space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-100 pb-3 gap-2">
                     <div>
-                      <h2 className="text-lg font-bold text-slate-800">Salary Structure Breakdown</h2>
-                      <p className="text-xs text-slate-500 mt-0.5">Estimated on the <strong className="uppercase text-blue-600">{form.taxRegime} Regime</strong> structure.</p>
+                      <h2 className="text-sm font-bold text-slate-800">Salary Structure Breakdown</h2>
+                      <p className="text-[11px] text-slate-500 mt-0.5">Estimated on the <strong className="uppercase text-blue-600">{form.taxRegime} Regime</strong> structure.</p>
                     </div>
                     <div className="flex items-center gap-2">
                       {result.master?.esiApplicable ? (
-                        <span className="px-3 py-1 rounded-full bg-amber-50 text-amber-700 text-[10px] font-semibold border border-amber-200">
-                          ESI Active (Basic &lt; ₹21,000)
+                        <span className="px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-700 text-[9.5px] font-semibold border border-amber-200">
+                          ESI Active (Gross &le; ₹21,000)
                         </span>
                       ) : null}
                       <button
                         type="button"
                         onClick={handleDownloadBreakup}
-                        className="bg-white border border-slate-300 hover:bg-slate-50 text-blue-600 px-3.5 py-1.5 rounded-lg flex items-center gap-2 text-xs font-semibold shadow-sm"
+                        className="bg-white border border-slate-200 hover:bg-slate-50 text-blue-600 px-2.5 py-1 rounded-md flex items-center gap-1.5 text-xs font-semibold shadow-xs cursor-pointer"
                       >
-                        <Download size={12} /> Download Breakup
+                        <Download size={11} /> Download Breakup
                       </button>
                     </div>
                   </div>
@@ -1362,8 +1362,8 @@ const SalaryCalculator = ({ embedded = false }) => {
                     />
                   )}
 
-                  <div className="rounded-2xl border border-blue-200 bg-blue-50 p-5 mt-6 shadow-sm">
-                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 text-xs divide-x divide-blue-200/50">
+                  <div className="rounded-xl border border-blue-200/80 bg-blue-50/70 p-3.5 mt-4 shadow-xs">
+                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 text-xs divide-x divide-blue-200/40">
                       <SummaryItem label="Net Take-Home" value={fmtMoney(result.payroll?.netSalary)} highlight={true} />
                       <SummaryItem label="Monthly CTC" value={fmtMoney(result.monthlyCTC)} />
                       <SummaryItem label="Gross Earnings" value={fmtMoney(result.payroll?.earnings?.totalEarnings)} />
@@ -1374,14 +1374,14 @@ const SalaryCalculator = ({ embedded = false }) => {
                 </div>
               </>
             ) : (
-              <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-8 text-center flex flex-col items-center justify-center min-h-[400px]">
-                <div className="p-4 rounded-full bg-blue-50 text-blue-600 mb-4 animate-pulse">
-                  <svg className="w-10 h-10" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+              <div className="bg-white border border-slate-200/90 rounded-xl shadow-xs p-6 text-center flex flex-col items-center justify-center min-h-[340px]">
+                <div className="p-3 rounded-full bg-blue-50 text-blue-600 mb-3 animate-pulse">
+                  <svg className="w-8 h-8" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m-3-2.818.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
                   </svg>
                 </div>
-                <h3 className="text-base font-bold text-slate-800">No Calculation Active</h3>
-                <p className="text-sm text-slate-500 mt-1 max-w-sm">
+                <h3 className="text-sm font-bold text-slate-800">No Calculation Active</h3>
+                <p className="text-xs text-slate-500 mt-0.5 max-w-xs">
                   Enter an Annual or Monthly CTC amount to dynamically break down components, calculate taxes, and estimate net take-home pay.
                 </p>
               </div>
@@ -1396,10 +1396,10 @@ const SalaryCalculator = ({ embedded = false }) => {
 const InputField = ({ label, value, onChange, suffix, hint }) => (
   <div className="w-full">
     <div className="flex justify-between items-center">
-      <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">{label}</label>
-      {hint && <span className="text-[10px] text-slate-400">{hint}</span>}
+      <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{label}</label>
+      {hint && <span className="text-[9px] text-slate-400">{hint}</span>}
     </div>
-    <div className="relative mt-1.5 rounded-lg shadow-sm">
+    <div className="relative mt-1 rounded-md shadow-xs">
       <input
         type="number"
         step="any"
@@ -1407,11 +1407,11 @@ const InputField = ({ label, value, onChange, suffix, hint }) => (
         value={value === 0 ? '' : value}
         placeholder="0"
         onChange={(e) => onChange(Number(e.target.value) || 0)}
-        className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-white"
+        className="w-full border border-slate-200 hover:border-slate-300 rounded-md px-2.5 py-1.5 text-xs text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-white transition-colors"
       />
       {suffix && (
-        <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
-          <span className="text-slate-500 text-xs font-semibold">{suffix}</span>
+        <div className="absolute inset-y-0 right-0 flex items-center pr-2.5 pointer-events-none">
+          <span className="text-slate-400 text-[10.5px] font-medium">{suffix}</span>
         </div>
       )}
     </div>
@@ -1425,16 +1425,16 @@ const BreakdownTable = ({ title, rows }) => {
     : rows;
 
   return (
-    <div className="overflow-hidden rounded-xl border border-slate-200 shadow-sm bg-white">
-      <div className="bg-slate-50 border-b border-slate-200 px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-slate-500">{title}</div>
+    <div className="overflow-hidden rounded-lg border border-slate-200/90 shadow-xs bg-white">
+      <div className="bg-slate-50/80 border-b border-slate-200/90 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">{title}</div>
       <div className="divide-y divide-slate-100">
         {visibleRows.map(([label, monthly]) => {
           const isTotal = label.startsWith('Total') || label.startsWith('Net');
           return (
             <div
               key={`${title}-${label}`}
-              className={`grid grid-cols-[1.5fr,0.85fr,0.85fr] px-4 py-2 text-xs transition-all hover:bg-slate-50/50 ${
-                isTotal ? 'bg-slate-50/50 font-bold border-t border-slate-200 text-slate-900 text-[12px]' : 'text-slate-600'
+              className={`grid grid-cols-[1.5fr,0.85fr,0.85fr] px-3 py-1.5 text-xs transition-all hover:bg-slate-50/50 ${
+                isTotal ? 'bg-slate-50/60 font-bold border-t border-slate-200/90 text-slate-900 text-xs' : 'text-slate-600'
               }`}
             >
               <span>{label}</span>
@@ -1449,9 +1449,9 @@ const BreakdownTable = ({ title, rows }) => {
 };
 
 const SummaryItem = ({ label, value, highlight }) => (
-  <div className="px-3 first:pl-0">
-    <div className={`text-[9px] font-bold uppercase tracking-wider ${highlight ? 'text-blue-600 font-extrabold' : 'text-slate-400'}`}>{label}</div>
-    <div className={`mt-1 font-extrabold tracking-tight ${highlight ? 'text-blue-900 text-base sm:text-lg' : 'text-slate-800 text-xs sm:text-sm'}`}>{value}</div>
+  <div className="px-2.5 first:pl-0">
+    <div className={`text-[8.5px] font-bold uppercase tracking-wider ${highlight ? 'text-blue-600 font-extrabold' : 'text-slate-400'}`}>{label}</div>
+    <div className={`mt-0.5 font-bold tracking-tight ${highlight ? 'text-blue-900 text-sm sm:text-base' : 'text-slate-800 text-xs sm:text-sm'}`}>{value}</div>
   </div>
 );
 

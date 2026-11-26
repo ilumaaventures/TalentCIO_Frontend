@@ -189,26 +189,26 @@ const PayrollSyncSettings = () => {
   const allowedCount = syncMode === 'all' ? totalEmployees : selectedIds.size;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* Header card with status */}
-      <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="flex items-start gap-4">
-          <div className={`p-3 rounded-xl ${isEnabled ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}`}>
-            {isEnabled ? <ShieldCheck size={24} /> : <ShieldAlert size={24} />}
+      <div className="bg-white border border-slate-200/90 rounded-xl p-4 sm:p-4.5 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3">
+        <div className="flex items-start gap-3">
+          <div className={`p-2.5 rounded-lg ${isEnabled ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}`}>
+            {isEnabled ? <ShieldCheck size={20} /> : <ShieldAlert size={20} />}
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-lg font-bold text-slate-800">Flance / MyBill Integration Sync</h2>
-              <span className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full ${
+              <h2 className="text-base font-bold text-slate-800">Flance / MyBill Integration Sync</h2>
+              <span className={`text-[9.5px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full ${
                 isEnabled ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-slate-100 text-slate-600 border border-slate-200'
               }`}>
                 {isEnabled ? 'Integration Active' : 'Integration Standby'}
               </span>
             </div>
-            <p className="text-xs text-slate-500 mt-1">
+            <p className="text-xs text-slate-500 mt-0.5">
               Control which employee profiles from TalentCIO are permitted to sync over to Flance.
               {syncConfig.externalTenantId && (
-                <span className="ml-2 font-mono text-[11px] bg-slate-100 px-2 py-0.5 rounded text-slate-700">
+                <span className="ml-2 font-mono text-[10.5px] bg-slate-100 px-1.5 py-0.5 rounded text-slate-700">
                   Tenant: {syncConfig.externalTenantId}
                 </span>
               )}
@@ -220,22 +220,22 @@ const PayrollSyncSettings = () => {
           type="button"
           onClick={handleSave}
           disabled={saving}
-          className="inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-slate-900 text-white text-xs font-bold uppercase tracking-wider rounded-xl hover:bg-slate-800 disabled:opacity-50 transition-colors shadow-sm"
+          className="inline-flex items-center justify-center gap-1.5 px-4 py-2 bg-slate-900 text-white text-xs font-semibold rounded-lg hover:bg-slate-800 disabled:opacity-50 transition-colors shadow-xs cursor-pointer"
         >
-          {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save size={16} />}
+          {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save size={14} />}
           <span>Save Changes</span>
         </button>
       </div>
 
       {/* Sync Mode Selector */}
-      <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
-        <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Sync Scope</label>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="bg-white border border-slate-200/90 rounded-xl p-4 sm:p-4.5 shadow-xs space-y-3">
+        <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Sync Scope</label>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div
             onClick={() => setSyncMode('selected')}
-            className={`cursor-pointer border-2 rounded-xl p-4 transition-all ${
+            className={`cursor-pointer border-2 rounded-lg p-3 transition-all ${
               syncMode === 'selected'
-                ? 'border-blue-600 bg-blue-50/30'
+                ? 'border-blue-600 bg-blue-50/20'
                 : 'border-slate-200 hover:border-slate-300'
             }`}
           >
@@ -245,20 +245,20 @@ const PayrollSyncSettings = () => {
                 name="syncMode"
                 checked={syncMode === 'selected'}
                 onChange={() => setSyncMode('selected')}
-                className="text-blue-600 focus:ring-blue-500"
+                className="text-blue-600 focus:ring-blue-500 cursor-pointer"
               />
-              <span className="text-sm font-bold text-slate-800">Selected Employees Only (Recommended)</span>
+              <span className="text-xs font-bold text-slate-800">Selected Employees Only (Recommended)</span>
             </div>
-            <p className="text-xs text-slate-500 mt-1 pl-5">
+            <p className="text-[11px] text-slate-500 mt-1 pl-5">
               Only employees explicitly checked below will be synced to Flance. All other profiles will remain local to TalentCIO.
             </p>
           </div>
 
           <div
             onClick={() => setSyncMode('all')}
-            className={`cursor-pointer border-2 rounded-xl p-4 transition-all ${
+            className={`cursor-pointer border-2 rounded-lg p-3 transition-all ${
               syncMode === 'all'
-                ? 'border-blue-600 bg-blue-50/30'
+                ? 'border-blue-600 bg-blue-50/20'
                 : 'border-slate-200 hover:border-slate-300'
             }`}
           >
@@ -268,11 +268,11 @@ const PayrollSyncSettings = () => {
                 name="syncMode"
                 checked={syncMode === 'all'}
                 onChange={() => setSyncMode('all')}
-                className="text-blue-600 focus:ring-blue-500"
+                className="text-blue-600 focus:ring-blue-500 cursor-pointer"
               />
-              <span className="text-sm font-bold text-slate-800">All Active Employees</span>
+              <span className="text-xs font-bold text-slate-800">All Active Employees</span>
             </div>
-            <p className="text-xs text-slate-500 mt-1 pl-5">
+            <p className="text-[11px] text-slate-500 mt-1 pl-5">
               All active employees in this workspace will be automatically synced to Flance during payroll sync cycles.
             </p>
           </div>
@@ -280,17 +280,17 @@ const PayrollSyncSettings = () => {
       </div>
 
       {/* Employee Selection Table */}
-      <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-        <div className="p-4 sm:p-6 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <h3 className="text-sm font-bold text-slate-800">
+      <div className="bg-white border border-slate-200/90 rounded-xl shadow-xs overflow-hidden">
+        <div className="p-3 sm:p-4 border-b border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+          <div className="flex items-center gap-2.5">
+            <h3 className="text-xs font-bold text-slate-800">
               Sync Permissions
             </h3>
-            <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2.5 py-0.5 rounded-full border border-blue-100">
+            <span className="text-[11px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-100">
               {allowedCount} of {totalEmployees} allowed
             </span>
             {filteredEmployees.length !== totalEmployees && (
-              <span className="text-xs text-slate-400">
+              <span className="text-[11px] text-slate-400">
                 ({filteredEmployees.length} matching filter)
               </span>
             )}
@@ -301,14 +301,14 @@ const PayrollSyncSettings = () => {
               <button
                 type="button"
                 onClick={handleSelectAll}
-                className="text-xs font-semibold text-slate-600 hover:text-blue-600 px-3 py-1.5 rounded-lg border border-slate-200 hover:border-blue-300 transition-colors"
+                className="text-xs font-semibold text-slate-600 hover:text-blue-600 px-2.5 py-1 rounded-md border border-slate-200 hover:border-blue-300 transition-colors cursor-pointer"
               >
                 Select Filtered
               </button>
               <button
                 type="button"
                 onClick={handleDeselectAll}
-                className="text-xs font-semibold text-slate-600 hover:text-rose-600 px-3 py-1.5 rounded-lg border border-slate-200 hover:border-rose-300 transition-colors"
+                className="text-xs font-semibold text-slate-600 hover:text-rose-600 px-2.5 py-1 rounded-md border border-slate-200 hover:border-rose-300 transition-colors cursor-pointer"
               >
                 Deselect Filtered
               </button>
@@ -317,7 +317,7 @@ const PayrollSyncSettings = () => {
         </div>
 
         {/* Filter Controls Bar */}
-        <div className="p-4 border-b border-slate-100 bg-slate-50/50 space-y-3">
+        <div className="p-3 border-b border-slate-100 bg-slate-50/50 space-y-2.5">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             {/* Search */}
             <div className="relative">

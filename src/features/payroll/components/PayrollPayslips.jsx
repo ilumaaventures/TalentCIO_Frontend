@@ -322,42 +322,42 @@ const PayrollPayslips = () => {
     }
   };
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* Top Bar: Title, Month Selector, and View Mode Switcher */}
-      <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+      <div className="bg-white border border-slate-200/90 rounded-xl p-4 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-3">
         <div>
           <div className="flex items-center gap-2">
-            <div className="p-2 rounded-xl bg-blue-50 text-blue-600">
-              <FileText size={20} />
+            <div className="p-1.5 rounded-lg bg-blue-50 text-blue-600">
+              <FileText size={18} />
             </div>
-            <h2 className="text-lg font-bold text-slate-800">
+            <h2 className="text-base font-bold text-slate-800">
               {viewMode === 'monthly' ? 'Monthly Payslips Directory' : 'Employee Statement History'}
             </h2>
-            <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
+            <span className="text-[9.5px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
               {periodLabel}
             </span>
           </div>
-          <p className="text-xs text-slate-500 mt-1">
+          <p className="text-[11px] text-slate-500 mt-0.5">
             Review eligible employees, check payslip generation status, and disburse official statements.
           </p>
         </div>
 
         {/* Month Switcher Controls */}
         <div className="flex flex-wrap items-center gap-2">
-          <div className="flex items-center bg-slate-100/80 p-1 rounded-xl border border-slate-200">
+          <div className="flex items-center bg-slate-100/80 p-0.5 rounded-lg border border-slate-200">
             <button
               type="button"
               onClick={handlePrevMonth}
-              className="p-1.5 rounded-lg hover:bg-white text-slate-600 hover:text-slate-900 transition-colors"
+              className="p-1 rounded-md hover:bg-white text-slate-600 hover:text-slate-900 transition-colors"
               title="Previous Month"
             >
-              <ChevronLeft size={16} />
+              <ChevronLeft size={14} />
             </button>
 
             <select
               value={selectedMonth}
               onChange={(e) => setSelectedMonth(Number(e.target.value))}
-              className="bg-transparent text-xs font-bold text-slate-800 px-2 py-1 outline-none cursor-pointer"
+              className="bg-transparent text-xs font-semibold text-slate-800 px-1.5 py-0.5 outline-none cursor-pointer"
             >
               {MONTH_NAMES.map((m, idx) => (
                 <option key={m} value={idx + 1}>{m}</option>
@@ -367,7 +367,7 @@ const PayrollPayslips = () => {
             <select
               value={selectedYear}
               onChange={(e) => setSelectedYear(Number(e.target.value))}
-              className="bg-transparent text-xs font-bold text-slate-800 px-2 py-1 outline-none cursor-pointer"
+              className="bg-transparent text-xs font-semibold text-slate-800 px-1.5 py-0.5 outline-none cursor-pointer"
             >
               {[2024, 2025, 2026, 2027, 2028].map((y) => (
                 <option key={y} value={y}>{y}</option>
@@ -377,17 +377,17 @@ const PayrollPayslips = () => {
             <button
               type="button"
               onClick={handleNextMonth}
-              className="p-1.5 rounded-lg hover:bg-white text-slate-600 hover:text-slate-900 transition-colors"
+              className="p-1 rounded-md hover:bg-white text-slate-600 hover:text-slate-900 transition-colors"
               title="Next Month"
             >
-              <ChevronRight size={16} />
+              <ChevronRight size={14} />
             </button>
           </div>
 
           <button
             type="button"
             onClick={handleResetToCurrentMonth}
-            className="text-xs font-semibold text-slate-600 hover:text-blue-600 px-3 py-2 rounded-xl border border-slate-200 hover:border-blue-300 transition-colors bg-white cursor-pointer"
+            className="text-xs font-semibold text-slate-600 hover:text-blue-600 px-2.5 py-1.5 rounded-lg border border-slate-200 hover:border-blue-300 transition-colors bg-white cursor-pointer shadow-xs"
           >
             Today
           </button>
@@ -397,20 +397,20 @@ const PayrollPayslips = () => {
               type="button"
               onClick={() => setShowResetConfirm(true)}
               disabled={resettingRoll || loadingRoll}
-              className="text-xs font-semibold text-rose-700 hover:text-rose-800 px-3 py-2 rounded-xl border border-rose-200 hover:border-rose-300 transition-colors bg-rose-50/80 hover:bg-rose-100/80 flex items-center gap-1.5 cursor-pointer shadow-xs"
+              className="text-xs font-semibold text-rose-700 hover:text-rose-800 px-2.5 py-1.5 rounded-lg border border-rose-200 hover:border-rose-300 transition-colors bg-rose-50/80 hover:bg-rose-100/80 flex items-center gap-1.5 cursor-pointer shadow-xs"
               title={`Reset ${periodLabel} payslips to clear records and prepare for fresh sync from Flance`}
             >
-              <RotateCcw size={14} className={resettingRoll ? "animate-spin" : ""} />
+              <RotateCcw size={13} className={resettingRoll ? "animate-spin" : ""} />
               <span>Reset for Sync</span>
             </button>
           )}
 
           {isAdmin && (
-            <div className="flex items-center gap-1 border border-slate-200 p-1 rounded-xl bg-slate-50">
+            <div className="flex items-center gap-1 border border-slate-200 p-0.5 rounded-lg bg-slate-50">
               <button
                 type="button"
                 onClick={() => setViewMode('monthly')}
-                className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
+                className={`px-2.5 py-1 text-xs font-bold rounded-md transition-all cursor-pointer ${
                   viewMode === 'monthly'
                     ? 'bg-white text-blue-600 shadow-xs'
                     : 'text-slate-500 hover:text-slate-800'
@@ -424,7 +424,7 @@ const PayrollPayslips = () => {
                   setViewMode('single');
                   loadSingleProfile(selectedUserId || user?._id);
                 }}
-                className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
+                className={`px-2.5 py-1 text-xs font-bold rounded-md transition-all cursor-pointer ${
                   viewMode === 'single'
                     ? 'bg-white text-blue-600 shadow-xs'
                     : 'text-slate-500 hover:text-slate-800'
@@ -439,71 +439,71 @@ const PayrollPayslips = () => {
             type="button"
             onClick={viewMode === 'monthly' ? loadMonthlyRoll : () => loadSingleProfile(selectedUserId)}
             disabled={loadingRoll || loadingSingle}
-            className="p-2 rounded-xl border border-slate-200 text-slate-500 hover:bg-slate-50 transition-colors"
+            className="p-1.5 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 transition-colors cursor-pointer shadow-xs"
             title="Refresh Data"
           >
-            <RefreshCw size={16} className={loadingRoll || loadingSingle ? 'animate-spin' : ''} />
+            <RefreshCw size={14} className={loadingRoll || loadingSingle ? 'animate-spin' : ''} />
           </button>
         </div>
       </div>
 
       {/* MONTHLY DIRECTORY VIEW (All Eligible Employees) */}
       {viewMode === 'monthly' && (
-        <div className="space-y-6">
+        <div className="space-y-4">
           {/* Monthly KPI Stats Banner */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Total Eligible</p>
-              <div className="flex items-baseline gap-2 mt-1">
-                <span className="text-2xl font-black text-slate-900">{monthlyData.totalEligible || 0}</span>
-                <span className="text-xs font-semibold text-slate-400">Employees</span>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="bg-white border border-slate-200/90 rounded-xl p-3.5 shadow-xs">
+              <p className="text-[9.5px] font-bold uppercase tracking-wider text-slate-400">Total Eligible</p>
+              <div className="flex items-baseline gap-1.5 mt-0.5">
+                <span className="text-xl font-bold text-slate-900">{monthlyData.totalEligible || 0}</span>
+                <span className="text-xs font-medium text-slate-400">Employees</span>
               </div>
-              <p className="text-[11px] text-slate-400 mt-1">Active for {periodLabel}</p>
+              <p className="text-[10.5px] text-slate-400 mt-0.5">Active for {periodLabel}</p>
             </div>
 
-            <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-600">Payslips Generated</p>
-              <div className="flex items-baseline gap-2 mt-1">
-                <span className="text-2xl font-black text-emerald-600">{monthlyData.generatedCount || 0}</span>
+            <div className="bg-white border border-slate-200/90 rounded-xl p-3.5 shadow-xs">
+              <p className="text-[9.5px] font-bold uppercase tracking-wider text-emerald-600">Payslips Generated</p>
+              <div className="flex items-baseline gap-1.5 mt-0.5">
+                <span className="text-xl font-bold text-emerald-600">{monthlyData.generatedCount || 0}</span>
                 <span className="text-xs font-semibold text-emerald-600/70">
                   ({monthlyData.totalEligible > 0 ? Math.round((monthlyData.generatedCount / monthlyData.totalEligible) * 100) : 0}%)
                 </span>
               </div>
-              <p className="text-[11px] text-slate-400 mt-1">Published statements</p>
+              <p className="text-[10.5px] text-slate-400 mt-0.5">Published statements</p>
             </div>
 
-            <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-amber-600">Pending Generation</p>
-              <div className="flex items-baseline gap-2 mt-1">
-                <span className="text-2xl font-black text-amber-600">{monthlyData.pendingCount || 0}</span>
+            <div className="bg-white border border-slate-200/90 rounded-xl p-3.5 shadow-xs">
+              <p className="text-[9.5px] font-bold uppercase tracking-wider text-amber-600">Pending Generation</p>
+              <div className="flex items-baseline gap-1.5 mt-0.5">
+                <span className="text-xl font-bold text-amber-600">{monthlyData.pendingCount || 0}</span>
                 <span className="text-xs font-semibold text-amber-600/70">Pending</span>
               </div>
-              <p className="text-[11px] text-slate-400 mt-1">Awaiting statement creation</p>
+              <p className="text-[10.5px] text-slate-400 mt-0.5">Awaiting statement creation</p>
             </div>
 
-            <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-blue-600">Total Disbursed Net</p>
-              <div className="flex items-baseline gap-2 mt-1">
-                <span className="text-2xl font-black text-blue-600">{fmtMoney(monthlyData.totalDisbursed || 0)}</span>
+            <div className="bg-white border border-slate-200/90 rounded-xl p-3.5 shadow-xs">
+              <p className="text-[9.5px] font-bold uppercase tracking-wider text-blue-600">Total Disbursed Net</p>
+              <div className="flex items-baseline gap-1.5 mt-0.5">
+                <span className="text-xl font-bold text-blue-600">{fmtMoney(monthlyData.totalDisbursed || 0)}</span>
               </div>
-              <p className="text-[11px] text-slate-400 mt-1">Net compensation for month</p>
+              <p className="text-[10.5px] text-slate-400 mt-0.5">Net compensation for month</p>
             </div>
           </div>
 
           {/* Directory Table Card */}
-          <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+          <div className="bg-white border border-slate-200/90 rounded-xl shadow-xs overflow-hidden">
             {/* Filter Bar */}
-            <div className="p-4 sm:p-5 border-b border-slate-100 bg-slate-50/50 flex flex-col md:flex-row md:items-center justify-between gap-3">
+            <div className="p-3 sm:p-3.5 border-b border-slate-100 bg-slate-50/50 flex flex-col md:flex-row md:items-center justify-between gap-2.5">
               <div className="flex items-center gap-2 flex-wrap">
                 {/* Search */}
                 <div className="relative w-64">
-                  <Search className="absolute left-3 top-2.5 text-slate-400" size={15} />
+                  <Search className="absolute left-2.5 top-2.5 text-slate-400" size={13} />
                   <input
                     type="text"
                     placeholder="Search name, code, email..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full pl-9 pr-3 py-1.5 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                    className="w-full pl-8 pr-2.5 py-1.5 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
                   />
                 </div>
 
@@ -511,7 +511,7 @@ const PayrollPayslips = () => {
                 <select
                   value={statusFilter}
                   onChange={(e) => setStatusFilter(e.target.value)}
-                  className="px-3 py-1.5 text-xs font-semibold border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-slate-700"
+                  className="px-2.5 py-1.5 text-xs font-semibold border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white text-slate-700 cursor-pointer"
                 >
                   <option value="all">All Status ({monthlyData.totalEligible || 0})</option>
                   <option value="generated">Generated ({monthlyData.generatedCount || 0})</option>
@@ -523,7 +523,7 @@ const PayrollPayslips = () => {
                   <select
                     value={deptFilter}
                     onChange={(e) => setDeptFilter(e.target.value)}
-                    className="px-3 py-1.5 text-xs font-semibold border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-slate-700"
+                    className="px-2.5 py-1.5 text-xs font-semibold border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white text-slate-700 cursor-pointer"
                   >
                     <option value="all">All Departments</option>
                     {departments.map(d => (
@@ -533,7 +533,7 @@ const PayrollPayslips = () => {
                 )}
               </div>
 
-              <div className="text-xs text-slate-500 font-semibold">
+              <div className="text-xs text-slate-500 font-medium">
                 Showing {filteredEmployees.length} of {monthlyData.totalEligible || 0} eligible users
               </div>
             </div>
