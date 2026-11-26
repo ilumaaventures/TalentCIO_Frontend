@@ -1,12 +1,13 @@
 import React from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Calculator, Settings, RefreshCw, FileText, History } from 'lucide-react';
+import { Calculator, Settings, RefreshCw, FileText, History, PlayCircle } from 'lucide-react';
 import { useAuth } from '@/features/auth/context/AuthContext';
 import SalaryCalculator from './SalaryCalculator';
 import PayrollSettings from '@/features/settings/pages/PayrollSettings';
 import PayrollSyncSettings from '../components/PayrollSyncSettings';
 import PayrollPayslips from '../components/PayrollPayslips';
 import ReviseSalaryDetailsTab from '../components/ReviseSalaryDetailsTab';
+import PayrollProcessing from '../components/PayrollProcessing';
 
 const Payroll = ({ defaultTab = 'calculator' }) => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -14,16 +15,20 @@ const Payroll = ({ defaultTab = 'calculator' }) => {
   const currentTab = rawTab === 'payslip' ? 'payslips' : rawTab;
   const { user } = useAuth();
 
-  const isAdmin = user?.roles?.some(role => ['Admin', 'Super Admin', 'System Admin'].includes(role))
+  const isAdmin = user?.roles?.some(role => ['Admin', 'Super Admin', 'System Admin', 'HR Admin'].includes(role))
     || user?.permissions?.includes('*');
   const canManageConfig = isAdmin || user?.permissions?.includes('payroll.config.manage');
   const canManageRevisions = isAdmin || canManageConfig
     || user?.permissions?.includes('payroll.salary.manage')
     || user?.permissions?.includes('employee.revision.manage')
     || user?.permissions?.includes('employee.revision.create');
+  const canProcessPayroll = isAdmin || canManageConfig || user?.permissions?.includes('payroll.salary.manage');
 
   const tabs = [
     { id: 'calculator', name: 'Salary Calculator', icon: Calculator },
+    ...(canProcessPayroll ? [
+      { id: 'process', name: 'Process Payroll', icon: PlayCircle }
+    ] : []),
     { id: 'payslips', name: 'Payslips', icon: FileText },
     ...(canManageRevisions ? [
       { id: 'revisions', name: 'Revise Salary Details', icon: History }
@@ -77,6 +82,7 @@ const Payroll = ({ defaultTab = 'calculator' }) => {
       {/* Tab Content */}
       <div className="pt-1">
         {currentTab === 'calculator' && <SalaryCalculator embedded={true} />}
+        {currentTab === 'process' && canProcessPayroll && <PayrollProcessing />}
         {currentTab === 'payslips' && <PayrollPayslips />}
         {currentTab === 'revisions' && canManageRevisions && (
           <ReviseSalaryDetailsTab />
