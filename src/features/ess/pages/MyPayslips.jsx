@@ -11,12 +11,18 @@ import api from '@/lib/apiClient';
 import { fmtMoney } from '@/features/payroll/utils/payroll';
 import PayslipModal from '@/features/payroll/components/PayslipModal';
 
+const MONTH_NAMES = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'
+];
+
 const MyPayslips = () => {
     const navigate = useNavigate();
     const { user } = useAuth();
 
     const [profile, setProfile]             = useState(null);
     const [payrollConfig, setPayrollConfig] = useState(null);
+    const [payrollRecords, setPayrollRecords] = useState([]);
     const [loading, setLoading]             = useState(true);
     const [search, setSearch]               = useState('');
     const [viewingPayslip, setViewingPayslip] = useState(null);
@@ -25,9 +31,10 @@ const MyPayslips = () => {
         if (!user?._id) return;
         setLoading(true);
         try {
-            const [dossierRes, configRes] = await Promise.allSettled([
+            const [dossierRes, configRes, myPayslipsRes] = await Promise.allSettled([
                 api.get(`/dossier/${user._id}`),
-                api.get('/payroll/config')
+                api.get('/payroll/config'),
+                api.get('/payroll/my-payslips')
             ]);
 
             if (dossierRes.status === 'fulfilled') {
@@ -35,6 +42,9 @@ const MyPayslips = () => {
             }
             if (configRes.status === 'fulfilled') {
                 setPayrollConfig(configRes.value.data);
+            }
+            if (myPayslipsRes.status === 'fulfilled') {
+                setPayrollRecords(myPayslipsRes.value.data?.data || []);
             }
         } catch (err) {
             console.error('Failed to load payslip data:', err);
@@ -74,6 +84,7 @@ const MyPayslips = () => {
 
     const getPayslipComponents = (payrollItem) => {
         if (!profile || !payrollItem) return null;
+        if (payrollItem.earningsLineItems || payrollItem.payslip?.earningsLineItems) return null;
 
         const activeBreakup = getBreakupData();
         if (!activeBreakup) return null;
@@ -95,10 +106,46 @@ const MyPayslips = () => {
         };
     };
 
-    const history = profile?.compensation?.payrollHistory || profile?.payrollHistory || [];
-    
+    const legacyHistory = profile?.compensation?.payrollHistory || profile?.payrollHistory || [];
+
+    const authoritativeRecords = payrollRecords.map((rec) => {
+        const periodLabel = `${MONTH_NAMES[(rec.month || 1) - 1] || 'Month'} ${rec.year}`;
+        return {
+            _id: rec._id,
+            payrollId: rec._id,
+            period: periodLabel,
+            netSalary: rec.netSalary,
+            status: rec.status === 'paid' ? 'Paid' : (rec.status === 'approved' ? 'Approved' : rec.status),
+            processedDate: rec.paymentDate || rec.updatedAt || rec.createdAt,
+            paymentMode: rec.paymentMethod || 'Bank Transfer',
+            isAuthoritativeRecord: true
+        };
+    });
+
+    const authoritativePeriods = new Set(authoritativeRecords.map(r => r.period.toLowerCase()));
+    const combinedHistory = [
+        ...authoritativeRecords,
+        ...legacyHistory.filter(h => !authoritativePeriods.has(String(h.period || '').trim().toLowerCase()))
+    ];
+
+    const handleOpenPayslip = async (pay) => {
+        if (pay?.payrollId) {
+            try {
+                const res = await api.get(`/payroll/my-payslips/${pay.payrollId}/generate-payslip`);
+                if (res.data?.payslip) {
+                    setViewingPayslip(res.data.payslip);
+                    return;
+                }
+            } catch (err) {
+                console.error('Failed to generate official payslip:', err);
+                toast.error('Failed to load official payslip.');
+            }
+        }
+        setViewingPayslip(pay);
+    };
+
     // Sort history chronologically descending
-    const sortedHistory = [...history].sort((a, b) => new Date(b.processedDate || b.createdAt || 0) - new Date(a.processedDate || a.createdAt || 0));
+    const sortedHistory = [...combinedHistory].sort((a, b) => new Date(b.processedDate || b.createdAt || 0) - new Date(a.processedDate || a.createdAt || 0));
 
     const filtered = search.trim()
         ? sortedHistory.filter(p => p.period?.toLowerCase().includes(search.toLowerCase()))
@@ -184,7 +231,7 @@ const MyPayslips = () => {
                                 return (
                                     <div
                                         key={pay._id || pay.period}
-                                        onClick={() => setViewingPayslip(pay)}
+                                        onClick={() => handleOpenPayslip(pay)}
                                         className="p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-slate-50/80 transition-all cursor-pointer group"
                                     >
                                         <div className="flex items-center gap-4">
@@ -237,7 +284,7 @@ const MyPayslips = () => {
                                                     type="button"
                                                     onClick={(e) => {
                                                         e.stopPropagation();
-                                                        setViewingPayslip(pay);
+                                                        handleOpenPayslip(pay);
                                                     }}
                                                     className="inline-flex items-center gap-1.5 rounded-xl bg-blue-50 border border-blue-100 px-3.5 py-2 text-xs font-bold text-blue-700 hover:bg-blue-600 hover:text-white transition-all shadow-2xs cursor-pointer"
                                                 >

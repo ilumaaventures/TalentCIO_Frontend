@@ -229,9 +229,22 @@ const PayrollPayslips = () => {
   // Handle view statement modal
   const handleViewStatement = async (emp, payslipItem) => {
     try {
+      const targetSlip = payslipItem || emp.payslip;
+      const urlMatch = String(targetSlip?.payslipUrl || '').match(/\/payroll\/records\/([a-f0-9]{24})/i);
+      const payrollRecordId = targetSlip?.payrollId || emp?.payrollId || (urlMatch ? urlMatch[1] : null);
+
+      if (payrollRecordId) {
+        const slipRes = await api.get(`/payroll/records/${payrollRecordId}/generate-payslip`);
+        if (slipRes.data?.payslip) {
+          setActiveModalProfile(null);
+          setViewingPayslip(slipRes.data.payslip);
+          return;
+        }
+      }
+
       const dossierRes = await api.get(`/dossier/${emp._id}`);
       setActiveModalProfile(dossierRes.data);
-      setViewingPayslip(payslipItem || emp.payslip);
+      setViewingPayslip(targetSlip);
     } catch (err) {
       console.error('Failed to load profile for payslip modal', err);
       toast.error('Failed to load full employee payslip statement.');
@@ -240,6 +253,7 @@ const PayrollPayslips = () => {
 
   // Payslip components breakdown calculation for modal
   const getModalPayslipComponents = (payrollItem) => {
+    if (payrollItem?.earningsLineItems || payrollItem?.payslip?.earningsLineItems) return null;
     if (!activeModalProfile || !payrollItem) return null;
     const breakup = activeModalProfile.compensation?.salaryBreakup instanceof Map
       ? Object.fromEntries(activeModalProfile.compensation.salaryBreakup)

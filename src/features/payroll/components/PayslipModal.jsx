@@ -293,11 +293,24 @@ export const PayslipModal = ({ viewingPayslip, setViewingPayslip, profile, getPa
       });
   }
 
-  // Employer PF (under RETIRALS) if PF is active
-  const employerPFVal = isPfEnabled ? Number(rawBreakup.employerPF || rawBreakup.pfEmployer || slip.employerContributions?.pfEmployer || 0) : 0;
-  if (isPfEnabled && employerPFVal > 0 && (!slip.employerContributionsLineItems || slip.employerContributionsLineItems.length === 0)) {
-    earningsList.push({ isHeader: true, name: 'RETIRALS', rightLabel: 'Retirals Benefit' });
-    earningsList.push({ id: 'employerPF', name: 'Employer PF', rate: employerPFVal, monthly: employerPFVal, arrear: '-', total: employerPFVal });
+  // Employer PF / Retirals & Insurance (matching exact 1-page Flance PDF spec)
+  const ec = slip.employerContributions || {};
+  const employerPFVal = isPfEnabled ? Number(ec.pfEmployer || rawBreakup.employerPF || rawBreakup.pfEmployer || 0) : 0;
+  const employerLwfVal = Number(ec.lwfEmployer || rawBreakup.lwfEmployer || 0);
+  const employerGratuityVal = Number(ec.gratuity || rawBreakup.gratuity || 0);
+  const employerInsuranceVal = Number(ec.insuranceEmployer || ec.insurance || rawBreakup.insuranceAmount || 0);
+  const employerNpsVal = Number(ec.nps || rawBreakup.employerNPS || 0);
+
+  // Add Insurance (if not already in earningsList) so CTC and Net Take-Home balance exactly
+  if (employerInsuranceVal > 0 && !earningsList.some(e => e.id === 'insurance' || e.id === 'insuranceEmployer')) {
+    earningsList.push({
+      id: 'insurance',
+      name: 'Insurance',
+      rate: employerInsuranceVal,
+      monthly: employerInsuranceVal,
+      arrear: '-',
+      total: employerInsuranceVal
+    });
   }
 
   // 5. Deductions List
@@ -311,7 +324,7 @@ export const PayslipModal = ({ viewingPayslip, setViewingPayslip, profile, getPa
     }));
   } else if (slip.deductions && typeof slip.deductions === 'object' && !comps) {
     const d = slip.deductions;
-    if (d.pfEmployee > 0 || d.pf > 0) deductionsList.push({ name: 'PF - Employees', amount: d.pfEmployee || d.pf });
+    if (d.pfEmployee > 0 || d.pf > 0) deductionsList.push({ name: 'PF -Employees', amount: d.pfEmployee || d.pf });
     if (d.esiEmployee > 0 || d.esi > 0) deductionsList.push({ name: 'ESIC Deduction', amount: d.esiEmployee || d.esi });
     if (d.professionalTax > 0 || d.pt > 0) deductionsList.push({ name: 'Prof Tax Deduction', amount: d.professionalTax || d.pt });
     if (d.tds > 0) deductionsList.push({ name: 'Income Tax', amount: d.tds });
@@ -352,35 +365,39 @@ export const PayslipModal = ({ viewingPayslip, setViewingPayslip, profile, getPa
     deductionsList.push({ name: 'Insurance Deduction', amount: insuranceDedVal });
   }
 
-  // 6. Employer Contributions & CTC List (Flance Parity)
-  let employerContributionsList = [];
-  if (Array.isArray(slip.employerContributionsLineItems) && slip.employerContributionsLineItems.length > 0) {
-    employerContributionsList = slip.employerContributionsLineItems.map(item => ({
-      name: item.name,
-      amount: Number(item.amount) || 0,
-      details: item.details || '-'
-    }));
-  } else if (slip.employerContributions && typeof slip.employerContributions === 'object') {
-    const ec = slip.employerContributions;
-    if (ec.pfEmployer > 0) employerContributionsList.push({ name: 'Provident Fund (Employer PF)', amount: ec.pfEmployer, details: 'Employer PF Contribution (EPF + EPS)' });
-    if (ec.esiEmployer > 0) employerContributionsList.push({ name: 'ESI (Employer Share)', amount: ec.esiEmployer, details: 'Employee State Insurance (3.25%)' });
-    if (ec.gratuity > 0) employerContributionsList.push({ name: 'Gratuity Provision', amount: ec.gratuity, details: 'Retirement Gratuity Provision (4.81%)' });
-    if (ec.insuranceEmployer > 0 || ec.insurance > 0) employerContributionsList.push({ name: 'Group Medical Insurance', amount: ec.insuranceEmployer || ec.insurance, details: 'Health & Accidental Coverage' });
-    if (ec.lwfEmployer > 0) employerContributionsList.push({ name: 'Labour Welfare Fund (Employer)', amount: ec.lwfEmployer, details: 'LWF Contribution' });
-    if (ec.nps > 0) employerContributionsList.push({ name: 'Employer NPS', amount: ec.nps, details: 'National Pension Scheme' });
-  } else if (isPfEnabled && employerPFVal > 0) {
-    employerContributionsList.push({ name: 'Provident Fund (Employer Contribution)', amount: employerPFVal, details: '12% of Basic up to stat limit (EPS + EPF)' });
+  if (employerInsuranceVal > 0 && !deductionsList.some(d => d.name.toLowerCase().includes('insurance'))) {
+    deductionsList.push({ name: 'Insurance Deduction', amount: employerInsuranceVal });
   }
 
-  // Totals calculation
-  const computedEarnings = earningsList.reduce((acc, curr) => curr.isHeader ? acc : acc + (Number(curr.monthly) || 0), 0);
-  const computedDeductions = deductionsList.reduce((acc, curr) => curr.isHeader ? acc : acc + (Number(curr.amount) || 0), 0);
+  // Retirals rows (paired under RETIRALS / Retirals Benefit so CTC and Net Take-Home match exact PDF layout)
+  const retiralEarnings = [];
+  const retiralDeductions = [];
+  if (employerPFVal > 0) {
+    retiralEarnings.push({ id: 'employerPF', name: 'Employer PF', rate: employerPFVal, monthly: employerPFVal, arrear: '-', total: employerPFVal });
+    retiralDeductions.push({ name: 'Employer PF', amount: employerPFVal });
+  }
+  if (employerLwfVal > 0) {
+    retiralEarnings.push({ id: 'employerLWF', name: 'Employer LWF', rate: employerLwfVal, monthly: employerLwfVal, arrear: '-', total: employerLwfVal });
+    retiralDeductions.push({ name: 'Employer LWF', amount: employerLwfVal });
+  }
+  if (employerGratuityVal > 0) {
+    retiralEarnings.push({ id: 'gratuity', name: 'Gratuity', rate: employerGratuityVal, monthly: employerGratuityVal, arrear: '-', total: employerGratuityVal });
+    retiralDeductions.push({ name: 'Gratuity', amount: employerGratuityVal });
+  }
+  if (employerNpsVal > 0) {
+    retiralEarnings.push({ id: 'nps', name: 'Employer NPS', rate: employerNpsVal, monthly: employerNpsVal, arrear: '-', total: employerNpsVal });
+    retiralDeductions.push({ name: 'Employer NPS', amount: employerNpsVal });
+  }
 
-  const totalEarningsMonthly = Number(slip.grossSalary || slip.grossPay || slip.earnings?.totalEarnings) || computedEarnings;
-  const totalDeductions = Number(slip.totalDeductions || slip.deductions?.totalDeductions) || computedDeductions;
-  const netTakeHome = Number(slip.netSalary) || (totalEarningsMonthly - totalDeductions);
-  const totalEmployerContributions = Number(slip.totalEmployerContributions) || employerContributionsList.reduce((acc, c) => acc + (Number(c.amount) || 0), 0);
-  const monthlyCTC = Number(slip.monthlyCTC || slip.compensation?.ctcMonthly) || (totalEarningsMonthly + totalEmployerContributions);
+  const totalRetirals = retiralEarnings.reduce((acc, r) => acc + (Number(r.monthly) || 0), 0);
+  const employeeEarningsMonthly = Number(slip.grossSalary || slip.grossPay || slip.earnings?.totalEarnings) || earningsList.filter(e => !e.isHeader && e.id !== 'insurance').reduce((acc, curr) => acc + (Number(curr.monthly) || 0), 0);
+  const employeeDeductionsTotal = Number(slip.totalDeductions || slip.deductions?.totalDeductions) || deductionsList.filter(d => !d.isHeader && d.name !== 'Insurance Deduction').reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0);
+
+  const ctcEarningsTotal = Number(slip.monthlyCTC || slip.compensation?.ctcMonthly) || (employeeEarningsMonthly + totalRetirals + employerInsuranceVal);
+  const totalDeductionsWithRetirals = employeeDeductionsTotal + totalRetirals + employerInsuranceVal;
+  const totalEarningsMonthly = employeeEarningsMonthly;
+  const totalDeductions = totalDeductionsWithRetirals;
+  const netTakeHome = Number(slip.netSalary) || Math.max(0, ctcEarningsTotal - totalDeductionsWithRetirals);
 
   // 7. Dynamic Financial Year Calculation for Tax Worksheet
   const periodParts = payPeriod.split(' ');
@@ -438,8 +455,8 @@ export const PayslipModal = ({ viewingPayslip, setViewingPayslip, profile, getPa
   const tdsMonths = tw.tdsMonths || {};
   const leaveBalance = Number(slip.leaveBalance || emp.leaveBalance || profile?.leaveBalance || 0).toFixed(2);
 
-  // Dynamic earnings rows for worksheet
-  const worksheetEarnings = (tw.componentBreakdown && tw.componentBreakdown.length > 0)
+  // Dynamic earnings rows for worksheet (ensure Other, Bonus, Arrear rows exist like the exact PDF spec)
+  const baseWorksheetEarnings = (tw.componentBreakdown && tw.componentBreakdown.length > 0)
     ? tw.componentBreakdown
     : earningsList.filter(e => !e.isHeader).map(e => ({
         name: e.name,
@@ -447,6 +464,26 @@ export const PayslipModal = ({ viewingPayslip, setViewingPayslip, profile, getPa
         exempt: 0,
         taxable: (Number(e.monthly) || Number(e.rate) || 0) * 12
       }));
+
+  const worksheetEarnings = [...baseWorksheetEarnings];
+  ['Other', 'Bonus', 'Arrear'].forEach((label) => {
+    if (!worksheetEarnings.some(w => String(w.name || '').toLowerCase().includes(label.toLowerCase()))) {
+      worksheetEarnings.push({ name: label, gross: 0, exempt: 0, taxable: 0 });
+    }
+  });
+
+  const handleDownloadPdf = () => {
+    const previousTitle = document.title;
+    const safeEmployeeName = String(employeeName || 'Employee').replace(/[\\/:*?"<>|]/g, ' ').trim();
+    document.title = `${safeEmployeeName} payslip`;
+    const restoreTitle = () => {
+      document.title = previousTitle;
+      window.removeEventListener('afterprint', restoreTitle);
+    };
+    window.addEventListener('afterprint', restoreTitle);
+    window.print();
+    setTimeout(restoreTitle, 1000);
+  };
 
   const basicEarn = worksheetEarnings.find(e => e.name.toLowerCase().includes('basic'));
   const hraEarn = worksheetEarnings.find(e => e.name.toLowerCase().includes('hra') || e.name.toLowerCase().includes('house rent'));
@@ -458,7 +495,22 @@ export const PayslipModal = ({ viewingPayslip, setViewingPayslip, profile, getPa
     <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-xs flex items-start justify-center z-50 p-2 sm:p-6 overflow-y-auto print:p-0 print:bg-white">
       <style type="text/css" media="print">
         {`
+        @page {
+          size: A4 portrait;
+          margin: 0 !important;
+        }
         @media print {
+          html, body {
+            width: 210mm !important;
+            height: 297mm !important;
+            max-height: 297mm !important;
+            overflow: hidden !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            background: white !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
           body * {
             visibility: hidden !important;
           }
@@ -466,13 +518,34 @@ export const PayslipModal = ({ viewingPayslip, setViewingPayslip, profile, getPa
             visibility: visible !important;
           }
           #payslip-print-area {
-            position: absolute !important;
+            position: fixed !important;
             left: 0 !important;
             top: 0 !important;
-            width: 100% !important;
-            padding: 0 !important;
+            width: 210mm !important;
+            height: 297mm !important;
+            max-height: 297mm !important;
+            overflow: hidden !important;
+            padding: 5mm 7mm !important;
             margin: 0 !important;
             background: white !important;
+          }
+          #payslip-print-area .payslip-container {
+            max-width: 100% !important;
+            width: 100% !important;
+            padding: 5px !important;
+            font-size: 7.5px !important;
+            line-height: 1.12 !important;
+            box-shadow: none !important;
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+          }
+          #payslip-print-area .py-0\\.5 {
+            padding-top: 1px !important;
+            padding-bottom: 1px !important;
+          }
+          #payslip-print-area .py-1, #payslip-print-area .py-1\\.5 {
+            padding-top: 2px !important;
+            padding-bottom: 2px !important;
           }
         }
         `}
@@ -490,7 +563,7 @@ export const PayslipModal = ({ viewingPayslip, setViewingPayslip, profile, getPa
           </div>
           <div className="flex items-center gap-2">
             <Button
-              onClick={() => window.print()}
+              onClick={handleDownloadPdf}
               className="bg-blue-600 hover:bg-blue-500 text-white text-xs px-3 py-1.5 flex items-center gap-1.5 cursor-pointer shadow-xs border border-blue-400/40"
             >
               <Printer size={13} />
@@ -510,14 +583,21 @@ export const PayslipModal = ({ viewingPayslip, setViewingPayslip, profile, getPa
         <div className="p-3 sm:p-6 bg-slate-100/60 print:p-0 print:bg-white" id="payslip-print-area">
           <div className="payslip-container mx-auto max-w-4xl bg-white border-2 border-black p-4 sm:p-5 shadow-xs print:shadow-none print:border-2 print:border-black print:p-4 text-black font-sans text-[10px] leading-tight">
             
-            {/* Header: Logo, Company Name & Address */}
-            <div className="flex items-center justify-between border-b-2 border-black pb-3">
-              <div className="w-1/4 flex items-center">
+            {/* Header: Company Name & Address centered + Company Logo on Right Top */}
+            <div className="flex items-center justify-between border-b-2 border-black pb-2">
+              <div className="w-1/5" />
+              <div className="w-3/5 text-center">
+                <h1 className="text-sm sm:text-base font-bold tracking-tight uppercase text-black">{companyName}</h1>
+                {companyAddress && (
+                  <p className="text-[10px] font-medium text-black mt-0.5 leading-snug">{companyAddress}</p>
+                )}
+              </div>
+              <div className="w-1/5 flex items-center justify-end">
                 {companyLogo ? (
                   <img
                     src={companyLogo}
                     alt={companyName || 'Company Logo'}
-                    className="max-h-14 max-w-[170px] object-contain"
+                    className="max-h-12 max-w-[150px] object-contain"
                   />
                 ) : (
                   <div className="flex items-center gap-1.5 font-bold tracking-tight text-xs text-slate-900">
@@ -525,12 +605,6 @@ export const PayslipModal = ({ viewingPayslip, setViewingPayslip, profile, getPa
                     <span className="font-extrabold text-slate-900">{companyName.split(' ')[0] || 'Company'}</span>
                     <span className="text-slate-600 font-semibold">{companyName.split(' ').slice(1, 3).join(' ') || ''}</span>
                   </div>
-                )}
-              </div>
-              <div className="w-3/4 text-center pr-6">
-                <h1 className="text-sm sm:text-base font-bold tracking-tight uppercase text-black">{companyName}</h1>
-                {companyAddress && (
-                  <p className="text-[10px] font-medium text-black mt-0.5 leading-relaxed">{companyAddress}</p>
                 )}
               </div>
             </div>
@@ -555,9 +629,9 @@ export const PayslipModal = ({ viewingPayslip, setViewingPayslip, profile, getPa
               {/* Col 2: PF UAN No., Month Days, Gender, Payable Days */}
               <div className="col-span-3 border-r border-black p-1.5 space-y-1">
                 <div className="flex justify-between"><span className="text-gray-700">PF UAN No.</span><span className="font-bold">{isPfEnabled ? uanNumber : 'NA'}</span></div>
-                <div className="flex justify-between mt-6"><span className="text-gray-700">Month Days</span><span className="font-bold">{workingDays}</span></div>
+                <div className="flex justify-between mt-6"><span className="text-gray-700">Month Days</span><span className="font-bold">{Number(workingDays || 0).toFixed(2)}</span></div>
                 <div className="flex justify-between"><span className="text-gray-700">Gender</span><span className="font-bold">{gender}</span></div>
-                <div className="flex justify-between"><span className="text-gray-700">Payable Days</span><span className="font-bold">{paidDays}</span></div>
+                <div className="flex justify-between"><span className="text-gray-700">Payable Days</span><span className="font-bold">{Number(paidDays || 0).toFixed(2)}</span></div>
               </div>
 
               {/* Col 3: Location, Payment, Bank A/c, PAN, PF No., ESI No. */}
@@ -605,15 +679,6 @@ export const PayslipModal = ({ viewingPayslip, setViewingPayslip, profile, getPa
                 const earn = earningsList[idx] || null;
                 const ded = deductionsList[idx] || null;
 
-                if (earn?.isHeader || ded?.isHeader) {
-                  return (
-                    <div key={idx} className="grid grid-cols-12 font-bold bg-gray-50 py-0.5">
-                      <div className="col-span-7 border-r border-black px-1.5 uppercase tracking-wider">{earn?.name || ''}</div>
-                      <div className="col-span-5 px-1.5 uppercase tracking-wider">{earn?.rightLabel || ''}</div>
-                    </div>
-                  );
-                }
-
                 return (
                   <div key={idx} className="grid grid-cols-12 py-0.5 items-center">
                     {/* Earnings Cells */}
@@ -629,56 +694,49 @@ export const PayslipModal = ({ viewingPayslip, setViewingPayslip, profile, getPa
                   </div>
                 );
               })}
+
+              {/* RETIRALS / Retirals Benefit section */}
+              {retiralEarnings.length > 0 && (
+                <>
+                  <div className="grid grid-cols-12 font-bold bg-gray-50 py-0.5">
+                    <div className="col-span-7 border-r border-black px-1.5 uppercase tracking-wider">RETIRALS</div>
+                    <div className="col-span-5 px-1.5">Retirals Benefit</div>
+                  </div>
+                  {retiralEarnings.map((re, rIdx) => {
+                    const rd = retiralDeductions[rIdx] || null;
+                    return (
+                      <div key={`ret-${rIdx}`} className="grid grid-cols-12 py-0.5 items-center">
+                        <div className="col-span-2 border-r border-black text-left px-1.5 font-medium">{re.name}</div>
+                        <div className="col-span-1 border-r border-black text-right px-1">{fmtVal(re.rate)}</div>
+                        <div className="col-span-1 border-r border-black text-right px-1">{fmtVal(re.monthly)}</div>
+                        <div className="col-span-1 border-r border-black text-center">{re.arrear}</div>
+                        <div className="col-span-2 border-r border-black text-right px-1.5 font-semibold">{fmtVal(re.total)}</div>
+                        <div className="col-span-3 border-r border-black text-left px-1.5 font-medium">{rd?.name || ''}</div>
+                        <div className="col-span-2 text-right px-1.5 font-semibold">{rd ? fmtVal(rd.amount) : ''}</div>
+                      </div>
+                    );
+                  })}
+                </>
+              )}
             </div>
 
-            {/* Gross Earnings / Total Deductions Row */}
-            <div className="grid grid-cols-12 border-b border-black font-bold py-1 bg-gray-50 items-center">
-              <div className="col-span-2 border-r border-black text-left px-1.5">Gross Earnings</div>
-              <div className="col-span-1 border-r border-black text-right px-1">{fmtVal(totalEarningsMonthly)}</div>
-              <div className="col-span-1 border-r border-black text-right px-1">{fmtVal(totalEarningsMonthly)}</div>
+            {/* CTC / Total Deduction Row */}
+            <div className="grid grid-cols-12 border-b border-black font-bold py-0.5 bg-gray-50 items-center">
+              <div className="col-span-2 border-r border-black text-left px-1.5">CTC</div>
+              <div className="col-span-1 border-r border-black text-right px-1">{fmtVal(ctcEarningsTotal)}</div>
+              <div className="col-span-1 border-r border-black text-right px-1">{fmtVal(ctcEarningsTotal)}</div>
               <div className="col-span-1 border-r border-black text-center">-</div>
-              <div className="col-span-2 border-r border-black text-right px-1.5 font-black">{fmtVal(totalEarningsMonthly)}</div>
+              <div className="col-span-2 border-r border-black text-right px-1.5 font-black">{fmtVal(ctcEarningsTotal)}</div>
               <div className="col-span-3 border-r border-black text-left px-1.5">Total Deduction</div>
               <div className="col-span-2 text-right px-1.5 font-black">{fmtVal(totalDeductions)}</div>
             </div>
 
             {/* Net Take Home Bar */}
-            <div className="flex justify-between items-center font-bold border-b border-black px-4 py-1.5 bg-white">
-              <span className="uppercase tracking-wider">NET TAKE HOME FOR THE MONTH</span>
-              <span className="text-xs font-black">{fmtVal(netTakeHome)}</span>
+            <div className="grid grid-cols-12 font-bold border-b border-black py-1 bg-white">
+              <div className="col-span-7" />
+              <div className="col-span-3 text-left px-1.5 uppercase tracking-wider">NET TAKE HOME FOR THE MONTH</div>
+              <div className="col-span-2 text-right px-1.5 text-xs font-black">{fmtVal(netTakeHome)}</div>
             </div>
-
-            {/* ----------------- EMPLOYER CONTRIBUTIONS & BENEFITS (FLANCE COST TO COMPANY) ----------------- */}
-            {employerContributionsList.length > 0 && (
-              <div>
-                <div className="border-b border-black text-center font-bold py-1 bg-gray-50 uppercase tracking-wider text-[9.5px]">
-                  Employer Contributions & Benefits (Cost to Company)
-                </div>
-                <div className="grid grid-cols-12 border-b border-black font-bold text-center text-[9px] bg-white">
-                  <div className="col-span-5 border-r border-black py-0.5 text-left px-1.5">Contribution / Benefit Head</div>
-                  <div className="col-span-3 border-r border-black py-0.5 text-right px-1.5">Monthly Amount</div>
-                  <div className="col-span-4 py-0.5 text-left px-1.5">Description</div>
-                </div>
-                <div className="divide-y divide-black border-b border-black text-[9px]">
-                  {employerContributionsList.map((contrib, cIdx) => (
-                    <div key={cIdx} className="grid grid-cols-12 py-0.5 items-center bg-white">
-                      <div className="col-span-5 border-r border-black text-left px-1.5 font-medium">{contrib.name}</div>
-                      <div className="col-span-3 border-r border-black text-right px-1.5 font-semibold">{fmtVal(contrib.amount)}</div>
-                      <div className="col-span-4 text-left px-1.5 text-gray-700">{contrib.details}</div>
-                    </div>
-                  ))}
-                </div>
-                <div className="grid grid-cols-12 border-b border-black font-bold py-1 bg-gray-50 items-center text-[9px]">
-                  <div className="col-span-5 border-r border-black text-left px-1.5">Total Employer Contributions</div>
-                  <div className="col-span-3 border-r border-black text-right px-1.5 font-black">{fmtVal(totalEmployerContributions)}</div>
-                  <div className="col-span-4 text-left px-1.5 text-gray-600">Benefits included in CTC</div>
-                </div>
-                <div className="flex justify-between items-center font-bold border-b border-black px-4 py-1.5 bg-slate-100 text-[10px]">
-                  <span className="uppercase tracking-wider">TOTAL COST TO COMPANY (MONTHLY CTC)</span>
-                  <span className="text-xs font-black">{fmtVal(monthlyCTC)}</span>
-                </div>
-              </div>
-            )}
 
             {/* ----------------- INCOME TAX WORKSHEET (DARK BLUE BAR #0f2d59) ----------------- */}
             <div className="border-b border-black text-center font-bold py-1 bg-[#0f2d59] text-white uppercase tracking-wider text-[10px]">
@@ -844,7 +902,7 @@ export const PayslipModal = ({ viewingPayslip, setViewingPayslip, profile, getPa
             Close
           </Button>
           <Button
-            onClick={() => window.print()}
+            onClick={handleDownloadPdf}
             className="bg-blue-600 hover:bg-blue-700 text-white text-xs shadow-md flex items-center gap-1.5 cursor-pointer"
           >
             <Printer size={14} />

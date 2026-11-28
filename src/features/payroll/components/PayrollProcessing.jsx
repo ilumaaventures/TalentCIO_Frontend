@@ -33,6 +33,7 @@ import toast from 'react-hot-toast';
 import api from '@/lib/apiClient';
 import { useAuth } from '@/features/auth/context/AuthContext';
 import { fmtMoney } from '@/features/payroll/utils/payroll';
+import { getMonthlyPT } from '../utils/statutoryEngine';
 import PayslipModal from './PayslipModal';
 
 const MONTH_NAMES = [
@@ -234,12 +235,15 @@ const PayrollProcessing = () => {
         initialRows[empId] = {
           paidDays: emp.paidDays !== undefined ? emp.paidDays : mWorkingDays,
           workingDays: emp.workingDays !== undefined ? emp.workingDays : mWorkingDays,
+          paidLeaves: emp.paidLeaves || 0,
+          unpaidLeaves: emp.unpaidLeaves || 0,
           hoursWorked: emp.hoursWorked || 160,
           lop: emp.lop || 0,
-          joiningBonus: emp.bonus || '',
+          joiningBonus: emp.variablePay?.joiningBonus ?? emp.bonus ?? '',
           loyaltyBonus: '',
-          incentive: emp.incentives || '',
-          specialBonus: '',
+          incentive: emp.variablePay?.incentive ?? emp.incentives ?? '',
+          specialBonus: emp.variablePay?.specialBonus ?? '',
+          otherAllowanceArrear: emp.variablePay?.otherAllowanceArrear ?? '',
           tds: emp.deductions?.tds !== undefined ? emp.deductions.tds : '',
           otherEarnings: emp.earnings?.customEarnings || [],
           otherDeductions: emp.deductions?.customDeductions || [],
@@ -378,11 +382,14 @@ const PayrollProcessing = () => {
       ? Math.round(basicMaster * (Number(config?.gratuityRate) || 0.0481))
       : 0;
     const lwfEmployerInCTC = (row.lwfEnabled !== false && ctc > 0) ? (Number(config?.lwfEmployer) || 35) : 0;
+    const insuranceEmployerAmt = Number(emp.employerContributions?.insuranceEmployer ?? emp.flags?.insuranceAmount ?? 0);
+    const insuranceInCTC = (emp.flags?.insuranceDeductFromFlexi !== false && ctc > 0) ? insuranceEmployerAmt : 0;
+    const npsEmployerAmt = Number(emp.employerContributions?.nps ?? emp.flags?.employerNPS ?? 0);
 
     // Pass 2: Compute remainder earnings (One component must act as the CTC balance remainder)
     activeEarningComponents.forEach(c => {
       if (c.linkedTo === 'remainder') {
-        const masterRemainder = ctc > 0 ? Math.max(0, ctc - sumOfNonRemainder - pfEmployerInCTC - gratuityInCTC - lwfEmployerInCTC) : 0;
+        const masterRemainder = ctc > 0 ? Math.max(0, ctc - sumOfNonRemainder - pfEmployerInCTC - gratuityInCTC - lwfEmployerInCTC - insuranceInCTC - npsEmployerAmt) : 0;
         const paidRemainder = Math.round(masterRemainder * ratio);
         componentsBreakdown[c.id] = { id: c.id, name: c.name, master: masterRemainder, paid: paidRemainder, linkedTo: 'remainder' };
       }
@@ -424,8 +431,9 @@ const PayrollProcessing = () => {
       }
     }
 
+    const projectedMonthlyGross = ratio > 0 ? (totalEarnings / ratio) : totalEarnings;
     let esi = 0;
-    if (row.esiEnabled !== false && ctc > 0 && totalEarnings > 0 && totalEarnings <= esiThreshold) {
+    if (row.esiEnabled !== false && ctc > 0 && totalEarnings > 0 && projectedMonthlyGross <= esiThreshold) {
       esi = emp.deductions?.esiEmployee || emp.deductions?.esi || Math.round(totalEarnings * esiRate);
     }
 
@@ -433,17 +441,17 @@ const PayrollProcessing = () => {
     if (row.ptEnabled !== false && ctc > 0 && totalEarnings > 0) {
       if (emp.deductions?.professionalTax !== undefined && Number(emp.deductions.professionalTax) > 0) {
         pt = Number(emp.deductions.professionalTax);
-      } else if (totalEarnings > 7500) {
-        pt = 200;
-      } else if (totalEarnings > 5000) {
-        pt = 175;
       } else {
-        pt = 0;
+        const ptState = emp.flags?.ptState || emp.ptState || 'custom';
+        pt = ptState && ptState !== 'custom'
+          ? getMonthlyPT(ptState, totalEarnings, month)
+          : (totalEarnings > 7500 ? 200 : totalEarnings > 5000 ? 175 : 0);
       }
     }
 
+    const isLwfMonth = !month || (Number(month) % 6 === 0);
     let lwf = 0;
-    if (row.lwfEnabled !== false && ctc > 0 && totalEarnings > 0) {
+    if (row.lwfEnabled !== false && isLwfMonth && ctc > 0 && totalEarnings > 0) {
       lwf = emp.deductions?.lwfEmployee || emp.deductions?.lwf || lwfEmployeeRate;
     }
 
@@ -470,6 +478,12 @@ const PayrollProcessing = () => {
       pt,
       lwf,
       tds,
+      pfEmployer: pfEmployerInCTC,
+      gratuityEmployer: gratuityInCTC,
+      lwfEmployer: lwfEmployerInCTC,
+      insuranceEmployer: insuranceEmployerAmt,
+      npsEmployer: npsEmployerAmt,
+      annualBenefits: emp.annualBenefits || [],
       totalDeductions,
       netSalary,
       isClamped,
@@ -592,16 +606,18 @@ const PayrollProcessing = () => {
         employees: selectedEmployees.map(emp => {
           const empId = emp.employeeId || emp._id || emp.userId;
           const row = rows[empId] || {};
+          const excludedIds = new Set(row.excludedClaimIds || []);
+          const filteredClaims = (emp.claims || emp.reimbursements || []).filter(c => !excludedIds.has(c._id));
           return {
             employeeId: empId,
             userId: empId,
             workingDays: Number(row.workingDays) || monthWorkingDays,
             paidDays: Number(row.paidDays) || 0,
+            paidLeaves: Number(row.paidLeaves ?? emp.paidLeaves) || 0,
+            unpaidLeaves: Number(row.unpaidLeaves ?? emp.unpaidLeaves) || 0,
             lop: Math.max(0, (Number(row.workingDays) || monthWorkingDays) - (Number(row.paidDays) || 0)),
-            otHours: Number(row.hoursWorked) || 0,
-            bonus: (Number(row.joiningBonus) || 0) + (Number(row.loyaltyBonus) || 0) + (Number(row.specialBonus) || 0),
-            incentives: Number(row.incentive) || 0,
-            adjustments: {
+            hoursWorked: Number(row.hoursWorked) || 0,
+            flags: {
               pfEnabled: row.pfEnabled,
               tdsEnabled: row.tdsEnabled,
               esiEnabled: row.esiEnabled,
@@ -609,12 +625,23 @@ const PayrollProcessing = () => {
               lwfEnabled: row.lwfEnabled,
               gratuityEnabled: row.gratuityEnabled,
               basicPercent: row.basicPercent,
-              hraPercent: row.hraPercent,
-              overtime: row.overtime,
-              otherEarnings: row.otherEarnings,
-              otherDeductions: row.otherDeductions,
-              reimbursements: emp.claims || []
-            }
+              hraPercent: row.hraPercent
+            },
+            variablePay: {
+              joiningBonus: Number(row.joiningBonus) || 0,
+              incentive: Number(row.incentive) || 0,
+              specialBonus: Number(row.specialBonus) || 0,
+              otherAllowanceArrear: Number(row.otherAllowanceArrear) || 0
+            },
+            earnings: {
+              overtime: Number(row.overtime?.customAmount) || 0
+            },
+            deductions: {
+              ...(row.tds !== '' && row.tds !== undefined ? { tds: Number(row.tds) } : {}),
+              loanDeduction: Number(emp.deductions?.loanDeduction) || 0,
+              advanceDeduction: Number(emp.deductions?.advanceDeduction) || 0
+            },
+            reimbursements: filteredClaims
           };
         })
       };
@@ -887,6 +914,73 @@ const PayrollProcessing = () => {
       console.error('Delete draft error:', err);
       toast.error('Failed to delete draft.');
     }
+  };
+
+  // Reset Employee Row / Saved Non-Paid Record
+  const handleResetEmployee = async (emp) => {
+    if (!emp) return;
+    const empId = emp.employeeId || emp._id || emp.userId;
+
+    if (emp.status === 'paid') {
+      toast.error('Paid payroll cannot be reset directly. Reopen to draft first.');
+      return;
+    }
+
+    if (emp.payrollId) {
+      if (!window.confirm(`Reset ${emp.fullName || 'this employee'}'s payroll for ${monthName(month)} ${year}? This will remove the saved ${emp.status} record and recalculate from attendance.`)) {
+        return;
+      }
+      try {
+        await api.delete(`/payroll/records/${emp.payrollId}`);
+        toast.success('Employee payroll reset.');
+        loadPayrollData();
+      } catch (err) {
+        console.error('Reset employee payroll error:', err);
+        toast.error(err.response?.data?.message || 'Failed to reset employee payroll.');
+      }
+      return;
+    }
+
+    const bPct = emp.flags?.basicPercent !== undefined
+      ? (emp.flags.basicPercent > 1 ? emp.flags.basicPercent : emp.flags.basicPercent * 100)
+      : (config?.basicPercent ? (config.basicPercent > 1 ? config.basicPercent : config.basicPercent * 100) : 50);
+    const hPct = emp.flags?.hraPercent !== undefined
+      ? (emp.flags.hraPercent > 1 ? emp.flags.hraPercent : emp.flags.hraPercent * 100)
+      : (config?.hraPercent ? (config.hraPercent > 1 ? config.hraPercent : config.hraPercent * 100) : 50);
+
+    setRows(prev => ({
+      ...prev,
+      [empId]: {
+        paidDays: emp.paidDays !== undefined ? emp.paidDays : monthWorkingDays,
+        workingDays: emp.workingDays !== undefined ? emp.workingDays : monthWorkingDays,
+        paidLeaves: emp.paidLeaves || 0,
+        unpaidLeaves: emp.unpaidLeaves || 0,
+        hoursWorked: emp.hoursWorked || 160,
+        lop: emp.lop || 0,
+        joiningBonus: emp.variablePay?.joiningBonus ?? emp.bonus ?? '',
+        loyaltyBonus: '',
+        incentive: emp.variablePay?.incentive ?? emp.incentives ?? '',
+        specialBonus: emp.variablePay?.specialBonus ?? '',
+        otherAllowanceArrear: emp.variablePay?.otherAllowanceArrear ?? '',
+        tds: emp.deductions?.tds !== undefined ? emp.deductions.tds : '',
+        otherEarnings: emp.earnings?.customEarnings || [],
+        otherDeductions: emp.deductions?.customDeductions || [],
+        excludedClaimIds: [],
+        variableTransactions: emp.variableTransactions || [],
+        pfEnabled: emp.flags?.pfEnabled !== undefined ? emp.flags.pfEnabled : true,
+        tdsEnabled: emp.flags?.tdsEnabled !== undefined ? emp.flags.tdsEnabled : true,
+        esiEnabled: emp.flags?.esiEnabled !== undefined ? emp.flags.esiEnabled : true,
+        ptEnabled: emp.flags?.ptEnabled !== undefined ? emp.flags.ptEnabled : true,
+        lwfEnabled: emp.flags?.lwfEnabled !== undefined ? emp.flags.lwfEnabled : true,
+        gratuityEnabled: emp.flags?.gratuityEnabled !== undefined ? emp.flags.gratuityEnabled : true,
+        includePfInCTC: true,
+        includeGratuityInCTC: true,
+        basicPercent: bPct,
+        hraPercent: hPct,
+        overtime: { weekdayHours: 0, weekendHours: 0, holidayHours: 0, customAmount: 0 }
+      }
+    }));
+    toast.success('Employee adjustments reset to defaults.');
   };
 
   const hasProcessedPayrolls = employees.some(e => e.status && e.status !== 'unprocessed');
@@ -1489,6 +1583,21 @@ const PayrollProcessing = () => {
                                   <UserCheck className="w-3.5 h-3.5 text-purple-600 shrink-0" />
                                   <span>Full & Final (F&F)</span>
                                 </button>
+
+                                {/* Reset */}
+                                {emp.status !== 'paid' && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setActiveActionMenuId(null);
+                                      handleResetEmployee(emp);
+                                    }}
+                                    className="w-full px-3 py-1.5 flex items-center gap-2.5 text-slate-700 hover:bg-amber-50 hover:text-amber-700 transition-colors text-left font-medium cursor-pointer"
+                                  >
+                                    <RotateCcw className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                                    <span>Reset</span>
+                                  </button>
+                                )}
                               </div>
 
                               {/* State-specific actions */}
@@ -2121,6 +2230,46 @@ const PayrollProcessing = () => {
                         )}
                       </div>
                     </div>
+
+                    {/* Employer Statutory & Benefits */}
+                    <div className="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-2xs">
+                      <div className="bg-slate-50 px-4 py-2.5 border-b border-slate-200 font-bold text-slate-700 text-xs">
+                        Employer Statutory & Benefits
+                      </div>
+                      <div className="divide-y divide-slate-100 text-xs">
+                        <DeductionRow label="PF Employer Cost" amount={snap.pfEmployer || 0} />
+                        <DeductionRow label="Gratuity Accrual" amount={snap.gratuityEmployer || 0} />
+                        <DeductionRow label="LWF Employer Cost" amount={snap.lwfEmployer || 0} />
+                        {snap.insuranceEmployer > 0 && (
+                          <DeductionRow label="Insurance (Flexi Benefit)" amount={snap.insuranceEmployer} />
+                        )}
+                        {snap.npsEmployer > 0 && (
+                          <DeductionRow label="Employer NPS" amount={snap.npsEmployer} />
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Annual CTC Components & Bonus */}
+                    {Array.isArray(snap.annualBenefits) && snap.annualBenefits.length > 0 && (
+                      <div className="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-2xs">
+                        <div className="bg-slate-50 px-4 py-2.5 border-b border-slate-200 font-bold text-slate-700 text-xs">
+                          Annual CTC Components & Bonus
+                        </div>
+                        <div className="divide-y divide-slate-100 text-xs">
+                          {snap.annualBenefits.map((ab, idx) => (
+                            <div key={`ab-${idx}`} className="px-4 py-2.5 flex items-center justify-between gap-2">
+                              <div>
+                                <div className="font-semibold text-slate-800 capitalize">{ab.name}</div>
+                                <div className="text-[10px] text-slate-500 capitalize">
+                                  {String(ab.frequency || '').replace('_', '-')} ({fmtMoney(ab.perPayoutAmount)} × {ab.payoutCount}) · {ab.includeInCTC ? 'Added in Annual CTC' : 'Outside CTC'}
+                                </div>
+                              </div>
+                              <span className="font-bold text-slate-900">{fmtMoney(ab.annualAmount)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
 
                     {/* Net Take-Home Card */}
                     <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 flex justify-between items-center font-bold text-emerald-900 shadow-2xs">

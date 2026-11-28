@@ -274,7 +274,7 @@ export const buildMasterSalaryStructure = (source = {}, configInput = {}) => {
     case 'weekly_wage':
     case 'weekly_salary': {
       const rate = Number(source.weeklyRate) || 0;
-      if (rate > 0) monthlyCTC = roundAmount(rate * 4);
+      if (rate > 0) monthlyCTC = roundAmount((rate * 52) / 12);
       break;
     }
     case 'flat_project':
@@ -733,8 +733,8 @@ export const buildMasterSalaryStructure = (source = {}, configInput = {}) => {
     : roundAmount(basicMaster + hraMaster + flexi + broadband + petrol + lta + specialAllowance + conveyance + medicalAllowance + otherAllowancesSum);
 
   const esiApplicable = esiEnabled && (pass1TotalEarnings <= config.esiBasicThreshold);
-  const esiEmployer = roundAmount(esiApplicable ? basicMaster * config.esiEmployerRate : 0);
-  const esiEmployee = roundAmount(esiApplicable ? basicMaster * config.esiEmployeeRate : 0);
+  const esiEmployer = roundAmount(esiApplicable ? pass1TotalEarnings * config.esiEmployerRate : 0);
+  const esiEmployee = roundAmount(esiApplicable ? pass1TotalEarnings * config.esiEmployeeRate : 0);
 
   if (esiApplicable && hasDynamicComponents) {
     earningsMap = computeEarnings(esiEmployer);
@@ -1336,8 +1336,9 @@ export const buildPayrollSnapshot = (employee, configInput, attendance, adjustme
   const gratuity = roundAmount(sumGratuity);
 
   const professionalTax = master.professionalTax;
-  const lwfEmployee = master.lwfEmployee;
-  const lwfEmployer = master.lwfEmployer;
+  const isLwfMonth = !month || (Number(month) % 6 === 0);
+  const lwfEmployee = isLwfMonth ? master.lwfEmployee : 0;
+  const lwfEmployer = isLwfMonth ? master.lwfEmployer : 0;
 
   const deductions = {
     pfEmployee,
