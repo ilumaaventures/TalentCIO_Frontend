@@ -179,7 +179,7 @@ const CandidateForm = () => {
 
     const fetchUsers = useCallback(async () => {
         try {
-            const res = await api.get('/admin/users');
+            const res = await api.get('/admin/users', { params: { active: true } });
             let fetchedUsers = [];
             if (res.data?.success) {
                 fetchedUsers = res.data.data || [];
@@ -187,8 +187,10 @@ const CandidateForm = () => {
                 fetchedUsers = res.data;
             }
 
-            // Filter users who can add/manage candidates for TA requisitions or are Admin
+            // Filter active users who can add/manage candidates for TA requisitions or are Admin
             const filteredUsers = fetchedUsers.filter(u => {
+                if (u?.isActive === false) return false;
+
                 // Check if the user is an Admin
                 const roleNames = u.roles?.map(r => r.name) || [];
                 if (roleNames.includes('Admin')) return true;

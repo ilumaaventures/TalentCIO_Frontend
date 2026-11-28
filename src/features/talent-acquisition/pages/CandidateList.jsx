@@ -532,7 +532,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
 
     const fetchUsers = useCallback(async () => {
         try {
-            const res = await api.get('/admin/users');
+            const res = await api.get('/admin/users', { params: { active: true } });
             let fetchedUsers = [];
             if (res.data?.success) {
                 fetchedUsers = res.data.data || [];
@@ -541,6 +541,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
             }
 
             const filteredUsers = fetchedUsers.filter(u => {
+                if (u?.isActive === false) return false;
                 const roleNames = u.roles?.map(r => r.name) || [];
                 if (roleNames.includes('Admin')) return true;
 

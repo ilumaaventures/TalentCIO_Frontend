@@ -205,9 +205,10 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
     };
 
     const normalizeUsers = (payload) => {
-        if (payload?.success && Array.isArray(payload.data)) return payload.data;
-        if (Array.isArray(payload)) return payload;
-        return [];
+        const list = (payload?.success && Array.isArray(payload.data))
+            ? payload.data
+            : (Array.isArray(payload) ? payload : []);
+        return list.filter((u) => u?.isActive !== false);
     };
 
     const normalizeCandidates = (payload) => {
@@ -222,7 +223,7 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
             const fetchData = async () => {
                 try {
                     const [usersRes, candidatesRes, requestRes] = await Promise.all([
-                        api.get('/admin/users'),
+                        api.get('/admin/users', { params: { active: true } }),
                         api.get(`/ta/candidates/${hiringRequestId}`),
                         api.get(`/ta/hiring-request/${hiringRequestId}`)
                     ]);
@@ -378,7 +379,7 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
             let currentUsers = users;
             if (currentUsers.length === 0) {
                 try {
-                    const res = await api.get('/admin/users');
+                    const res = await api.get('/admin/users', { params: { active: true } });
                     currentUsers = normalizeUsers(res.data);
                     setUsers(currentUsers);
                 } catch (e) {

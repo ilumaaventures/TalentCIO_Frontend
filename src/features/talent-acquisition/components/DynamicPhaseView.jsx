@@ -436,12 +436,15 @@ const DynamicPhaseView = ({ hiringRequest, filterInterviewRound = '', onRefreshP
     useEffect(() => {
         const fetchPulledByUsers = async () => {
             try {
-                const response = await api.get('/admin/users');
+                const response = await api.get('/admin/users', { params: { active: true } });
                 const fetchedUsers = response.data?.success
                     ? (response.data.data || [])
                     : (Array.isArray(response.data) ? response.data : []);
 
                 const filteredUsers = fetchedUsers.filter((candidateUser) => {
+                    if (candidateUser?.isActive === false) {
+                        return false;
+                    }
                     const roleNames = candidateUser.roles?.map((role) => role.name) || [];
                     if (roleNames.includes('Admin')) {
                         return true;
